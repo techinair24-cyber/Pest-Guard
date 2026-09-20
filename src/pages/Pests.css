@@ -1,0 +1,632 @@
+.pests-page {
+  background: #f7f5ec;
+  color: #173f35;
+}
+
+/* HERO */
+
+.pests-hero {
+  max-width: 1280px;
+  min-height: 600px;
+  margin: 0 auto;
+  padding: 85px 42px 75px;
+  display: grid;
+  grid-template-columns: 1fr 0.9fr;
+  gap: 75px;
+  align-items: center;
+}
+
+.pests-hero-content {
+  max-width: 650px;
+}
+
+.pests-eyebrow {
+  margin: 0 0 18px;
+  color: #6c8b78;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.pests-title {
+  margin: 0;
+  color: #123d34;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(50px, 6vw, 78px);
+  line-height: 0.97;
+  letter-spacing: -0.05em;
+}
+
+.pests-title em {
+  display: block;
+  color: #598066;
+  font-style: italic;
+}
+
+.pests-intro {
+  max-width: 600px;
+  margin: 28px 0 0;
+  color: #61726c;
+  font-size: 16px;
+  line-height: 1.8;
+}
+
+.pests-hero-stats {
+  display: flex;
+  gap: 45px;
+  margin-top: 38px;
+}
+
+.pests-hero-stats div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.pests-hero-stats strong {
+  color: #173f35;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 29px;
+}
+
+.pests-hero-stats span {
+  color: #7b8c84;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* HERO VISUAL */
+
+.pests-hero-visual {
+  display: flex;
+  justify-content: center;
+}
+
+.pests-visual-field {
+  position: relative;
+  width: 100%;
+  max-width: 500px;
+  height: 430px;
+  overflow: hidden;
+  border-radius: 30px;
+  background: #dfe9d8;
+  box-shadow: 0 28px 70px rgba(27, 64, 48, 0.16);
+}
+
+.pests-hero-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  object-position: center;
+}
+
+.pests-image-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(18, 61, 52, 0.04),
+    rgba(18, 61, 52, 0.16)
+  );
+  pointer-events: none;
+}
+
+.pests-listening-card {
+  position: absolute;
+  top: 27px;
+  left: 27px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 16px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 14px 30px rgba(23, 63, 53, 0.12);
+}
+
+.listening-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #4e7d5f;
+  box-shadow: 0 0 0 5px rgba(78, 125, 95, 0.12);
+}
+
+.pests-listening-card strong {
+  display: block;
+  color: #173f35;
+  font-size: 13px;
+}
+
+.pests-listening-card small {
+  display: block;
+  margin-top: 3px;
+  color: #71817a;
+  font-size: 10px;
+}
+
+.pests-listen-label {
+  position: absolute;
+  top: 28px;
+  right: 25px;
+  z-index: 4;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+}
+
+.pests-hero-image {
+  transition: transform 8s ease;
+}
+
+.pests-floating-sticker {
+  position: absolute;
+  left: 18px;
+  bottom: 18px;
+  z-index: 3;
+  width: 130px;
+  height: auto;
+  opacity: 0.9;
+  filter: drop-shadow(0 16px 24px rgba(19, 59, 40, 0.12));
+  transform: rotate(-18deg);
+}
+
+.pests-visual-field:hover .pests-hero-image {
+  transform: scale(1.03);
+}
+
+/* LIBRARY */
+
+.pests-library {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 85px 42px 110px;
+}
+
+.pests-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 30px;
+  margin-bottom: 42px;
+}
+
+.toolbar-label {
+  margin: 0 0 10px;
+  color: #6d8a79;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.19em;
+  text-transform: uppercase;
+}
+
+.pests-toolbar h2 {
+  margin: 0;
+  color: #153f35;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(34px, 4vw, 52px);
+  line-height: 1.05;
+}
+
+.pests-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 220px;
+  padding: 10px 13px;
+  border: 1px solid rgba(23, 63, 53, 0.13);
+  border-radius: 8px;
+  background: #fffdf7;
+}
+
+.search-box span {
+  color: #789081;
+  font-size: 18px;
+}
+
+.search-box input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #173f35;
+  font-size: 13px;
+}
+
+.search-box input::placeholder {
+  color: #96a19c;
+}
+
+.risk-filters {
+  display: flex;
+  gap: 6px;
+}
+
+.risk-filter {
+  padding: 10px 12px;
+  border: 1px solid rgba(23, 63, 53, 0.11);
+  border-radius: 7px;
+  background: transparent;
+  color: #718079;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.risk-filter.active {
+  border-color: #173f35;
+  background: #173f35;
+  color: #ffffff;
+}
+
+/* STATES */
+
+.pests-state {
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  text-align: center;
+  border: 1px solid rgba(23, 63, 53, 0.1);
+  border-radius: 20px;
+  background: #fffdf7;
+}
+
+.pests-state h3 {
+  margin: 18px 0 5px;
+  color: #173f35;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 25px;
+}
+
+.pests-state p {
+  max-width: 450px;
+  margin: 0;
+  color: #75837d;
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+.state-loader {
+  width: 28px;
+  height: 28px;
+  border: 3px solid #d9e3dc;
+  border-top-color: #4d785c;
+  border-radius: 50%;
+  animation: pest-spin 0.8s linear infinite;
+}
+
+@keyframes pest-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.state-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #e7eee6;
+  color: #315d46;
+  font-weight: 800;
+}
+
+.error-state {
+  background: #fbf3ed;
+}
+
+/* CARDS */
+
+.pests-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 22px;
+}
+
+.pest-card {
+  overflow: hidden;
+  border: 1px solid rgba(23, 63, 53, 0.09);
+  border-radius: 18px;
+  background: #fffdf7;
+  box-shadow: 0 10px 26px rgba(24, 58, 44, 0.05);
+  transition:
+    transform 0.22s ease,
+    box-shadow 0.22s ease;
+}
+
+.pest-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 20px 38px rgba(24, 58, 44, 0.11);
+}
+
+.pest-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 18px 0;
+}
+
+.pest-index {
+  color: #99a79f;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+}
+
+.pest-risk {
+  padding: 6px 8px;
+  border-radius: 5px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.risk-high {
+  background: #f5ddd5;
+  color: #8a3f2f;
+}
+
+.risk-medium {
+  background: #eee4cb;
+  color: #74612a;
+}
+
+.risk-low {
+  background: #dfeade;
+  color: #3d6649;
+}
+
+/* CARD VISUAL */
+
+.pest-visual {
+  position: relative;
+  height: 170px;
+  margin: 14px 14px 0;
+  overflow: hidden;
+  border-radius: 13px;
+  background:
+    linear-gradient(
+      145deg,
+      #dfead8,
+      #accb9c
+    );
+}
+
+.pest-visual-leaf {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 220px;
+  height: 105px;
+  border-radius: 80% 15% 80% 15%;
+  background: #5b8460;
+  transform: translate(-50%, -50%) rotate(-18deg);
+}
+
+.leaf-stem {
+  position: absolute;
+  left: 15px;
+  right: 20px;
+  top: 52px;
+  height: 3px;
+  border-radius: 4px;
+  background: rgba(229, 241, 223, 0.55);
+}
+
+.leaf-rib {
+  position: absolute;
+  left: 75px;
+  width: 75px;
+  height: 2px;
+  background: rgba(229, 241, 223, 0.35);
+}
+
+.rib-one {
+  top: 32px;
+  transform: rotate(-24deg);
+}
+
+.rib-two {
+  top: 73px;
+  transform: rotate(25deg);
+}
+
+.rib-three {
+  top: 53px;
+  transform: rotate(-8deg);
+}
+
+.sound-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.ring-one {
+  width: 70px;
+  height: 70px;
+}
+
+.ring-two {
+  width: 110px;
+  height: 110px;
+}
+
+.ring-three {
+  width: 150px;
+  height: 150px;
+}
+
+.sound-label {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  padding: 5px 7px;
+  border-radius: 4px;
+  background: rgba(23, 63, 53, 0.72);
+  color: #ffffff;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+}
+
+/* CARD CONTENT */
+
+.pest-card-content {
+  padding: 22px 20px 20px;
+}
+
+.pest-card-content h3 {
+  margin: 0;
+  color: #173f35;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 28px;
+}
+
+.scientific-name {
+  margin: 5px 0 0;
+  color: #779082;
+  font-size: 12px;
+  font-style: italic;
+}
+
+.pest-description {
+  margin: 15px 0 0;
+  color: #61736b;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.symptoms-block {
+  margin-top: 18px;
+  padding-top: 15px;
+  border-top: 1px solid rgba(23, 63, 53, 0.09);
+}
+
+.symptoms-block span {
+  color: #71877b;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.symptoms-block p {
+  margin: 6px 0 0;
+  color: #596b63;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.pest-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-top: 1px solid rgba(23, 63, 53, 0.08);
+  color: #789087;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.footer-arrow {
+  color: #173f35;
+  font-size: 17px;
+}
+
+/* RESPONSIVE */
+
+@media (max-width: 1050px) {
+  .pests-hero {
+    grid-template-columns: 1fr;
+    gap: 50px;
+  }
+
+  .pests-hero-content {
+    max-width: 800px;
+  }
+
+  .pests-hero-visual {
+    justify-content: flex-start;
+  }
+
+  .pests-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pests-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .pests-controls {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 700px) {
+  .pests-hero,
+  .pests-library {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .pests-hero {
+    padding-top: 60px;
+    padding-bottom: 70px;
+  }
+
+  .pests-hero-stats {
+    gap: 25px;
+    flex-wrap: wrap;
+  }
+
+  .pests-visual-field {
+    height: 350px;
+  }
+
+  .pests-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pests-controls {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search-box {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .risk-filters {
+    width: 100%;
+  }
+
+  .risk-filter {
+    flex: 1;
+  }
+}
