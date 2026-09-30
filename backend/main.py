@@ -22,6 +22,7 @@ from schemas import (
     PestResponse,
     SolutionResponse,
 )
+
 # -------------------------------------------------------------------
 # AI MODEL
 # -------------------------------------------------------------------
@@ -79,6 +80,7 @@ def prepare_audio(audio):
 
 def predict_pest(audio):
     features = prepare_audio(audio)
+
     prediction = ai_model.predict(
         tf.expand_dims(features, 0),
         verbose=0
@@ -90,6 +92,7 @@ def predict_pest(audio):
         "pest": class_names[index],
         "confidence": float(prediction[index])
     }
+
 
 # -------------------------------------------------------------------
 # Database
@@ -213,11 +216,13 @@ def startup_event():
                 status="OFFLINE",
                 connection="DISCONNECTED",
             )
+
             db.add(device)
             db.commit()
 
     finally:
         db.close()
+
 
 # -------------------------------------------------------------------
 # Health
@@ -332,10 +337,15 @@ def device_heartbeat(
             "humidity": device.humidity,
         },
     }
+
+
 @app.post("/api/ai/predict")
 async def ai_predict(payload: dict):
     if "audio" not in payload:
-        raise HTTPException(status_code=400, detail="Audio data is required")
+        raise HTTPException(
+            status_code=400,
+            detail="Audio data is required"
+        )
 
     try:
         result = predict_pest(payload["audio"])
@@ -364,6 +374,7 @@ async def ai_predict(payload: dict):
             status_code=500,
             detail=f"AI prediction failed: {str(error)}",
         )
+
 
 # -------------------------------------------------------------------
 # Detection API
@@ -664,13 +675,17 @@ async def detection_websocket(websocket: WebSocket):
 
     try:
         while True:
-            # Keep the connection alive.
-            await websocket.receive_text()
+            message = await websocket.receive_text()
+
+            if message == "ping":
+                await websocket.send_text('{"type":"pong"}')
 
     except WebSocketDisconnect:
+        print("WebSocket client disconnected")
         manager.disconnect(websocket)
 
-    except Exception:
+    except Exception as e:
+        print("WebSocket error:", repr(e))
         manager.disconnect(websocket)
 
 
