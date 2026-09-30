@@ -104,6 +104,12 @@ export function connectDetectionSocket(
           return
         }
 
+        // Ignore heartbeat response.
+        // "pong" is not a pest detection.
+        if (data.type === 'pong') {
+          return
+        }
+
         console.log(
           'Pest Guard detection received:',
           data
