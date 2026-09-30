@@ -1,17 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import {
-  getDeviceStatusById,
+  getDeviceStatus,
   getLatestDetection,
 } from '../services/api'
 
-import {
-  connectDetectionSocket,
-} from '../services/websocket'
+import { connectDetectionSocket } from '../services/websocket'
+
+const DEVICE_ID =
+  import.meta.env.VITE_DEVICE_ID || 'FIELD-UNIT-01'
 
 export function useLiveDetection() {
-  const deviceId =
-    import.meta.env.VITE_DEVICE_ID || 'FIELD-UNIT-01'
+  const mountedRef = useRef(false)
 
   const [liveStatus, setLiveStatus] = useState({
     detection: null,
@@ -21,11 +21,9 @@ export function useLiveDetection() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  const mountedRef = useRef(false)
-
-  const updateDeviceStatus = useCallback(async () => {
+  const updateDeviceStatus = async () => {
     try {
-      const device = await getDeviceStatusById(deviceId)
+      const response = await getDeviceStatus(DEVICE_ID)
 
       if (!mountedRef.current) {
         return
@@ -33,89 +31,80 @@ export function useLiveDetection() {
 
       setLiveStatus((current) => ({
         ...current,
-        device,
+        device: response?.device || null,
       }))
-
-      setError(null)
     } catch (deviceError) {
       if (!mountedRef.current) {
         return
       }
 
       console.error(
-        'Unable to get device status:',
+        'Unable to update device status:',
         deviceError
       )
 
-      setLiveStatus((current) => ({
-        ...current,
-        device: null,
-      }))
+      setError(deviceError)
     }
-  }, [deviceId])
+  }
 
-  const loadInitialData = useCallback(async () => {
-    if (!mountedRef.current) {
-      return
-    }
-
+  const loadInitialData = async () => {
     setLoading(true)
-    setError(null)
 
-    const [detectionResult, deviceResult] =
-      await Promise.allSettled([
-        getLatestDetection(),
-        getDeviceStatusById(deviceId),
-      ])
+    try {
+      const [latestResult, deviceResult] =
+        await Promise.allSettled([
+          getLatestDetection(),
+          getDeviceStatus(DEVICE_ID),
+        ])
 
-    if (!mountedRef.current) {
-      return
+      if (!mountedRef.current) {
+        return
+      }
+
+      if (latestResult.status === 'fulfilled') {
+        setLiveStatus((current) => ({
+          ...current,
+          detection:
+            latestResult.value?.detection || null,
+        }))
+      }
+
+      if (deviceResult.status === 'fulfilled') {
+        setLiveStatus((current) => ({
+          ...current,
+          device:
+            deviceResult.value?.device || null,
+        }))
+      }
+
+      const failedResult =
+        latestResult.status === 'rejected'
+          ? latestResult
+          : deviceResult.status === 'rejected'
+            ? deviceResult
+            : null
+
+      if (failedResult) {
+        console.error(
+          'Unable to load initial live monitoring data:',
+          failedResult.reason
+        )
+
+        setError(failedResult.reason)
+      } else {
+        setError(null)
+      }
+    } finally {
+      if (mountedRef.current) {
+        setLoading(false)
+      }
     }
-
-    const detection =
-      detectionResult.status === 'fulfilled'
-        ? detectionResult.value
-        : null
-
-    const device =
-      deviceResult.status === 'fulfilled'
-        ? deviceResult.value
-        : null
-
-    setLiveStatus({
-      detection,
-      device,
-    })
-
-    const detectionFailed =
-      detectionResult.status === 'rejected'
-
-    const deviceFailed =
-      deviceResult.status === 'rejected'
-
-    if (detectionFailed && deviceFailed) {
-      setError('Live data unavailable')
-    } else if (deviceFailed) {
-      setError('Device status unavailable')
-    } else {
-      setError(null)
-    }
-
-    setLoading(false)
-  }, [deviceId])
+  }
 
   useEffect(() => {
     mountedRef.current = true
 
     loadInitialData()
-
-    /*
-      WebSocket:
-      Backend → WebSocket → this hook → Home page
-
-      Whenever the AI/backend creates a new detection,
-      the Home page receives it without refreshing.
-    */
 
     const disconnect = connectDetectionSocket(
       async (incomingDetection) => {
@@ -139,51 +128,34 @@ export function useLiveDetection() {
 
         setError(null)
 
-        /*
-          Refresh device information too.
-          This keeps ONLINE/OFFLINE status current.
-        */
         await updateDeviceStatus()
       },
 
-      (socketError) => {
+      (socketState) => {
         if (!mountedRef.current) {
           return
         }
 
-        console.error(
-          'Detection WebSocket error:',
-          socketError
-        )
+        if (socketState === 'error') {
+          console.error(
+            'Detection WebSocket error'
+          )
+        }
       }
     )
 
-    /*
-      Also refresh the device status periodically.
-      This is useful if the field unit disconnects
-      without sending a WebSocket event.
-    */
-
-    const deviceRefreshInterval = window.setInterval(
-      () => {
-        updateDeviceStatus()
-      },
-      10000
-    )
+    const refreshTimer = window.setInterval(() => {
+      updateDeviceStatus()
+    }, 10000)
 
     return () => {
       mountedRef.current = false
 
       disconnect()
 
-      window.clearInterval(
-        deviceRefreshInterval
-      )
+      window.clearInterval(refreshTimer)
     }
-  }, [
-    loadInitialData,
-    updateDeviceStatus,
-  ])
+  }, [])
 
   return {
     detection: liveStatus.detection,
