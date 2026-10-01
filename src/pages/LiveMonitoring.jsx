@@ -198,11 +198,38 @@ function LiveMonitoring() {
   return (
     <main className="monitoring-page">
       {popup && (
-        <div className="harmful-alert-backdrop" onClick={() => setPopup(null)} aria-hidden="true">
-          <div className="harmful-alert-popup" onClick={(event) => event.stopPropagation()} role="dialog" aria-live="assertive">
+        <div
+          className="harmful-alert-backdrop"
+          onClick={() => setPopup(null)}
+          role="presentation"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 100000,
+            pointerEvents: 'auto',
+          }}
+        >
+          <div
+            className="harmful-alert-popup"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-live="assertive"
+            style={{
+              position: 'relative',
+              zIndex: 100001,
+              pointerEvents: 'auto',
+            }}
+          >
             <div className="popup-header">
               <span className="popup-badge">HARMFUL PEST DETECTED</span>
-              <button type="button" className="popup-close" onClick={() => setPopup(null)} aria-label="Dismiss alert">
+              <button
+                type="button"
+                className="popup-close"
+                onClick={() => setPopup(null)}
+                aria-label="Dismiss alert"
+                style={{ position: 'relative', zIndex: 100002, pointerEvents: 'auto' }}
+              >
                 ×
               </button>
             </div>
@@ -215,11 +242,24 @@ function LiveMonitoring() {
               <div><span>Device</span><strong>{popup.deviceId}</strong></div>
             </div>
 
-            <div className="popup-actions">
-              <button type="button" className="popup-primary" onClick={() => { setPopup(null); navigate('/solutions') }}>
+            <div className="popup-actions" style={{ position: 'relative', zIndex: 100002, pointerEvents: 'auto' }}>
+              <button
+                type="button"
+                className="popup-primary"
+                onClick={() => {
+                  setPopup(null)
+                  window.location.assign('/solutions')
+                }}
+                style={{ position: 'relative', zIndex: 100003, pointerEvents: 'auto', cursor: 'pointer' }}
+              >
                 View Solution
               </button>
-              <button type="button" className="popup-secondary" onClick={() => setPopup(null)}>
+              <button
+                type="button"
+                className="popup-secondary"
+                onClick={() => setPopup(null)}
+                style={{ position: 'relative', zIndex: 100003, pointerEvents: 'auto', cursor: 'pointer' }}
+              >
                 Dismiss
               </button>
             </div>
