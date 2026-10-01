@@ -10,31 +10,87 @@ import { connectDetectionSocket } from '../services/websocket'
 const DEVICE_ID =
   import.meta.env.VITE_DEVICE_ID || 'FIELD-UNIT-01'
 
+const DEVICE_CACHE_KEY =
+  'pest_guard_device_status'
+
+function getCachedDevice() {
+  try {
+    const cached =
+      window.localStorage.getItem(
+        DEVICE_CACHE_KEY,
+      )
+
+    if (!cached) {
+      return null
+    }
+
+    const device = JSON.parse(cached)
+
+    if (!device || !device.device_id) {
+      return null
+    }
+
+    return device
+  } catch {
+    return null
+  }
+}
+
+function cacheDevice(device) {
+  if (!device) {
+    return
+  }
+
+  try {
+    window.localStorage.setItem(
+      DEVICE_CACHE_KEY,
+      JSON.stringify(device),
+    )
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
 export function useLiveDetection() {
   const mountedRef = useRef(false)
 
-  const [liveStatus, setLiveStatus] = useState({
+  const [liveStatus, setLiveStatus] = useState(() => ({
     detection: null,
-    device: null,
-  })
+    device: getCachedDevice(),
+  }))
 
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(
+    () => !getCachedDevice(),
+  )
+
   const [error, setError] = useState(null)
 
   const updateDeviceStatus = async () => {
     try {
-      const response = await getDeviceStatusById(DEVICE_ID)
+      const response =
+        await getDeviceStatusById(
+          DEVICE_ID,
+        )
 
       if (!mountedRef.current) {
         return
       }
 
+      if (!response) {
+        throw new Error(
+          'Pest Guard device status was empty.',
+        )
+      }
+
+      cacheDevice(response)
+
       setLiveStatus((current) => ({
         ...current,
-        device: response || null,
+        device: response,
       }))
 
       setError(null)
+      setLoading(false)
     } catch (deviceError) {
       if (!mountedRef.current) {
         return
@@ -46,61 +102,52 @@ export function useLiveDetection() {
       )
 
       setError(deviceError)
+
+      setLoading(false)
     }
   }
 
-  const loadInitialData = async () => {
-    setLoading(true)
+  const loadLatestDetection =
+    async () => {
+      try {
+        const response =
+          await getLatestDetection()
 
-    try {
-      const [latestResult, deviceResult] =
-        await Promise.allSettled([
-          getLatestDetection(),
-          getDeviceStatusById(DEVICE_ID),
-        ])
+        if (!mountedRef.current) {
+          return
+        }
 
-      if (!mountedRef.current) {
-        return
-      }
-
-      if (latestResult.status === 'fulfilled') {
         setLiveStatus((current) => ({
           ...current,
           detection:
-            latestResult.value?.detection || null,
+            response?.detection || null,
         }))
-      }
+      } catch (detectionError) {
+        if (!mountedRef.current) {
+          return
+        }
 
-      if (deviceResult.status === 'fulfilled') {
-        setLiveStatus((current) => ({
-          ...current,
-          device:
-            deviceResult.value || null,
-        }))
-      }
-
-      const failedResults = [
-        latestResult,
-        deviceResult,
-      ].filter(
-        (result) => result.status === 'rejected',
-      )
-
-      if (failedResults.length > 0) {
         console.error(
-          'Unable to load initial live monitoring data:',
-          failedResults[0].reason,
+          'Unable to load latest detection:',
+          detectionError,
         )
 
-        setError(failedResults[0].reason)
-      } else {
-        setError(null)
-      }
-    } finally {
-      if (mountedRef.current) {
-        setLoading(false)
+        /*
+         * A failed latest-detection request must
+         * never mark the real device offline.
+         */
       }
     }
+
+  const loadInitialData = async () => {
+    /*
+     * Device status and latest detection are
+     * intentionally loaded independently.
+     */
+    await Promise.allSettled([
+      updateDeviceStatus(),
+      loadLatestDetection(),
+    ])
   }
 
   useEffect(() => {
@@ -108,61 +155,90 @@ export function useLiveDetection() {
 
     loadInitialData()
 
-    const disconnect = connectDetectionSocket(
-      async (incomingDetection) => {
-        if (!mountedRef.current) {
-          return
-        }
+    /*
+     * Refresh latest detection every 10 seconds.
+     */
+    const detectionRefreshTimer =
+      window.setInterval(() => {
+        loadLatestDetection()
+      }, 10000)
 
-        if (!incomingDetection) {
-          return
-        }
+    /*
+     * Refresh the real device status every 5 seconds.
+     */
+    const deviceRefreshTimer =
+      window.setInterval(() => {
+        updateDeviceStatus()
+      }, 5000)
 
-        console.log(
-          'New Pest Guard detection:',
-          incomingDetection,
-        )
+    const disconnect =
+      connectDetectionSocket(
+        async (incomingDetection) => {
+          if (!mountedRef.current) {
+            return
+          }
 
-        setLiveStatus((current) => ({
-          ...current,
-          detection: incomingDetection,
-        }))
+          if (!incomingDetection) {
+            return
+          }
 
-        setError(null)
-
-        await updateDeviceStatus()
-      },
-
-      (socketState) => {
-        if (!mountedRef.current) {
-          return
-        }
-
-        if (socketState === 'error') {
-          console.error(
-            'Detection WebSocket error',
+          console.log(
+            'New Pest Guard detection:',
+            incomingDetection,
           )
-        }
-      },
-    )
 
-    const refreshTimer = window.setInterval(() => {
-      updateDeviceStatus()
-    }, 10000)
+          setLiveStatus((current) => ({
+            ...current,
+            detection:
+              incomingDetection,
+          }))
+
+          setError(null)
+
+          /*
+           * Refresh real device state immediately
+           * after a new detection.
+           */
+          await updateDeviceStatus()
+        },
+
+        (socketState) => {
+          if (!mountedRef.current) {
+            return
+          }
+
+          if (socketState === 'error') {
+            console.error(
+              'Detection WebSocket error',
+            )
+          }
+        },
+      )
 
     return () => {
       mountedRef.current = false
 
       disconnect()
 
-      window.clearInterval(refreshTimer)
+      window.clearInterval(
+        detectionRefreshTimer,
+      )
+
+      window.clearInterval(
+        deviceRefreshTimer,
+      )
     }
   }, [])
 
   return {
-    detection: liveStatus.detection,
-    device: liveStatus.device,
+    detection:
+      liveStatus.detection,
+
+    device:
+      liveStatus.device,
+
     loading,
+
     error,
   }
 }

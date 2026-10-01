@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-
 import { useLiveDetection } from '../hooks/useLiveDetection'
 import { ArrowIcon, LeafIcon, SparkIcon } from '../components/Icons'
 import { getDetectionHistory } from '../services/api'
@@ -60,13 +59,10 @@ function formatConfidence(value) {
   if (value === null || value === undefined || value === '') {
     return '—'
   }
-
   const number = Number(value)
-
   if (!Number.isFinite(number)) {
     return '—'
   }
-
   return `${(number * 100).toFixed(1)}%`
 }
 
@@ -74,9 +70,7 @@ function formatDate(value) {
   if (!value) {
     return '—'
   }
-
   const date = new Date(value)
-
   return Number.isNaN(date.getTime())
     ? '—'
     : date.toLocaleString()
@@ -94,55 +88,64 @@ function getDetectionMessage(status, pest) {
   if (status === 'HARMFUL_PEST') {
     return 'Harmful pest activity detected in the field.'
   }
-
   if (status === 'NON_PEST') {
     return 'No harmful pest detected.'
   }
-
   if (status === 'UNKNOWN' && pest) {
     return 'The AI predicted this insect sound, but confidence is below the harmful-pest alert threshold.'
   }
-
   if (status === 'UNKNOWN') {
     return 'Waiting for a confident pest prediction.'
   }
-
   return 'Waiting for an event from the field unit.'
 }
 
 function getConnectionState(device, loading) {
-  if (loading) return 'Connecting'
-  if (!device) return 'Offline'
+  if (device) {
+    const value = String(
+      device.connection || device.status || '',
+    ).toUpperCase()
 
-  const value = String(
-    device.connection || device.status || '',
-  ).toUpperCase()
+    if (
+      value === 'CONNECTED' ||
+      value === 'ONLINE' ||
+      value === 'DETECTING'
+    ) {
+      return 'Online'
+    }
 
-  return value === 'CONNECTED' || value === 'ONLINE'
-    ? 'Online'
-    : 'Offline'
+    if (
+      value === 'DISCONNECTED' ||
+      value === 'OFFLINE'
+    ) {
+      return 'Offline'
+    }
+
+    return 'Online'
+  }
+
+  if (loading) {
+    return 'Connecting'
+  }
+
+  return 'Offline'
 }
 
 function getConfidenceTone(value) {
   if (value === null || value === undefined || value === '') {
     return 'empty'
   }
-
   const number = Number(value)
-
   if (!Number.isFinite(number)) {
     return 'empty'
   }
-
   if (number >= 0.7) return 'high'
   if (number >= 0.4) return 'medium'
-
   return 'low'
 }
 
 function LiveMonitoring() {
   const { detection, device, loading, error } = useLiveDetection()
-
   const [history, setHistory] = useState([])
   const [historyFilter, setHistoryFilter] = useState('ALL')
   const [historyLimit, setHistoryLimit] = useState(8)
@@ -156,25 +159,7 @@ function LiveMonitoring() {
   const initialLoadRef = useRef(false)
 
   const liveDetection = detection || history[0] || null
-
-  const liveDevice = device || (
-    liveDetection
-      ? {
-          device_id:
-            liveDetection.device_id || 'FIELD-UNIT-01',
-          status: 'ONLINE',
-          connection: 'CONNECTED',
-          last_seen:
-            liveDetection.detected_at ||
-            liveDetection.timestamp ||
-            null,
-          temperature:
-            liveDetection.temperature ?? null,
-          humidity:
-            liveDetection.humidity ?? null,
-        }
-      : null
-  )
+  const liveDevice = device
 
   const connectionState = getConnectionState(
     liveDevice,
@@ -267,7 +252,6 @@ function LiveMonitoring() {
         }
 
         const data = await response.json()
-
         const current = data?.current || {}
 
         const temperature = Number(
@@ -563,86 +547,91 @@ function LiveMonitoring() {
 
   return (
     <main className="monitoring-page">
-      {popup && createPortal(
-        <div
-          className="live-monitoring-alert-backdrop"
-          onClick={() => setPopup(null)}
-        >
+      {popup &&
+        createPortal(
           <div
-            className="live-monitoring-alert-popup"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-live="assertive"
+            className="live-monitoring-alert-backdrop"
+            onClick={() => setPopup(null)}
           >
-            <div className="popup-header">
-              <span className="popup-badge">
-                HARMFUL PEST DETECTED
-              </span>
+            <div
+              className="live-monitoring-alert-popup"
+              onClick={(event) =>
+                event.stopPropagation()
+              }
+              role="dialog"
+              aria-modal="true"
+              aria-live="assertive"
+            >
+              <div className="popup-header">
+                <span className="popup-badge">
+                  HARMFUL PEST DETECTED
+                </span>
 
-              <button
-                type="button"
-                className="popup-close"
-                onClick={() => setPopup(null)}
-                aria-label="Close harmful pest alert"
-              >
-                ×
-              </button>
+                <button
+                  type="button"
+                  className="popup-close"
+                  onClick={() => setPopup(null)}
+                  aria-label="Close harmful pest alert"
+                >
+                  ×
+                </button>
+              </div>
+
+              <h3>{popup.pest}</h3>
+
+              <div className="popup-details">
+                <div>
+                  <span>Confidence</span>
+                  <strong>
+                    {formatConfidence(
+                      popup.confidence,
+                    )}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>Risk</span>
+                  <strong>
+                    {popup.risk}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>Time</span>
+                  <strong>
+                    {formatDate(popup.time)}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>Device</span>
+                  <strong>
+                    {popup.deviceId}
+                  </strong>
+                </div>
+              </div>
+
+              <div className="popup-actions">
+                <button
+                  type="button"
+                  className="popup-primary"
+                  onClick={openSolution}
+                >
+                  View Solution
+                </button>
+
+                <button
+                  type="button"
+                  className="popup-secondary"
+                  onClick={() => setPopup(null)}
+                >
+                  Dismiss
+                </button>
+              </div>
             </div>
-
-            <h3>{popup.pest}</h3>
-
-            <div className="popup-details">
-              <div>
-                <span>Confidence</span>
-                <strong>
-                  {formatConfidence(
-                    popup.confidence,
-                  )}
-                </strong>
-              </div>
-
-              <div>
-                <span>Risk</span>
-                <strong>{popup.risk}</strong>
-              </div>
-
-              <div>
-                <span>Time</span>
-                <strong>
-                  {formatDate(popup.time)}
-                </strong>
-              </div>
-
-              <div>
-                <span>Device</span>
-                <strong>
-                  {popup.deviceId}
-                </strong>
-              </div>
-            </div>
-
-            <div className="popup-actions">
-              <button
-                type="button"
-                className="popup-primary"
-                onClick={openSolution}
-              >
-                View Solution
-              </button>
-
-              <button
-                type="button"
-                className="popup-secondary"
-                onClick={() => setPopup(null)}
-              >
-                Dismiss
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body,
-      )}
+          </div>,
+          document.body,
+        )}
 
       <section className="monitoring-hero">
         <div className="monitoring-hero-copy">
@@ -672,7 +661,9 @@ function LiveMonitoring() {
             Live system
           </div>
 
-          <strong>{connectionState}</strong>
+          <strong>
+            {connectionState}
+          </strong>
 
           <small>
             {error
@@ -694,7 +685,9 @@ function LiveMonitoring() {
                 AI classification
               </p>
 
-              <h2>Latest Detection</h2>
+              <h2>
+                Latest Detection
+              </h2>
             </div>
 
             <span className="detection-status-pill">
@@ -730,7 +723,9 @@ function LiveMonitoring() {
 
               <div className="confidence-visual">
                 <div className="confidence-header">
-                  <span>AI Confidence</span>
+                  <span>
+                    AI Confidence
+                  </span>
 
                   <strong>
                     {confidencePercent === null
@@ -859,7 +854,9 @@ function LiveMonitoring() {
                 Field health
               </p>
 
-              <h2>Device Health</h2>
+              <h2>
+                Device Health
+              </h2>
             </div>
 
             <HealthIcon size={22} />
@@ -880,12 +877,19 @@ function LiveMonitoring() {
 
           <div className="device-health-list">
             <div className="device-health-row">
-              <span>Device ID</span>
-              <strong>{deviceId}</strong>
+              <span>
+                Device ID
+              </span>
+
+              <strong>
+                {deviceId}
+              </strong>
             </div>
 
             <div className="device-health-row">
-              <span>Connection</span>
+              <span>
+                Connection
+              </span>
 
               <strong
                 className={`health-status ${healthTone}`}
@@ -904,7 +908,9 @@ function LiveMonitoring() {
             </div>
 
             <div className="device-health-row">
-              <span>Last Seen</span>
+              <span>
+                Last Seen
+              </span>
 
               <strong>
                 {formatDate(deviceTimestamp)}
@@ -912,7 +918,9 @@ function LiveMonitoring() {
             </div>
 
             <div className="device-health-row">
-              <span>Temperature</span>
+              <span>
+                Temperature
+              </span>
 
               <strong>
                 {formatOnlineTemperature(
@@ -922,7 +930,9 @@ function LiveMonitoring() {
             </div>
 
             <div className="device-health-row">
-              <span>Humidity</span>
+              <span>
+                Humidity
+              </span>
 
               <strong>
                 {formatOnlineHumidity(
@@ -942,7 +952,9 @@ function LiveMonitoring() {
                 Recent events
               </p>
 
-              <h2>Detection History</h2>
+              <h2>
+                Detection History
+              </h2>
             </div>
 
             <div className="history-header-actions">
@@ -965,11 +977,16 @@ function LiveMonitoring() {
                   setHistoryClearedAt(
                     clearedAt,
                   )
+
                   setHistory([])
+
                   setHistoryLimit(8)
+
                   setHistoryLoading(false)
                 }}
-                disabled={history.length === 0}
+                disabled={
+                  history.length === 0
+                }
               >
                 Clear History
               </button>
@@ -999,9 +1016,11 @@ function LiveMonitoring() {
               >
                 {filter === 'ALL'
                   ? 'All'
-                  : filter === 'HARMFUL_PEST'
+                  : filter ===
+                      'HARMFUL_PEST'
                     ? 'Harmful Pest'
-                    : filter === 'NON_PEST'
+                    : filter ===
+                        'NON_PEST'
                       ? 'Non-Pest'
                       : 'Unknown'}
               </button>
@@ -1031,53 +1050,55 @@ function LiveMonitoring() {
           {!historyLoading &&
             filteredHistory.length > 0 && (
               <div className="history-list">
-                {filteredHistory.map((item) => (
-                  <div
-                    key={
-                      item.id ??
-                      `${item.device_id}-${item.detected_at}`
-                    }
-                    className="history-row"
-                  >
-                    <div className="history-main">
-                      <span className="history-time">
-                        {formatDate(
-                          item.detected_at,
-                        )}
-                      </span>
-
-                      <strong>
-                        {item.pest ||
-                          displayStatus(
-                            item.status,
-                            item.pest,
+                {filteredHistory.map(
+                  (item) => (
+                    <div
+                      key={
+                        item.id ??
+                        `${item.device_id}-${item.detected_at}`
+                      }
+                      className="history-row"
+                    >
+                      <div className="history-main">
+                        <span className="history-time">
+                          {formatDate(
+                            item.detected_at,
                           )}
-                      </strong>
+                        </span>
+
+                        <strong>
+                          {item.pest ||
+                            displayStatus(
+                              item.status,
+                              item.pest,
+                            )}
+                        </strong>
+                      </div>
+
+                      <div className="history-meta">
+                        <span>
+                          {item.status ||
+                            'UNKNOWN'}
+                        </span>
+
+                        <strong>
+                          {formatConfidence(
+                            item.confidence,
+                          )}
+                        </strong>
+
+                        <strong>
+                          {item.risk || '—'}
+                        </strong>
+
+                        <strong>
+                          {item.device_id ||
+                            deviceId}
+                        </strong>
+                      </div>
                     </div>
-
-                    <div className="history-meta">
-                      <span>
-                        {item.status ||
-                          'UNKNOWN'}
-                      </span>
-
-                      <strong>
-                        {formatConfidence(
-                          item.confidence,
-                        )}
-                      </strong>
-
-                      <strong>
-                        {item.risk || '—'}
-                      </strong>
-
-                      <strong>
-                        {item.device_id ||
-                          deviceId}
-                      </strong>
-                    </div>
-                  </div>
-                ))}
+                  ),
+                )}
 
                 {canLoadMore && (
                   <button
@@ -1085,7 +1106,8 @@ function LiveMonitoring() {
                     className="history-load-more"
                     onClick={() =>
                       setHistoryLimit(
-                        (value) => value + 8,
+                        (value) =>
+                          value + 8,
                       )
                     }
                   >
@@ -1105,7 +1127,9 @@ function LiveMonitoring() {
                 Hardware stack
               </p>
 
-              <h2>Sensor Summary</h2>
+              <h2>
+                Sensor Summary
+              </h2>
             </div>
 
             <SparkIcon size={21} />
@@ -1117,7 +1141,9 @@ function LiveMonitoring() {
                 Acoustic sensor
               </span>
 
-              <strong>INMP441</strong>
+              <strong>
+                INMP441
+              </strong>
             </div>
 
             <div>
@@ -1131,7 +1157,9 @@ function LiveMonitoring() {
             </div>
 
             <div>
-              <span>Controller</span>
+              <span>
+                Controller
+              </span>
 
               <strong>
                 ESP32-S3 N16R8
@@ -1139,9 +1167,13 @@ function LiveMonitoring() {
             </div>
 
             <div>
-              <span>Connection</span>
+              <span>
+                Connection
+              </span>
 
-              <strong>Wi-Fi</strong>
+              <strong>
+                Wi-Fi
+              </strong>
             </div>
           </div>
         </article>
@@ -1153,7 +1185,9 @@ function LiveMonitoring() {
                 System path
               </p>
 
-              <h2>Detection Flow</h2>
+              <h2>
+                Detection Flow
+              </h2>
             </div>
 
             <ArrowIcon size={21} />
@@ -1166,19 +1200,27 @@ function LiveMonitoring() {
 
             <i>↓</i>
 
-            <span>ESP32-S3</span>
+            <span>
+              ESP32-S3
+            </span>
 
             <i>↓</i>
 
-            <span>AI CNN</span>
+            <span>
+              AI CNN
+            </span>
 
             <i>↓</i>
 
-            <span>FastAPI</span>
+            <span>
+              FastAPI
+            </span>
 
             <i>↓</i>
 
-            <span>Pest Guard</span>
+            <span>
+              Pest Guard
+            </span>
           </div>
         </article>
       </section>
