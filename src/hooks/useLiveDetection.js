@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import {
-  getDeviceStatus,
+  getDeviceStatusById,
   getLatestDetection,
 } from '../services/api'
 
@@ -23,7 +23,7 @@ export function useLiveDetection() {
 
   const updateDeviceStatus = async () => {
     try {
-      const response = await getDeviceStatus(DEVICE_ID)
+      const response = await getDeviceStatusById(DEVICE_ID)
 
       if (!mountedRef.current) {
         return
@@ -31,8 +31,10 @@ export function useLiveDetection() {
 
       setLiveStatus((current) => ({
         ...current,
-        device: response?.device || null,
+        device: response || null,
       }))
+
+      setError(null)
     } catch (deviceError) {
       if (!mountedRef.current) {
         return
@@ -40,7 +42,7 @@ export function useLiveDetection() {
 
       console.error(
         'Unable to update device status:',
-        deviceError
+        deviceError,
       )
 
       setError(deviceError)
@@ -54,7 +56,7 @@ export function useLiveDetection() {
       const [latestResult, deviceResult] =
         await Promise.allSettled([
           getLatestDetection(),
-          getDeviceStatus(DEVICE_ID),
+          getDeviceStatusById(DEVICE_ID),
         ])
 
       if (!mountedRef.current) {
@@ -73,24 +75,24 @@ export function useLiveDetection() {
         setLiveStatus((current) => ({
           ...current,
           device:
-            deviceResult.value?.device || null,
+            deviceResult.value || null,
         }))
       }
 
-      const failedResult =
-        latestResult.status === 'rejected'
-          ? latestResult
-          : deviceResult.status === 'rejected'
-            ? deviceResult
-            : null
+      const failedResults = [
+        latestResult,
+        deviceResult,
+      ].filter(
+        (result) => result.status === 'rejected',
+      )
 
-      if (failedResult) {
+      if (failedResults.length > 0) {
         console.error(
           'Unable to load initial live monitoring data:',
-          failedResult.reason
+          failedResults[0].reason,
         )
 
-        setError(failedResult.reason)
+        setError(failedResults[0].reason)
       } else {
         setError(null)
       }
@@ -118,7 +120,7 @@ export function useLiveDetection() {
 
         console.log(
           'New Pest Guard detection:',
-          incomingDetection
+          incomingDetection,
         )
 
         setLiveStatus((current) => ({
@@ -138,10 +140,10 @@ export function useLiveDetection() {
 
         if (socketState === 'error') {
           console.error(
-            'Detection WebSocket error'
+            'Detection WebSocket error',
           )
         }
-      }
+      },
     )
 
     const refreshTimer = window.setInterval(() => {
