@@ -14,7 +14,7 @@ const DEVICE_CACHE_KEY =
   'pest_guard_device_status'
 
 const DEVICE_STALE_MS =
-  20 * 1000
+  3 * 1000
 
 function parseServerTimestamp(value) {
   if (!value) {
@@ -27,13 +27,6 @@ function parseServerTimestamp(value) {
     return null
   }
 
-  /*
-   * FastAPI/Python may return UTC timestamps without
-   * a timezone suffix, for example:
-   * 2026-10-01T11:13:20
-   *
-   * Treat timezone-less server timestamps as UTC.
-   */
   const hasTimezone =
     /[zZ]|[+-]\d{2}:\d{2}$/.test(text)
 
@@ -222,14 +215,6 @@ export function useLiveDetection() {
           deviceError,
         )
 
-        /*
-         * Do not immediately destroy a still-fresh
-         * device state just because one REST request
-         * failed.
-         *
-         * If the cached heartbeat becomes stale,
-         * normalizeDevice() changes it to OFFLINE.
-         */
         setLiveStatus(
           (current) => {
             if (!current.device) {
@@ -287,20 +272,11 @@ export function useLiveDetection() {
           'Unable to load latest detection:',
           detectionError,
         )
-
-        /*
-         * A failed detection request must
-         * never directly mark the device offline.
-         */
       }
     }
 
   const loadInitialData =
     async () => {
-      /*
-       * Device status and latest detection
-       * are loaded independently.
-       */
       await Promise.allSettled([
         updateDeviceStatus(),
         loadLatestDetection(),
@@ -312,10 +288,6 @@ export function useLiveDetection() {
 
     loadInitialData()
 
-    /*
-     * Refresh latest detection every
-     * 10 seconds.
-     */
     const detectionRefreshTimer =
       window.setInterval(
         () => {
@@ -324,16 +296,12 @@ export function useLiveDetection() {
         10000,
       )
 
-    /*
-     * Refresh real device status every
-     * 5 seconds.
-     */
     const deviceRefreshTimer =
       window.setInterval(
         () => {
           updateDeviceStatus()
         },
-        5000,
+        1000,
       )
 
     const disconnect =
@@ -368,10 +336,6 @@ export function useLiveDetection() {
 
           setError(null)
 
-          /*
-           * Refresh the real device state
-           * immediately after a detection.
-           */
           await updateDeviceStatus()
         },
 
