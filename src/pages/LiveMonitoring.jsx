@@ -973,9 +973,7 @@ function LiveMonitoring() {
             </div>
 
             <div className="device-health-row">
-              <span>
-                Temperature (Online)
-              </span>
+              <span>Temperature</span>
 
               <strong>
                 {formatOnlineTemperature(
@@ -985,9 +983,7 @@ function LiveMonitoring() {
             </div>
 
             <div className="device-health-row">
-              <span>
-                Humidity (Online)
-              </span>
+              <span>Humidity</span>
 
               <strong>
                 {formatOnlineHumidity(
