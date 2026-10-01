@@ -64,9 +64,12 @@ def prepare_audio(audio):
         fft_length=1024
     )
 
-    magnitude = tf.abs(stft)
+    spectrogram = tf.abs(stft)
 
-    mel = tf.matmul(magnitude, MEL_MATRIX)
+    mel = tf.matmul(
+        tf.square(spectrogram),
+        MEL_MATRIX,
+    )
     mel = tf.math.log(mel + 1e-6)
 
     mean = tf.reduce_mean(mel)
