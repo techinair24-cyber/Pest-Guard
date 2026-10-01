@@ -42,16 +42,8 @@ async function request(path, options = {}) {
   return data
 }
 
-/* =========================================================
-   HEALTH
-========================================================= */
-
 export const getHealth = () =>
   request('/api/health')
-
-/* =========================================================
-   DEVICES
-========================================================= */
 
 export const getDeviceStatus = async () => {
   const data = await request('/api/devices')
@@ -78,13 +70,8 @@ export const sendDeviceHeartbeat = (
     },
   )
 
-/* =========================================================
-   DETECTIONS
-========================================================= */
-
 export const getLatestDetection = async () => {
   const data = await request('/api/detections/latest')
-
   return data.detection || null
 }
 
@@ -122,27 +109,17 @@ export const getDetectionHistory = async (params = {}) => {
   const queryString = query.toString()
 
   const data = await request(
-    `/api/detections${
-      queryString ? `?${queryString}` : ''
-    }`,
+    `/api/detections${queryString ? `?${queryString}` : ''}`,
   )
 
   return data
 }
-
-/* =========================================================
-   CREATE DETECTION
-========================================================= */
 
 export const sendDetection = (payload) =>
   request('/api/device/detection', {
     method: 'POST',
     body: JSON.stringify(payload),
   })
-
-/* =========================================================
-   PESTS
-========================================================= */
 
 export const getPests = async () => {
   const data = await request('/api/pests')
@@ -155,10 +132,6 @@ export const getPestInfo = async (pestId) =>
   )
 
 export const getPestById = getPestInfo
-
-/* =========================================================
-   SOLUTIONS
-========================================================= */
 
 export const getSolutions = async () => {
   const data = await request('/api/solutions')
