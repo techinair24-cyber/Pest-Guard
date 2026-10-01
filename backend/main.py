@@ -5,7 +5,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from typing import List
 
-from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -22,7 +22,6 @@ from schemas import (
     PestResponse,
     SolutionResponse,
 )
-
 # -------------------------------------------------------------------
 # AI MODEL
 # -------------------------------------------------------------------
@@ -80,7 +79,6 @@ def prepare_audio(audio):
 
 def predict_pest(audio):
     features = prepare_audio(audio)
-
     prediction = ai_model.predict(
         tf.expand_dims(features, 0),
         verbose=0
@@ -92,7 +90,6 @@ def predict_pest(audio):
         "pest": class_names[index],
         "confidence": float(prediction[index])
     }
-
 
 # -------------------------------------------------------------------
 # Database
@@ -216,13 +213,11 @@ def startup_event():
                 status="OFFLINE",
                 connection="DISCONNECTED",
             )
-
             db.add(device)
             db.commit()
 
     finally:
         db.close()
-
 
 # -------------------------------------------------------------------
 # Health
@@ -337,18 +332,45 @@ def device_heartbeat(
             "humidity": device.humidity,
         },
     }
-
-
 @app.post("/api/ai/predict")
-async def ai_predict(payload: dict):
-    if "audio" not in payload:
-        raise HTTPException(
-            status_code=400,
-            detail="Audio data is required"
-        )
-
+async def ai_predict(request: Request):
     try:
-        result = predict_pest(payload["audio"])
+        content_type = request.headers.get("content-type", "")
+
+        # Compact ESP32 transport: signed 16-bit little-endian PCM samples.
+        # 80,000 samples = 160 KB, much smaller than the JSON payload.
+        if content_type.startswith("application/octet-stream"):
+            raw_audio = await request.body()
+
+            if not raw_audio:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Audio data is required",
+                )
+
+            if len(raw_audio) % 2 != 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid PCM audio length",
+                )
+
+            audio = np.frombuffer(
+                raw_audio,
+                dtype="<i2",
+            ).astype(np.float32)
+
+        else:
+            payload = await request.json()
+
+            if "audio" not in payload:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Audio data is required",
+                )
+
+            audio = payload["audio"]
+
+        result = predict_pest(audio)
 
         confidence = result["confidence"]
 
@@ -369,12 +391,14 @@ async def ai_predict(payload: dict):
             "risk": risk,
         }
 
+    except HTTPException:
+        raise
+
     except Exception as error:
         raise HTTPException(
             status_code=500,
             detail=f"AI prediction failed: {str(error)}",
         )
-
 
 # -------------------------------------------------------------------
 # Detection API
@@ -460,7 +484,11 @@ async def create_detection(
         "humidity": detection.humidity,
         "audio_file": detection.audio_file,
         "message": detection.message,
-        "detected_at": detection.detected_at,
+        "detected_at": (
+            detection.detected_at.isoformat()
+            if detection.detected_at
+            else None
+        ),
     }
 
     # Send the new detection immediately to connected website clients.
@@ -684,8 +712,8 @@ async def detection_websocket(websocket: WebSocket):
         print("WebSocket client disconnected")
         manager.disconnect(websocket)
 
-    except Exception as e:
-        print("WebSocket error:", repr(e))
+    except Exception as error:
+        print("WebSocket error:", repr(error))
         manager.disconnect(websocket)
 
 
