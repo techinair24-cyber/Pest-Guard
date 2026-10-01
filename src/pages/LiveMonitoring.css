@@ -606,19 +606,22 @@
   text-transform: uppercase;
 }
 
-.harmful-alert-backdrop {
+.live-monitoring-alert-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: 2147483647;
   display: grid;
   place-items: center;
   padding: 20px;
   background: rgba(17, 42, 32, 0.38);
   backdrop-filter: blur(2px);
   animation: fade-in 0.24s ease both;
+  pointer-events: auto;
 }
 
-.harmful-alert-popup {
+.live-monitoring-alert-popup {
+  position: relative;
+  z-index: 1;
   width: min(430px, 100%);
   padding: 22px 22px 18px;
   border: 1px solid #e7d2c5;
@@ -626,6 +629,7 @@
   background: #fffdf9;
   box-shadow: 0 24px 52px rgba(20, 39, 33, 0.2);
   animation: slide-up 0.24s ease both;
+  pointer-events: auto;
 }
 
 .popup-header {
@@ -659,9 +663,11 @@
   color: var(--monitoring-forest);
   font-size: 20px;
   cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
 }
 
-.harmful-alert-popup h3 {
+.live-monitoring-alert-popup h3 {
   margin: 18px 0 0;
   color: var(--monitoring-forest);
   font-family: Georgia, "Times New Roman", serif;
@@ -711,6 +717,8 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
 }
 
 .popup-primary {

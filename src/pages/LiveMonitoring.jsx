@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import { useLiveDetection } from '../hooks/useLiveDetection'
 import { ArrowIcon, LeafIcon, SparkIcon } from '../components/Icons'
@@ -550,21 +551,7 @@ function LiveMonitoring() {
   const canLoadMore =
     filteredHistory.length >= historyLimit
 
-  function closePopup(event) {
-    if (event) {
-      event.preventDefault()
-      event.stopPropagation()
-    }
-
-    setPopup(null)
-  }
-
-  function openSolution(event) {
-    if (event) {
-      event.preventDefault()
-      event.stopPropagation()
-    }
-
+  function openSolution() {
     const pest = popup?.pest || ''
 
     setPopup(null)
@@ -576,34 +563,17 @@ function LiveMonitoring() {
 
   return (
     <main className="monitoring-page">
-      {popup && (
+      {popup && createPortal(
         <div
-          className="harmful-alert-backdrop"
-          onClick={closePopup}
-          aria-hidden="true"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 1000000,
-            pointerEvents: 'auto',
-            touchAction: 'auto',
-          }}
+          className="live-monitoring-alert-backdrop"
+          onClick={() => setPopup(null)}
         >
           <div
-            className="harmful-alert-popup"
-            onClick={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-            }}
+            className="live-monitoring-alert-popup"
+            onClick={(event) => event.stopPropagation()}
             role="dialog"
             aria-modal="true"
             aria-live="assertive"
-            style={{
-              position: 'relative',
-              zIndex: 1000001,
-              pointerEvents: 'auto',
-              touchAction: 'auto',
-            }}
           >
             <div className="popup-header">
               <span className="popup-badge">
@@ -613,16 +583,8 @@ function LiveMonitoring() {
               <button
                 type="button"
                 className="popup-close"
-                onPointerDownCapture={closePopup}
-                onClick={closePopup}
-                aria-label="Dismiss alert"
-                style={{
-                  position: 'relative',
-                  zIndex: 1000002,
-                  pointerEvents: 'auto',
-                  cursor: 'pointer',
-                  touchAction: 'manipulation',
-                }}
+                onClick={() => setPopup(null)}
+                aria-label="Close harmful pest alert"
               >
                 ×
               </button>
@@ -660,27 +622,11 @@ function LiveMonitoring() {
               </div>
             </div>
 
-            <div
-              className="popup-actions"
-              style={{
-                position: 'relative',
-                zIndex: 1000002,
-                pointerEvents: 'auto',
-                touchAction: 'auto',
-              }}
-            >
+            <div className="popup-actions">
               <button
                 type="button"
                 className="popup-primary"
-                onPointerDownCapture={openSolution}
                 onClick={openSolution}
-                style={{
-                  position: 'relative',
-                  zIndex: 1000003,
-                  pointerEvents: 'auto',
-                  cursor: 'pointer',
-                  touchAction: 'manipulation',
-                }}
               >
                 View Solution
               </button>
@@ -688,21 +634,14 @@ function LiveMonitoring() {
               <button
                 type="button"
                 className="popup-secondary"
-                onPointerDownCapture={closePopup}
-                onClick={closePopup}
-                style={{
-                  position: 'relative',
-                  zIndex: 1000003,
-                  pointerEvents: 'auto',
-                  cursor: 'pointer',
-                  touchAction: 'manipulation',
-                }}
+                onClick={() => setPopup(null)}
               >
                 Dismiss
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       <section className="monitoring-hero">
