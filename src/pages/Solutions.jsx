@@ -16,11 +16,9 @@ function Solutions() {
 
   const [solution, setSolution] = useState(null)
   const [pest, setPest] = useState(null)
-
   const [allSolutions, setAllSolutions] = useState([])
   const [loadingSolutions, setLoadingSolutions] = useState(true)
   const [solutionsError, setSolutionsError] = useState('')
-
   const [loadingSolution, setLoadingSolution] = useState(false)
   const [error, setError] = useState('')
   const [retryKey, setRetryKey] = useState(0)
@@ -201,7 +199,6 @@ function Solutions() {
                 <span>Temperature</span>
                 <strong>{formatTemperature(detection?.temperature)}</strong>
               </div>
-
               <div className="env-item">
                 <span>Humidity</span>
                 <strong>{formatHumidity(detection?.humidity)}</strong>
@@ -216,7 +213,6 @@ function Solutions() {
                   <p>{pest.description}</p>
                 </div>
               </section>
-
               <section>
                 <span className="section-number">02</span>
                 <div>
@@ -224,7 +220,6 @@ function Solutions() {
                   <p>{solution.recommended_action}</p>
                 </div>
               </section>
-
               <section>
                 <span className="section-number">03</span>
                 <div>
@@ -242,9 +237,7 @@ function Solutions() {
 
         {!isLoading && error && !solution && isHarmfulPest && (
           <div className="solution-error">
-            <p>
-              {error}
-            </p>
+            <p>{error}</p>
           </div>
         )}
 
@@ -263,41 +256,97 @@ function Solutions() {
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
                 gap: '18px',
+                alignItems: 'stretch',
               }}
             >
               {allSolutions.map((item) => (
                 <article
                   key={item.pest_id}
                   className="active-solution-card"
-                  style={{ margin: 0 }}
+                  style={{
+                    margin: 0,
+                    minWidth: 0,
+                    height: '100%',
+                    boxSizing: 'border-box',
+                  }}
                 >
                   <p className="card-eyebrow">Pest solution</p>
-                  <h2>{item.title}</h2>
+                  <h2 style={{ marginBottom: '18px' }}>{item.title}</h2>
 
-                  <div className="solution-sections">
-                    <section>
-                      <span className="section-number">01</span>
-                      <div>
-                        <h3>Description</h3>
-                        <p>{item.description}</p>
-                      </div>
-                    </section>
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '16px',
+                      width: '100%',
+                    }}
+                  >
+                    <div
+                      style={{
+                        paddingBottom: '14px',
+                        borderBottom: '1px solid rgba(42, 69, 56, 0.14)',
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: 'block',
+                          marginBottom: '6px',
+                          fontSize: '0.68rem',
+                          fontWeight: 700,
+                          letterSpacing: '0.08em',
+                          textTransform: 'uppercase',
+                          opacity: 0.58,
+                        }}
+                      >
+                        Description
+                      </span>
+                      <p style={{ margin: 0, lineHeight: 1.65 }}>
+                        {item.description}
+                      </p>
+                    </div>
 
-                    <section>
-                      <span className="section-number">02</span>
-                      <div>
-                        <h3>Recommended action</h3>
-                        <p>{item.recommended_action}</p>
-                      </div>
-                    </section>
+                    <div
+                      style={{
+                        paddingBottom: '14px',
+                        borderBottom: '1px solid rgba(42, 69, 56, 0.14)',
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: 'block',
+                          marginBottom: '6px',
+                          fontSize: '0.68rem',
+                          fontWeight: 700,
+                          letterSpacing: '0.08em',
+                          textTransform: 'uppercase',
+                          opacity: 0.58,
+                        }}
+                      >
+                        Recommended action
+                      </span>
+                      <p style={{ margin: 0, lineHeight: 1.65 }}>
+                        {item.recommended_action}
+                      </p>
+                    </div>
 
-                    <section>
-                      <span className="section-number">03</span>
-                      <div>
-                        <h3>Prevention</h3>
-                        <p>{item.prevention}</p>
-                      </div>
-                    </section>
+                    <div>
+                      <span
+                        style={{
+                          display: 'block',
+                          marginBottom: '6px',
+                          fontSize: '0.68rem',
+                          fontWeight: 700,
+                          letterSpacing: '0.08em',
+                          textTransform: 'uppercase',
+                          opacity: 0.58,
+                        }}
+                      >
+                        Prevention
+                      </span>
+                      <p style={{ margin: 0, lineHeight: 1.65 }}>
+                        {item.prevention}
+                      </p>
+                    </div>
                   </div>
                 </article>
               ))}
@@ -310,9 +359,7 @@ function Solutions() {
             <div className="empty-solution-icon"><LeafIcon size={25} /></div>
             <p className="card-eyebrow">Pest solution</p>
             <h2>No Solutions Available</h2>
-            <p>
-              The solutions service returned no curated pest guidance.
-            </p>
+            <p>The solutions service returned no curated pest guidance.</p>
             <button
               type="button"
               className="solutions-button"
