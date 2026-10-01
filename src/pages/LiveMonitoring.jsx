@@ -87,8 +87,18 @@ function LiveMonitoring() {
   const alertedKeyRef = useRef(null)
   const initialLoadRef = useRef(false)
 
-  const connectionState = getConnectionState(device, loading)
-  const detectionStatus = detection?.status || ''
+  const liveDetection = detection || history[0] || null
+  const liveDevice = device || (liveDetection ? {
+    device_id: liveDetection.device_id || 'FIELD-UNIT-01',
+    status: 'ONLINE',
+    connection: 'CONNECTED',
+    last_seen: liveDetection.detected_at || liveDetection.timestamp || null,
+    temperature: liveDetection.temperature ?? null,
+    humidity: liveDetection.humidity ?? null,
+  } : null)
+
+  const connectionState = getConnectionState(liveDevice, loading)
+  const detectionStatus = liveDetection?.status || ''
   const statusClass = detectionStatus === 'HARMFUL_PEST'
     ? 'harmful'
     : detectionStatus === 'NON_PEST'
@@ -96,11 +106,11 @@ function LiveMonitoring() {
       : detectionStatus === 'UNKNOWN'
         ? 'unknown'
         : 'empty'
-  const deviceId = device?.device_id || detection?.device_id || 'FIELD-UNIT-01'
-  const deviceTimestamp = device?.last_seen || device?.lastSeen
-  const latestTemperature = detection?.temperature ?? device?.temperature ?? null
-  const latestHumidity = detection?.humidity ?? device?.humidity ?? null
-  const confidenceValue = Number(detection?.confidence)
+  const deviceId = liveDevice?.device_id || liveDetection?.device_id || 'FIELD-UNIT-01'
+  const deviceTimestamp = liveDevice?.last_seen || liveDevice?.lastSeen
+  const latestTemperature = liveDetection?.temperature ?? liveDevice?.temperature ?? null
+  const latestHumidity = liveDetection?.humidity ?? liveDevice?.humidity ?? null
+  const confidenceValue = Number(liveDetection?.confidence)
   const confidencePercent = Number.isFinite(confidenceValue)
     ? confidenceValue * 100
     : null
@@ -145,7 +155,7 @@ function LiveMonitoring() {
   }, [historyFilter, historyLimit])
 
   useEffect(() => {
-    if (!detection) {
+    if (!liveDetection) {
       return
     }
 
@@ -154,11 +164,11 @@ function LiveMonitoring() {
       return
     }
 
-    if (detection.status !== 'HARMFUL_PEST') {
+    if (liveDetection.status !== 'HARMFUL_PEST') {
       return
     }
 
-    const popupKey = detection.id ?? detection.detected_at ?? detection.timestamp
+    const popupKey = liveDetection.id ?? liveDetection.detected_at ?? liveDetection.timestamp
 
     if (!popupKey || popupKey === alertedKeyRef.current) {
       return
@@ -166,13 +176,13 @@ function LiveMonitoring() {
 
     alertedKeyRef.current = popupKey
     setPopup({
-      pest: detection.pest || 'Unknown pest',
-      confidence: detection.confidence,
-      risk: detection.risk || '—',
-      time: detection.detected_at || detection.timestamp,
-      deviceId: detection.device_id || deviceId,
+      pest: liveDetection.pest || 'Unknown pest',
+      confidence: liveDetection.confidence,
+      risk: liveDetection.risk || '—',
+      time: liveDetection.detected_at || liveDetection.timestamp,
+      deviceId: liveDetection.device_id || deviceId,
     })
-  }, [detection, deviceId])
+  }, [liveDetection, deviceId])
 
   const filters = ['ALL', 'HARMFUL_PEST', 'NON_PEST', 'UNKNOWN']
   const filteredHistory = history.filter((item) => {
@@ -243,12 +253,12 @@ function LiveMonitoring() {
             <span className="detection-status-pill">{displayStatus(detectionStatus)}</span>
           </div>
 
-          {detection ? (
+          {liveDetection ? (
             <>
               <div className="latest-detection-main">
                 <span className="detection-indicator" />
                 <div>
-                  <strong>{detectionStatus === 'HARMFUL_PEST' ? detection.pest || 'Pest not identified' : displayStatus(detectionStatus)}</strong>
+                  <strong>{detectionStatus === 'HARMFUL_PEST' ? liveDetection.pest || 'Pest not identified' : displayStatus(detectionStatus)}</strong>
                   <p>{getDetectionMessage(detectionStatus)}</p>
                 </div>
               </div>
@@ -264,7 +274,7 @@ function LiveMonitoring() {
                 ) : (
                   <div className="confidence-bar-wrap">
                     <div
-                      className={`confidence-bar-fill ${getConfidenceTone(detection.confidence)}`}
+                      className={`confidence-bar-fill ${getConfidenceTone(liveDetection.confidence)}`}
                       style={{ width: `${Math.min(Math.max(confidencePercent, 0), 100)}%` }}
                     />
                   </div>
@@ -272,14 +282,14 @@ function LiveMonitoring() {
               </div>
 
               <div className="detection-details">
-                <div><span>Pest</span><strong>{detection.pest || '—'}</strong></div>
+                <div><span>Pest</span><strong>{liveDetection.pest || '—'}</strong></div>
                 <div><span>Status</span><strong>{displayStatus(detectionStatus)}</strong></div>
-                <div><span>Confidence</span><strong>{formatConfidence(detection.confidence)}</strong></div>
-                <div><span>Risk</span><strong>{detection.risk || '—'}</strong></div>
-                <div><span>Date / time</span><strong>{formatDate(detection.detected_at || detection.timestamp)}</strong></div>
-                <div><span>Device ID</span><strong>{detection.device_id || deviceId}</strong></div>
-                <div><span>Temperature</span><strong>{formatTemperature(detection.temperature ?? latestTemperature)}</strong></div>
-                <div><span>Humidity</span><strong>{formatHumidity(detection.humidity ?? latestHumidity)}</strong></div>
+                <div><span>Confidence</span><strong>{formatConfidence(liveDetection.confidence)}</strong></div>
+                <div><span>Risk</span><strong>{liveDetection.risk || '—'}</strong></div>
+                <div><span>Date / time</span><strong>{formatDate(liveDetection.detected_at || liveDetection.timestamp)}</strong></div>
+                <div><span>Device ID</span><strong>{liveDetection.device_id || deviceId}</strong></div>
+                <div><span>Temperature</span><strong>{formatTemperature(liveDetection.temperature ?? latestTemperature)}</strong></div>
+                <div><span>Humidity</span><strong>{formatHumidity(liveDetection.humidity ?? latestHumidity)}</strong></div>
               </div>
             </>
           ) : (
@@ -321,7 +331,7 @@ function LiveMonitoring() {
             </div>
             <div className="device-health-row">
               <span>Status</span>
-              <strong>{device?.status || '—'}</strong>
+              <strong>{liveDevice?.status || '—'}</strong>
             </div>
             <div className="device-health-row">
               <span>Last Seen</span>
