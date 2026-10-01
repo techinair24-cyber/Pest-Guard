@@ -57,6 +57,24 @@ function getStoredClearTime() {
 
 
 
+function parseServerTimestamp(value) {
+
+  if (!value) return NaN
+
+  const text = String(value).trim()
+
+  if (!text) return NaN
+
+  const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(text)
+
+  const normalized = hasTimezone ? text : `${text}Z`
+
+  return new Date(normalized).getTime()
+
+}
+
+
+
 function getDetectionTime(item) {
 
   return item?.detected_at || item?.timestamp || item?.created_at || null
@@ -271,11 +289,11 @@ function getConnectionState(device, loading) {
 
 
 
-  const lastSeenMs = new Date(
+  const lastSeenMs = parseServerTimestamp(
 
     lastSeenValue,
 
-  ).getTime()
+  )
 
 
 
