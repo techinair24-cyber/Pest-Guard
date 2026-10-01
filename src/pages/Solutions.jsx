@@ -7,10 +7,20 @@ import { getPestInfo, getSolution } from '../services/api'
 import solutionsField from '../assets/solutions-field.jpg'
 import './Solutions.css'
 
+const API_BASE =
+  import.meta.env.VITE_API_BASE_URL ||
+  'https://pest-guard-1q36.onrender.com'
+
 function Solutions() {
   const { detection, loading: detectionLoading } = useLiveDetection()
+
   const [solution, setSolution] = useState(null)
   const [pest, setPest] = useState(null)
+
+  const [allSolutions, setAllSolutions] = useState([])
+  const [loadingSolutions, setLoadingSolutions] = useState(true)
+  const [solutionsError, setSolutionsError] = useState('')
+
   const [loadingSolution, setLoadingSolution] = useState(false)
   const [error, setError] = useState('')
   const [retryKey, setRetryKey] = useState(0)
@@ -18,8 +28,46 @@ function Solutions() {
   useEffect(() => {
     let active = true
 
-    async function loadSolution() {
-      if (detection?.status !== 'HARMFUL_PEST' || !detection.pest) {
+    async function loadAllSolutions() {
+      setLoadingSolutions(true)
+      setSolutionsError('')
+
+      try {
+        const response = await fetch(`${API_BASE}/api/solutions`)
+
+        if (!response.ok) {
+          throw new Error(`Solutions request failed: ${response.status}`)
+        }
+
+        const data = await response.json()
+
+        if (active) {
+          setAllSolutions(Array.isArray(data?.solutions) ? data.solutions : [])
+        }
+      } catch {
+        if (active) {
+          setAllSolutions([])
+          setSolutionsError('Unable to load the solutions library.')
+        }
+      } finally {
+        if (active) {
+          setLoadingSolutions(false)
+        }
+      }
+    }
+
+    loadAllSolutions()
+
+    return () => {
+      active = false
+    }
+  }, [retryKey])
+
+  useEffect(() => {
+    let active = true
+
+    async function loadActiveSolution() {
+      if (!detection?.pest) {
         setSolution(null)
         setPest(null)
         setError('')
@@ -44,7 +92,14 @@ function Solutions() {
         if (active) {
           setSolution(null)
           setPest(null)
-          setError('Unable to load solution information.')
+
+          if (detection?.status === 'HARMFUL_PEST') {
+            setError(
+              'This AI prediction does not have a detailed curated solution yet.',
+            )
+          } else {
+            setError('')
+          }
         }
       } finally {
         if (active) {
@@ -53,7 +108,7 @@ function Solutions() {
       }
     }
 
-    loadSolution()
+    loadActiveSolution()
 
     return () => {
       active = false
@@ -61,12 +116,16 @@ function Solutions() {
   }, [detection?.pest, detection?.status, retryKey])
 
   const isHarmfulPest = detection?.status === 'HARMFUL_PEST'
-  const isLoading = detectionLoading || (isHarmfulPest && loadingSolution)
-  const hasAlert = isHarmfulPest && solution && pest
+
   const confidence = Number(detection?.confidence)
   const confidenceLabel = Number.isFinite(confidence)
     ? `${(confidence * 100).toFixed(1)}%`
     : 'Not available'
+
+  const isLoading =
+    detectionLoading ||
+    loadingSolutions ||
+    (Boolean(detection?.pest) && loadingSolution)
 
   return (
     <div className="solutions-page">
@@ -99,25 +158,31 @@ function Solutions() {
 
       <section className="solutions-content" aria-live="polite">
         {isLoading && (
-          <div className="solution-loading">Loading pest solution...</div>
+          <div className="solution-loading">
+            Loading pest solutions...
+          </div>
         )}
 
-        {!isLoading && error && (
+        {!isLoading && solutionsError && (
           <div className="solution-error">
-            <p>{error}</p>
-            <button type="button" onClick={() => setRetryKey((value) => value + 1)}>
+            <p>{solutionsError}</p>
+            <button
+              type="button"
+              onClick={() => setRetryKey((value) => value + 1)}
+            >
               Try again
             </button>
           </div>
         )}
 
-        {!isLoading && !error && hasAlert && (
+        {!isLoading && isHarmfulPest && solution && pest && (
           <article className="active-solution-card">
             <div className="active-solution-topline">
               <div>
                 <p className="card-eyebrow">Detected pest</p>
                 <h2>{pest.name}</h2>
               </div>
+
               <div className="risk-block">
                 <span>Risk level</span>
                 <strong className={`risk-${String(detection.risk || 'unknown').toLowerCase()}`}>
@@ -136,6 +201,7 @@ function Solutions() {
                 <span>Temperature</span>
                 <strong>{formatTemperature(detection?.temperature)}</strong>
               </div>
+
               <div className="env-item">
                 <span>Humidity</span>
                 <strong>{formatHumidity(detection?.humidity)}</strong>
@@ -150,6 +216,7 @@ function Solutions() {
                   <p>{pest.description}</p>
                 </div>
               </section>
+
               <section>
                 <span className="section-number">02</span>
                 <div>
@@ -157,6 +224,7 @@ function Solutions() {
                   <p>{solution.recommended_action}</p>
                 </div>
               </section>
+
               <section>
                 <span className="section-number">03</span>
                 <div>
@@ -172,16 +240,96 @@ function Solutions() {
           </article>
         )}
 
-        {!isLoading && !error && !hasAlert && (
+        {!isLoading && error && !solution && isHarmfulPest && (
+          <div className="solution-error">
+            <p>
+              {error}
+            </p>
+          </div>
+        )}
+
+        {!isLoading && allSolutions.length > 0 && (
+          <section style={{ marginTop: '28px' }}>
+            <div style={{ marginBottom: '18px' }}>
+              <p className="card-eyebrow">Solutions library</p>
+              <h2 style={{ margin: 0 }}>Available Pest Guidance</h2>
+              <p style={{ marginTop: '8px' }}>
+                Curated crop-protection guidance available from the Pest Guard backend.
+              </p>
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                gap: '18px',
+              }}
+            >
+              {allSolutions.map((item) => (
+                <article
+                  key={item.pest_id}
+                  className="active-solution-card"
+                  style={{ margin: 0 }}
+                >
+                  <p className="card-eyebrow">Pest solution</p>
+                  <h2>{item.title}</h2>
+
+                  <div className="solution-sections">
+                    <section>
+                      <span className="section-number">01</span>
+                      <div>
+                        <h3>Description</h3>
+                        <p>{item.description}</p>
+                      </div>
+                    </section>
+
+                    <section>
+                      <span className="section-number">02</span>
+                      <div>
+                        <h3>Recommended action</h3>
+                        <p>{item.recommended_action}</p>
+                      </div>
+                    </section>
+
+                    <section>
+                      <span className="section-number">03</span>
+                      <div>
+                        <h3>Prevention</h3>
+                        <p>{item.prevention}</p>
+                      </div>
+                    </section>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {!isLoading && !solutionsError && allSolutions.length === 0 && !isHarmfulPest && (
           <article className="empty-solution-card">
             <div className="empty-solution-icon"><LeafIcon size={25} /></div>
             <p className="card-eyebrow">Pest solution</p>
-            <h2>No Active Pest Alert</h2>
-            <p>Solutions will appear here automatically when Pest Guard detects a harmful crop pest.</p>
-            <Link className="solutions-button" to="/live-monitoring">
-              Open Live Monitoring <ArrowIcon size={15} />
-            </Link>
+            <h2>No Solutions Available</h2>
+            <p>
+              The solutions service returned no curated pest guidance.
+            </p>
+            <button
+              type="button"
+              className="solutions-button"
+              onClick={() => setRetryKey((value) => value + 1)}
+            >
+              Reload Solutions <ArrowIcon size={15} />
+            </button>
           </article>
+        )}
+
+        {!isLoading && detection?.pest && !solution && !isHarmfulPest && (
+          <div className="solution-error">
+            <p>
+              AI prediction: <strong>{detection.pest}</strong>. A curated
+              solution for this model class is not currently available.
+            </p>
+          </div>
         )}
       </section>
     </div>

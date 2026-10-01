@@ -38,17 +38,19 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString()
 }
 
-function displayStatus(status) {
+function displayStatus(status, pest) {
   if (status === 'HARMFUL_PEST') return 'HARMFUL PEST'
   if (status === 'NON_PEST') return 'NON-PEST'
+  if (status === 'UNKNOWN' && pest) return 'AI PREDICTION'
   if (status === 'UNKNOWN') return 'UNKNOWN SOUND'
   return 'NO DETECTION'
 }
 
-function getDetectionMessage(status) {
+function getDetectionMessage(status, pest) {
   if (status === 'HARMFUL_PEST') return 'Harmful pest activity detected in the field.'
   if (status === 'NON_PEST') return 'No harmful pest detected.'
-  if (status === 'UNKNOWN') return 'The sound could not be confidently classified.'
+  if (status === 'UNKNOWN' && pest) return 'The AI predicted this insect sound, but confidence is below the harmful-pest alert threshold.'
+  if (status === 'UNKNOWN') return 'Waiting for a confident pest prediction.'
   return 'Waiting for an event from the field unit.'
 }
 
@@ -108,13 +110,55 @@ function LiveMonitoring() {
         : 'empty'
   const deviceId = liveDevice?.device_id || liveDetection?.device_id || 'FIELD-UNIT-01'
   const deviceTimestamp = liveDevice?.last_seen || liveDevice?.lastSeen
-  const latestTemperature = liveDetection?.temperature ?? liveDevice?.temperature ?? null
-  const latestHumidity = liveDetection?.humidity ?? liveDevice?.humidity ?? null
   const confidenceValue = Number(liveDetection?.confidence)
   const confidencePercent = Number.isFinite(confidenceValue)
     ? confidenceValue * 100
     : null
   const healthTone = connectionState === 'Online' ? 'online' : 'offline'
+  const [onlineWeather, setOnlineWeather] = useState({ temperature: null, humidity: null, loading: true })
+
+  useEffect(() => {
+    let active = true
+
+    async function loadOnlineWeather() {
+      try {
+        const response = await fetch(
+          'https://api.open-meteo.com/v1/forecast?latitude=12.9716&longitude=77.5946&current=temperature_2m,relative_humidity_2m&timezone=auto',
+        )
+
+        if (!response.ok) {
+          throw new Error(`Weather request failed: ${response.status}`)
+        }
+
+        const data = await response.json()
+        const current = data?.current || {}
+
+        if (active) {
+          setOnlineWeather({
+            temperature: Number.isFinite(Number(current.temperature_2m)) ? Number(current.temperature_2m) : null,
+            humidity: Number.isFinite(Number(current.relative_humidity_2m)) ? Number(current.relative_humidity_2m) : null,
+            loading: false,
+          })
+        }
+      } catch (weatherError) {
+        console.error('Unable to load online weather:', weatherError)
+        if (active) {
+          setOnlineWeather({ temperature: null, humidity: null, loading: false })
+        }
+      }
+    }
+
+    loadOnlineWeather()
+    const refreshTimer = window.setInterval(loadOnlineWeather, 10 * 60 * 1000)
+
+    return () => {
+      active = false
+      window.clearInterval(refreshTimer)
+    }
+  }, [])
+
+  const displayTemperature = liveDetection?.temperature ?? liveDevice?.temperature ?? onlineWeather.temperature
+  const displayHumidity = liveDetection?.humidity ?? liveDevice?.humidity ?? onlineWeather.humidity
 
   useEffect(() => {
     let active = true
@@ -184,6 +228,32 @@ function LiveMonitoring() {
     })
   }, [liveDetection, deviceId])
 
+  // Add each new WebSocket detection to the visible history immediately.
+  // The existing Clear History button remains UI-only until a new detection arrives.
+  useEffect(() => {
+    if (!detection) {
+      return
+    }
+
+    const detectionKey = detection.id ?? detection.detected_at ?? detection.timestamp
+
+    if (!detectionKey) {
+      return
+    }
+
+    setHistory((current) => {
+      const alreadyExists = current.some(
+        (item) => (item.id ?? item.detected_at ?? item.timestamp) === detectionKey,
+      )
+
+      if (alreadyExists) {
+        return current
+      }
+
+      return [detection, ...current]
+    })
+  }, [detection])
+
   const filters = ['ALL', 'HARMFUL_PEST', 'NON_PEST', 'UNKNOWN']
   const filteredHistory = history.filter((item) => {
     if (historyFilter === 'ALL') {
@@ -198,38 +268,11 @@ function LiveMonitoring() {
   return (
     <main className="monitoring-page">
       {popup && (
-        <div
-          className="harmful-alert-backdrop"
-          onClick={() => setPopup(null)}
-          role="presentation"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 100000,
-            pointerEvents: 'auto',
-          }}
-        >
-          <div
-            className="harmful-alert-popup"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-live="assertive"
-            style={{
-              position: 'relative',
-              zIndex: 100001,
-              pointerEvents: 'auto',
-            }}
-          >
+        <div className="harmful-alert-backdrop" onClick={() => setPopup(null)} aria-hidden="true">
+          <div className="harmful-alert-popup" onClick={(event) => event.stopPropagation()} role="dialog" aria-live="assertive">
             <div className="popup-header">
               <span className="popup-badge">HARMFUL PEST DETECTED</span>
-              <button
-                type="button"
-                className="popup-close"
-                onClick={() => setPopup(null)}
-                aria-label="Dismiss alert"
-                style={{ position: 'relative', zIndex: 100002, pointerEvents: 'auto' }}
-              >
+              <button type="button" className="popup-close" onClick={() => setPopup(null)} aria-label="Dismiss alert">
                 ×
               </button>
             </div>
@@ -242,24 +285,11 @@ function LiveMonitoring() {
               <div><span>Device</span><strong>{popup.deviceId}</strong></div>
             </div>
 
-            <div className="popup-actions" style={{ position: 'relative', zIndex: 100002, pointerEvents: 'auto' }}>
-              <button
-                type="button"
-                className="popup-primary"
-                onClick={() => {
-                  setPopup(null)
-                  window.location.assign('/solutions')
-                }}
-                style={{ position: 'relative', zIndex: 100003, pointerEvents: 'auto', cursor: 'pointer' }}
-              >
+            <div className="popup-actions">
+              <button type="button" className="popup-primary" onClick={() => { setPopup(null); navigate('/solutions') }}>
                 View Solution
               </button>
-              <button
-                type="button"
-                className="popup-secondary"
-                onClick={() => setPopup(null)}
-                style={{ position: 'relative', zIndex: 100003, pointerEvents: 'auto', cursor: 'pointer' }}
-              >
+              <button type="button" className="popup-secondary" onClick={() => setPopup(null)}>
                 Dismiss
               </button>
             </div>
@@ -290,7 +320,7 @@ function LiveMonitoring() {
               <p className="monitoring-card-eyebrow">AI classification</p>
               <h2>Latest Detection</h2>
             </div>
-            <span className="detection-status-pill">{displayStatus(detectionStatus)}</span>
+            <span className="detection-status-pill">{displayStatus(detectionStatus, liveDetection?.pest)}</span>
           </div>
 
           {liveDetection ? (
@@ -298,8 +328,8 @@ function LiveMonitoring() {
               <div className="latest-detection-main">
                 <span className="detection-indicator" />
                 <div>
-                  <strong>{detectionStatus === 'HARMFUL_PEST' ? liveDetection.pest || 'Pest not identified' : displayStatus(detectionStatus)}</strong>
-                  <p>{getDetectionMessage(detectionStatus)}</p>
+                  <strong>{liveDetection.pest || displayStatus(detectionStatus, liveDetection.pest)}</strong>
+                  <p>{getDetectionMessage(detectionStatus, liveDetection.pest)}</p>
                 </div>
               </div>
 
@@ -323,13 +353,13 @@ function LiveMonitoring() {
 
               <div className="detection-details">
                 <div><span>Pest</span><strong>{liveDetection.pest || '—'}</strong></div>
-                <div><span>Status</span><strong>{displayStatus(detectionStatus)}</strong></div>
+                <div><span>Status</span><strong>{displayStatus(detectionStatus, liveDetection.pest)}</strong></div>
                 <div><span>Confidence</span><strong>{formatConfidence(liveDetection.confidence)}</strong></div>
                 <div><span>Risk</span><strong>{liveDetection.risk || '—'}</strong></div>
                 <div><span>Date / time</span><strong>{formatDate(liveDetection.detected_at || liveDetection.timestamp)}</strong></div>
                 <div><span>Device ID</span><strong>{liveDetection.device_id || deviceId}</strong></div>
-                <div><span>Temperature</span><strong>{formatTemperature(liveDetection.temperature ?? latestTemperature)}</strong></div>
-                <div><span>Humidity</span><strong>{formatHumidity(liveDetection.humidity ?? latestHumidity)}</strong></div>
+                <div><span>Temperature</span><strong>{formatTemperature(displayTemperature)}</strong></div>
+                <div><span>Humidity</span><strong>{formatHumidity(displayHumidity)}</strong></div>
               </div>
             </>
           ) : (
@@ -378,12 +408,12 @@ function LiveMonitoring() {
               <strong>{formatDate(deviceTimestamp)}</strong>
             </div>
             <div className="device-health-row">
-              <span>Temperature</span>
-              <strong>{formatTemperature(latestTemperature)}</strong>
+              <span>Temperature (Online)</span>
+              <strong>{formatTemperature(displayTemperature)}</strong>
             </div>
             <div className="device-health-row">
-              <span>Humidity</span>
-              <strong>{formatHumidity(latestHumidity)}</strong>
+              <span>Humidity (Online)</span>
+              <strong>{formatHumidity(displayHumidity)}</strong>
             </div>
           </div>
         </article>
@@ -396,7 +426,20 @@ function LiveMonitoring() {
               <p className="monitoring-card-eyebrow">Recent events</p>
               <h2>Detection History</h2>
             </div>
-            <SparkIcon size={21} />
+            <div className="history-header-actions">
+              <button
+                type="button"
+                className="history-filter"
+                onClick={() => {
+                  setHistory([])
+                  setHistoryLimit(8)
+                }}
+                disabled={history.length === 0}
+              >
+                Clear History
+              </button>
+              <SparkIcon size={21} />
+            </div>
           </div>
 
           <div className="history-filters" role="tablist" aria-label="Detection history filters">
@@ -430,7 +473,7 @@ function LiveMonitoring() {
                 <div key={item.id ?? `${item.device_id}-${item.detected_at}`} className="history-row">
                   <div className="history-main">
                     <span className="history-time">{formatDate(item.detected_at)}</span>
-                    <strong>{item.pest || '—'}</strong>
+                    <strong>{item.pest || displayStatus(item.status, item.pest)}</strong>
                   </div>
 
                   <div className="history-meta">
