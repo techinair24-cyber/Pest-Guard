@@ -168,6 +168,7 @@ export function useLiveDetection() {
     detection: getCachedDetection(),
     device: getCachedDevice(),
   }))
+  const [newDetection, setNewDetection] = useState(null)
 
   const [loading, setLoading] = useState(() => {
     return !getCachedDevice()
@@ -319,6 +320,7 @@ export function useLiveDetection() {
             ...current,
             detection: incomingDetection,
           }))
+          setNewDetection(incomingDetection)
 
           setError(null)
 
@@ -355,6 +357,7 @@ export function useLiveDetection() {
 
   return {
     detection: liveStatus.detection,
+    newDetection,
     device: liveStatus.device,
     loading,
     error,

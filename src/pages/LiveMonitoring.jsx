@@ -3,14 +3,11 @@ import { useNavigate } from 'react-router-dom'
 
 import { useLiveDetection } from '../hooks/useLiveDetection'
 import { ArrowIcon, LeafIcon, SparkIcon } from '../components/Icons'
-import { getDetectionHistory } from '../services/api'
+import { getDetectionHistory, getPests } from '../services/api'
 import './LiveMonitoring.css'
 
 const HISTORY_CLEAR_KEY = 'pest_guard_history_cleared_at'
 const WEATHER_CACHE_KEY = 'pest_guard_online_weather'
-
-const PEST_DIRECTORY_URL =
-  'https://pest-guard-1q36.onrender.com/api/pests'
 
 const FALLBACK_COMMON_PEST_NAMES = {
   Popplepsaltanotialis: 'Cicada',
@@ -131,6 +128,41 @@ function isAfterHistoryClear(item, clearedAt) {
   return Number.isFinite(detectionTimeMs) && detectionTimeMs > clearedAtMs
 }
 
+function sameDetection(first, second) {
+  if (first?.id != null && second?.id != null) {
+    return String(first.id) === String(second.id)
+  }
+
+  const firstTime = parseServerTimestamp(getDetectionTime(first))
+  const secondTime = parseServerTimestamp(getDetectionTime(second))
+
+  return Number.isFinite(firstTime) && firstTime === secondTime
+}
+
+function sortNewestFirst(detections) {
+  return detections.sort((first, second) => {
+    const firstTime = parseServerTimestamp(getDetectionTime(first))
+    const secondTime = parseServerTimestamp(getDetectionTime(second))
+
+    if (!Number.isFinite(firstTime) && !Number.isFinite(secondTime)) return 0
+    if (!Number.isFinite(firstTime)) return 1
+    if (!Number.isFinite(secondTime)) return -1
+    return secondTime - firstTime
+  })
+}
+
+function mergeDetections(...groups) {
+  const merged = []
+
+  groups.flat().forEach((detection) => {
+    if (!merged.some((existing) => sameDetection(existing, detection))) {
+      merged.push(detection)
+    }
+  })
+
+  return sortNewestFirst(merged)
+}
+
 function HealthIcon({ size = 18 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -204,7 +236,7 @@ function getConfidenceTone(value) {
 
 function LiveMonitoring() {
   const navigate = useNavigate()
-  const { detection, device, loading, error } = useLiveDetection()
+  const { detection, newDetection, device, loading, error } = useLiveDetection()
   const [history, setHistory] = useState([])
   const [historyFilter, setHistoryFilter] = useState('ALL')
   const [historyLimit, setHistoryLimit] = useState(8)
@@ -212,7 +244,7 @@ function LiveMonitoring() {
   const [historyClearedAt, setHistoryClearedAt] = useState(() => getStoredClearTime())
   const [popup, setPopup] = useState(null)
   const [pestDirectory, setPestDirectory] = useState({})
-  const alertedKeyRef = useRef(null)
+  const alertedKeysRef = useRef(new Set())
 
   const liveDetection = detection || history[0] || null
   const liveDevice = device || (liveDetection ? {
@@ -271,16 +303,10 @@ function LiveMonitoring() {
 
     async function loadPestDirectory() {
       try {
-        const response = await fetch(PEST_DIRECTORY_URL)
-
-        if (!response.ok) {
-          throw new Error(`Pest directory request failed: ${response.status}`)
-        }
-
-        const data = await response.json()
+        const pests = await getPests()
 
         if (active) {
-          setPestDirectory(buildPestDirectory(data?.pests))
+          setPestDirectory(buildPestDirectory(pests))
         }
       } catch (pestDirectoryError) {
         console.error('Unable to load pest directory:', pestDirectoryError)
@@ -398,47 +424,13 @@ function LiveMonitoring() {
           : detections
 
         setHistory((current) => {
-          const currentVisible =
-            historyFilter === 'ALL'
-              ? current
-              : current.filter((item) => item.status === historyFilter)
+          const currentVisible = current.filter(
+            (item) =>
+              (historyFilter === 'ALL' || item.status === historyFilter) &&
+              isAfterHistoryClear(item, historyClearedAt),
+          )
 
-          const combined = [...currentVisible, ...visibleDetections]
-          const seen = new Set()
-
-          return combined
-            .filter((item) => {
-              const key =
-                item.id ??
-                item.detected_at ??
-                item.timestamp ??
-                `${item.device_id || 'device'}-${item.pest || 'unknown'}`
-
-              if (seen.has(String(key))) {
-                return false
-              }
-
-              seen.add(String(key))
-              return true
-            })
-            .sort((a, b) => {
-              const aTime = parseServerTimestamp(getDetectionTime(a))
-              const bTime = parseServerTimestamp(getDetectionTime(b))
-
-              if (!Number.isFinite(aTime) && !Number.isFinite(bTime)) {
-                return 0
-              }
-
-              if (!Number.isFinite(aTime)) {
-                return 1
-              }
-
-              if (!Number.isFinite(bTime)) {
-                return -1
-              }
-
-              return bTime - aTime
-            })
+          return mergeDetections(currentVisible, visibleDetections)
         })
       } catch (historyFetchError) {
         if (!active) {
@@ -446,7 +438,6 @@ function LiveMonitoring() {
         }
 
         console.error('Unable to load detection history:', historyFetchError)
-        setHistory([])
       } finally {
         if (active) {
           setHistoryLoading(false)
@@ -462,29 +453,27 @@ function LiveMonitoring() {
   }, [historyFilter, historyLimit, historyClearedAt])
 
   useEffect(() => {
-    if (!liveDetection) {
+    if (!newDetection || newDetection.status !== 'HARMFUL_PEST') {
       return
     }
 
-    if (liveDetection.status !== 'HARMFUL_PEST') {
+    const popupKey =
+      newDetection.id ??
+      parseServerTimestamp(getDetectionTime(newDetection))
+
+    if (popupKey == null || String(popupKey) === '' || alertedKeysRef.current.has(String(popupKey))) {
       return
     }
 
-    const popupKey = liveDetection.id ?? liveDetection.detected_at ?? liveDetection.timestamp
-
-    if (!popupKey || popupKey === alertedKeyRef.current) {
-      return
-    }
-
-    alertedKeyRef.current = popupKey
+    alertedKeysRef.current.add(String(popupKey))
     setPopup({
-      pest: liveDetection.pest || 'Unknown pest',
-      confidence: liveDetection.confidence,
-      risk: liveDetection.risk || '—',
-      time: liveDetection.detected_at || liveDetection.timestamp,
-      deviceId: liveDetection.device_id || deviceId,
+      pest: newDetection.pest || 'Unknown pest',
+      confidence: newDetection.confidence,
+      risk: newDetection.risk || '—',
+      time: getDetectionTime(newDetection),
+      deviceId: newDetection.device_id || deviceId,
     })
-  }, [liveDetection, deviceId])
+  }, [newDetection, deviceId])
 
   // Keep the newest live WebSocket detection visible in the history immediately.
   // Clearing history does not remove the current live detection.
@@ -493,56 +482,17 @@ function LiveMonitoring() {
       return
     }
 
-    const detectionKey = detection.id ?? detection.detected_at ?? detection.timestamp
-
-    if (!detectionKey) {
-      return
-    }
-
     if (!isAfterHistoryClear(detection, historyClearedAt)) {
       return
     }
 
-    setHistory((current) => {
-      const alreadyExists = current.some(
-        (item) => (item.id ?? item.detected_at ?? item.timestamp) === detectionKey,
-      )
-
-      if (alreadyExists) {
-        return current
-      }
-
-      return [detection, ...current]
-    })
+    setHistory((current) => mergeDetections([detection], current))
   }, [detection, historyClearedAt])
 
   const filters = ['ALL', 'HARMFUL_PEST', 'NON_PEST', 'UNKNOWN']
 
-  const historyWithLiveDetection = (() => {
-    const merged = [...history]
-
-    if (detection) {
-      const detectionKey = detection.id ?? detection.detected_at ?? detection.timestamp
-      const alreadyExists = merged.some(
-        (item) =>
-          (item.id ?? item.detected_at ?? item.timestamp) === detectionKey,
-      )
-
-      if (!alreadyExists) {
-        merged.unshift(detection)
-      }
-    }
-
-    return merged.sort((a, b) => {
-      const aTime = parseServerTimestamp(getDetectionTime(a))
-      const bTime = parseServerTimestamp(getDetectionTime(b))
-
-      if (!Number.isFinite(aTime) && !Number.isFinite(bTime)) return 0
-      if (!Number.isFinite(aTime)) return 1
-      if (!Number.isFinite(bTime)) return -1
-      return bTime - aTime
-    })
-  })()
+  const historyWithLiveDetection = mergeDetections(history, detection ? [detection] : [])
+    .filter((item) => isAfterHistoryClear(item, historyClearedAt))
 
   const filteredHistory = historyWithLiveDetection.filter((item) => {
     if (historyFilter === 'ALL') {
@@ -764,12 +714,12 @@ function LiveMonitoring() {
             </div>
           )}
 
-          {!historyLoading && filteredHistory.length > 0 && (
+          {filteredHistory.length > 0 && (
             <div className="history-list">
               {filteredHistory.map((item) => (
                 <div key={item.id ?? `${item.device_id}-${item.detected_at}`} className="history-row">
                   <div className="history-main">
-                    <span className="history-time">{formatDate(item.detected_at)}</span>
+                    <span className="history-time">{formatDate(getDetectionTime(item))}</span>
                     <strong>{getDisplayPestName(item.pest)}</strong>
                   </div>
 
