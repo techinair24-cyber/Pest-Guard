@@ -36,7 +36,7 @@ with open(AI_DIR / "class_names.json", "r", encoding="utf-8") as f:
     class_names = json.load(f)
 
 MEL_MATRIX = tf.signal.linear_to_mel_weight_matrix(
-    128, 513, 16000, 50, 8000
+    128, 513, 16000, 80, 7600
 )
 
 

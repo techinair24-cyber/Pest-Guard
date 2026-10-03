@@ -28,3 +28,7 @@ __pycache__/
 *.sln
 *.sw?
 backend/.venv/
+
+# Local AI test/backup files
+backend/pest_test.wav
+backend/ai_model/best_cnn_v3_old_76_59.keras
