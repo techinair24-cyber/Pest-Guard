@@ -213,7 +213,6 @@ function LiveMonitoring() {
   const [popup, setPopup] = useState(null)
   const [pestDirectory, setPestDirectory] = useState({})
   const alertedKeyRef = useRef(null)
-  const initialLoadRef = useRef(false)
 
   const liveDetection = detection || history[0] || null
   const liveDevice = device || (liveDetection ? {
@@ -250,8 +249,15 @@ function LiveMonitoring() {
     }
 
     const entry = pestDirectory[normalizePestKey(rawName)]
-    const commonName = entry?.commonName || getFallbackPestName(rawName)
-    const scientificName = entry?.scientificName || rawName
+    const entryCommonName = String(entry?.commonName || '').trim()
+    const fallbackName = getFallbackPestName(rawName)
+    const scientificName = String(entry?.scientificName || rawName).trim()
+
+    const commonName =
+      entryCommonName &&
+      normalizePestKey(entryCommonName) !== normalizePestKey(rawName)
+        ? entryCommonName
+        : fallbackName
 
     if (commonName && normalizePestKey(commonName) !== normalizePestKey(scientificName)) {
       return `${commonName} (${scientificName})`
@@ -460,11 +466,6 @@ function LiveMonitoring() {
       return
     }
 
-    if (!initialLoadRef.current) {
-      initialLoadRef.current = true
-      return
-    }
-
     if (liveDetection.status !== 'HARMFUL_PEST') {
       return
     }
@@ -485,8 +486,8 @@ function LiveMonitoring() {
     })
   }, [liveDetection, deviceId])
 
-  // Add each new WebSocket detection to the visible history immediately.
-  // The existing Clear History button remains UI-only until a new detection arrives.
+  // Keep the newest live WebSocket detection visible in the history immediately.
+  // Clearing history does not remove the current live detection.
   useEffect(() => {
     if (!detection) {
       return
@@ -520,7 +521,7 @@ function LiveMonitoring() {
   const historyWithLiveDetection = (() => {
     const merged = [...history]
 
-    if (detection && isAfterHistoryClear(detection, historyClearedAt)) {
+    if (detection) {
       const detectionKey = detection.id ?? detection.detected_at ?? detection.timestamp
       const alreadyExists = merged.some(
         (item) =>
