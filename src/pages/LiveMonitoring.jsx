@@ -3,34 +3,32 @@ import { useNavigate } from 'react-router-dom'
 
 import { useLiveDetection } from '../hooks/useLiveDetection'
 import { ArrowIcon, LeafIcon, SparkIcon } from '../components/Icons'
-import { formatTemperature, formatHumidity } from '../utils/formatters'
 import { getDetectionHistory } from '../services/api'
 import './LiveMonitoring.css'
+
+const HISTORY_CLEAR_KEY = 'pest_guard_history_cleared_at'
+const WEATHER_CACHE_KEY = 'pest_guard_online_weather'
 
 const PEST_DIRECTORY_URL =
   'https://pest-guard-1q36.onrender.com/api/pests'
 
-/*
- * Fallback names for pests that are already known by the project.
- * The backend pest directory is checked first, so additional
- * pest names stored in the database are picked up automatically.
- */
 const FALLBACK_COMMON_PEST_NAMES = {
+  Popplepsaltanotialis: 'Cicada',
+  Yoyettarepetens: 'Cicada',
+  Yoyettacelis: 'Cicada',
+  Neotibicenpruinosus: 'Cicada',
+  Atrapsaltaencaustica: 'Cicada',
   Achetadomesticus: 'House Cricket',
   Grylluscampestris: 'Field Cricket',
   Gryllusbimaculatus: 'Two-spotted Cricket',
   Chorthippusvagans: 'Heath Grasshopper',
   Pseudochorthippusparallelus: 'Meadow Grasshopper',
   Oecanthuspellucens: 'European Tree Cricket',
-  Neotibicenpruinosus: 'Scissor Grinder Cicada',
 }
 
 function normalizePestKey(value) {
-  if (!value) {
-    return ''
-  }
-
-  return String(value)
+  return String(value || '')
+    .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '')
 }
@@ -43,113 +41,77 @@ function buildPestDirectory(items) {
   }
 
   items.forEach((item) => {
-    if (!item || typeof item !== 'object') {
-      return
+    const commonName = String(item?.name || '').trim()
+    const scientificName = String(item?.scientific_name || '').trim()
+    const pestId = String(item?.pest_id || '').trim()
+
+    const entry = {
+      commonName:
+        commonName &&
+        normalizePestKey(commonName) !== normalizePestKey(scientificName)
+          ? commonName
+          : '',
+      scientificName,
     }
 
-    const commonName =
-      item.name ||
-      item.common_name ||
-      item.commonName ||
-      null
-
-    const scientificName =
-      item.scientific_name ||
-      item.scientificName ||
-      null
-
-    const pestId =
-      item.pest_id ||
-      item.pestId ||
-      null
-
-    if (!commonName) {
-      return
-    }
-
-    const scientificKey =
-      normalizePestKey(scientificName)
-
-    const pestIdKey =
-      normalizePestKey(pestId)
-
-    if (scientificKey) {
-      directory[scientificKey] = commonName
-    }
-
-    if (pestIdKey) {
-      directory[pestIdKey] = commonName
-    }
+    ;[commonName, scientificName, pestId].forEach((candidate) => {
+      const key = normalizePestKey(candidate)
+      if (key) {
+        directory[key] = entry
+      }
+    })
   })
 
   return directory
 }
 
 function getFallbackPestName(pest) {
-  if (!pest) {
-    return null
+  const key = normalizePestKey(pest)
+  if (!key) {
+    return ''
   }
 
-  const directMatch =
-    FALLBACK_COMMON_PEST_NAMES[pest]
+  return FALLBACK_COMMON_PEST_NAMES[key] || ''
+}
 
-  if (directMatch) {
-    return directMatch
+
+function formatOnlineTemperature(value) {
+  const number = Number(value)
+  return Number.isFinite(number) ? `${number.toFixed(1)} °C` : '—'
+}
+
+function formatOnlineHumidity(value) {
+  const number = Number(value)
+  return Number.isFinite(number) ? `${number.toFixed(0)}%` : '—'
+}
+
+function getStoredClearTime() {
+  try {
+    return window.localStorage.getItem(HISTORY_CLEAR_KEY) || ''
+  } catch {
+    return ''
   }
+}
 
-  const normalizedKey =
-    normalizePestKey(pest)
-
-  for (const [scientificName, commonName] of Object.entries(
-    FALLBACK_COMMON_PEST_NAMES,
-  )) {
-    if (
-      normalizePestKey(scientificName) ===
-      normalizedKey
-    ) {
-      return commonName
-    }
-  }
-
-  return null
+function getDetectionTime(item) {
+  return item?.detected_at || item?.timestamp || item?.created_at || null
 }
 
 function HealthIcon({ size = 18 }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="M5 12.5A7 7 0 0 1 12 6a7 7 0 0 1 7 6.5A7 7 0 0 1 12 18a7 7 0 0 1-7-5.5Z"
-        stroke="currentColor"
-        strokeWidth="1.7"
-      />
-      <path
-        d="M12 9.4v3.2l2.1 1.7"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M5 12.5A7 7 0 0 1 12 6a7 7 0 0 1 7 6.5A7 7 0 0 1 12 18a7 7 0 0 1-7-5.5Z" stroke="currentColor" strokeWidth="1.7" />
+      <path d="M12 9.4v3.2l2.1 1.7" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
 
 function formatConfidence(value) {
-  if (
-    value === null ||
-    value === undefined ||
-    value === ''
-  ) {
+  if (value === null || value === undefined || value === '') {
     return '—'
   }
 
   const number = Number(value)
-
   if (!Number.isFinite(number)) {
     return '—'
   }
@@ -163,71 +125,35 @@ function formatDate(value) {
   }
 
   const date = new Date(value)
-
-  return Number.isNaN(date.getTime())
-    ? '—'
-    : date.toLocaleString()
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString()
 }
 
-function displayStatus(status) {
-  if (status === 'HARMFUL_PEST') {
-    return 'HARMFUL PEST'
-  }
-
-  if (status === 'NON_PEST') {
-    return 'NON-PEST'
-  }
-
-  if (status === 'UNKNOWN') {
-    return 'UNKNOWN SOUND'
-  }
-
+function displayStatus(status, pest) {
+  if (status === 'HARMFUL_PEST') return 'HARMFUL PEST'
+  if (status === 'NON_PEST') return 'NON-PEST'
+  if (status === 'UNKNOWN' && pest) return 'AI PREDICTION'
+  if (status === 'UNKNOWN') return 'UNKNOWN SOUND'
   return 'NO DETECTION'
 }
 
-function getDetectionMessage(status) {
-  if (status === 'HARMFUL_PEST') {
-    return 'Harmful pest activity detected in the field.'
-  }
-
-  if (status === 'NON_PEST') {
-    return 'No harmful pest detected.'
-  }
-
-  if (status === 'UNKNOWN') {
-    return 'The sound could not be confidently classified.'
-  }
-
+function getDetectionMessage(status, pest) {
+  if (status === 'HARMFUL_PEST') return 'Harmful pest activity detected in the field.'
+  if (status === 'NON_PEST') return 'No harmful pest detected.'
+  if (status === 'UNKNOWN' && pest) return 'The AI predicted this insect sound, but confidence is below the harmful-pest alert threshold.'
+  if (status === 'UNKNOWN') return 'Waiting for a confident pest prediction.'
   return 'Waiting for an event from the field unit.'
 }
 
 function getConnectionState(device, loading) {
-  if (loading) {
-    return 'Connecting'
-  }
+  if (loading) return 'Connecting'
+  if (!device) return 'Offline'
 
-  if (!device) {
-    return 'Offline'
-  }
-
-  const value = String(
-    device.connection ||
-      device.status ||
-      '',
-  ).toUpperCase()
-
-  return value === 'CONNECTED' ||
-    value === 'ONLINE'
-    ? 'Online'
-    : 'Offline'
+  const value = String(device.connection || device.status || '').toUpperCase()
+  return value === 'CONNECTED' || value === 'ONLINE' ? 'Online' : 'Offline'
 }
 
 function getConfidenceTone(value) {
-  if (
-    value === null ||
-    value === undefined ||
-    value === ''
-  ) {
+  if (value === null || value === undefined || value === '') {
     return 'empty'
   }
 
@@ -237,183 +163,87 @@ function getConfidenceTone(value) {
     return 'empty'
   }
 
-  if (number >= 0.7) {
-    return 'high'
-  }
-
-  if (number >= 0.4) {
-    return 'medium'
-  }
-
+  if (number >= 0.7) return 'high'
+  if (number >= 0.4) return 'medium'
   return 'low'
 }
 
 function LiveMonitoring() {
   const navigate = useNavigate()
-
-  const {
-    detection,
-    device,
-    loading,
-    error,
-  } = useLiveDetection()
-
+  const { detection, device, loading, error } = useLiveDetection()
   const [history, setHistory] = useState([])
-  const [historyFilter, setHistoryFilter] =
-    useState('ALL')
-  const [historyLimit, setHistoryLimit] =
-    useState(8)
-  const [historyLoading, setHistoryLoading] =
-    useState(true)
+  const [historyFilter, setHistoryFilter] = useState('ALL')
+  const [historyLimit, setHistoryLimit] = useState(8)
+  const [historyLoading, setHistoryLoading] = useState(true)
+  const [historyClearedAt, setHistoryClearedAt] = useState(() => getStoredClearTime())
   const [popup, setPopup] = useState(null)
-
-  const [pestDirectory, setPestDirectory] =
-    useState({})
-
+  const [pestDirectory, setPestDirectory] = useState({})
   const alertedKeyRef = useRef(null)
   const initialLoadRef = useRef(false)
 
-  const liveDetection =
-    detection || history[0] || null
+  const liveDetection = detection || history[0] || null
+  const liveDevice = device || (liveDetection ? {
+    device_id: liveDetection.device_id || 'FIELD-UNIT-01',
+    status: 'ONLINE',
+    connection: 'CONNECTED',
+    last_seen: liveDetection.detected_at || liveDetection.timestamp || null,
+    temperature: liveDetection.temperature ?? null,
+    humidity: liveDetection.humidity ?? null,
+  } : null)
 
-  const liveDevice =
-    device ||
-    (liveDetection
-      ? {
-          device_id:
-            liveDetection.device_id ||
-            'FIELD-UNIT-01',
-          status: 'ONLINE',
-          connection: 'CONNECTED',
-          last_seen:
-            liveDetection.detected_at ||
-            liveDetection.timestamp ||
-            null,
-          temperature:
-            liveDetection.temperature ??
-            null,
-          humidity:
-            liveDetection.humidity ??
-            null,
-        }
-      : null)
-
-  const connectionState =
-    getConnectionState(
-      liveDevice,
-      loading,
-    )
-
-  const detectionStatus =
-    liveDetection?.status || ''
-
-  const statusClass =
-    detectionStatus === 'HARMFUL_PEST'
-      ? 'harmful'
-      : detectionStatus === 'NON_PEST'
-        ? 'normal'
-        : detectionStatus === 'UNKNOWN'
-          ? 'unknown'
-          : 'empty'
-
-  const deviceId =
-    liveDevice?.device_id ||
-    liveDetection?.device_id ||
-    'FIELD-UNIT-01'
-
-  const deviceTimestamp =
-    liveDevice?.last_seen ||
-    liveDevice?.lastSeen
-
-  const latestTemperature =
-    liveDetection?.temperature ??
-    liveDevice?.temperature ??
-    null
-
-  const latestHumidity =
-    liveDetection?.humidity ??
-    liveDevice?.humidity ??
-    null
-
-  const confidenceValue =
-    Number(liveDetection?.confidence)
-
-  const confidencePercent =
-    Number.isFinite(confidenceValue)
-      ? confidenceValue * 100
-      : null
-
-  const healthTone =
-    connectionState === 'Online'
-      ? 'online'
-      : 'offline'
+  const connectionState = getConnectionState(liveDevice, loading)
+  const detectionStatus = liveDetection?.status || ''
+  const statusClass = detectionStatus === 'HARMFUL_PEST'
+    ? 'harmful'
+    : detectionStatus === 'NON_PEST'
+      ? 'normal'
+      : detectionStatus === 'UNKNOWN'
+        ? 'unknown'
+        : 'empty'
+  const deviceId = liveDevice?.device_id || liveDetection?.device_id || 'FIELD-UNIT-01'
+  const deviceTimestamp = liveDevice?.last_seen || liveDevice?.lastSeen
+  const confidenceValue = Number(liveDetection?.confidence)
+  const confidencePercent = Number.isFinite(confidenceValue)
+    ? confidenceValue * 100
+    : null
+  const healthTone = connectionState === 'Online' ? 'online' : 'offline'
 
   function getDisplayPestName(pest) {
-    if (!pest) {
-      return '—'
+    const rawName = String(pest || '').trim()
+
+    if (!rawName) {
+      return 'Unknown pest'
     }
 
-    const directoryMatch =
-      pestDirectory[
-        normalizePestKey(pest)
-      ]
+    const entry = pestDirectory[normalizePestKey(rawName)]
+    const commonName = entry?.commonName || getFallbackPestName(rawName)
+    const scientificName = entry?.scientificName || rawName
 
-    if (directoryMatch) {
-      return directoryMatch
+    if (commonName && normalizePestKey(commonName) !== normalizePestKey(scientificName)) {
+      return `${commonName} (${scientificName})`
     }
 
-    const fallbackMatch =
-      getFallbackPestName(pest)
-
-    if (fallbackMatch) {
-      return fallbackMatch
-    }
-
-    return pest
+    return rawName
   }
-
-  // -------------------------------------------------
-  // Load complete pest directory from backend
-  // -------------------------------------------------
 
   useEffect(() => {
     let active = true
 
     async function loadPestDirectory() {
       try {
-        const response = await fetch(
-          PEST_DIRECTORY_URL,
-          {
-            method: 'GET',
-            headers: {
-              Accept: 'application/json',
-            },
-          },
-        )
+        const response = await fetch(PEST_DIRECTORY_URL)
 
         if (!response.ok) {
-          throw new Error(
-            `Pest directory request failed: ${response.status}`,
-          )
+          throw new Error(`Pest directory request failed: ${response.status}`)
         }
 
         const data = await response.json()
 
-        if (!active) {
-          return
+        if (active) {
+          setPestDirectory(buildPestDirectory(data?.pests))
         }
-
-        const directory =
-          buildPestDirectory(
-            data?.pests,
-          )
-
-        setPestDirectory(directory)
-      } catch (directoryError) {
-        console.error(
-          'Unable to load pest directory:',
-          directoryError,
-        )
+      } catch (pestDirectoryError) {
+        console.error('Unable to load pest directory:', pestDirectoryError)
       }
     }
 
@@ -423,10 +253,87 @@ function LiveMonitoring() {
       active = false
     }
   }, [])
+  const [onlineWeather, setOnlineWeather] = useState(() => {
+    try {
+      const cached = JSON.parse(window.localStorage.getItem(WEATHER_CACHE_KEY) || 'null')
+      if (cached && Number.isFinite(Number(cached.temperature)) && Number.isFinite(Number(cached.humidity))) {
+        return {
+          temperature: Number(cached.temperature),
+          humidity: Number(cached.humidity),
+          loading: false,
+        }
+      }
+    } catch {
+      // Ignore invalid cached weather.
+    }
 
-  // -------------------------------------------------
-  // Detection history
-  // -------------------------------------------------
+    return { temperature: null, humidity: null, loading: true }
+  })
+
+  useEffect(() => {
+    let active = true
+
+    async function loadOnlineWeather() {
+      try {
+        const response = await fetch(
+          'https://api.open-meteo.com/v1/forecast?latitude=12.9716&longitude=77.5946&current=temperature_2m,relative_humidity_2m&timezone=auto',
+        )
+
+        if (!response.ok) {
+          throw new Error(`Weather request failed: ${response.status}`)
+        }
+
+        const data = await response.json()
+        const current = data?.current || {}
+
+        const temperature = Number(current.temperature_2m)
+        const humidity = Number(current.relative_humidity_2m)
+
+        if (!Number.isFinite(temperature) || !Number.isFinite(humidity)) {
+          throw new Error('Weather response did not contain temperature and humidity.')
+        }
+
+        const nextWeather = {
+          temperature,
+          humidity,
+          loading: false,
+        }
+
+        try {
+          window.localStorage.setItem(
+            WEATHER_CACHE_KEY,
+            JSON.stringify({ temperature, humidity, updatedAt: new Date().toISOString() }),
+          )
+        } catch {
+          // Ignore storage failures.
+        }
+
+        if (active) {
+          setOnlineWeather(nextWeather)
+        }
+      } catch (weatherError) {
+        console.error('Unable to load online weather:', weatherError)
+        if (active) {
+          setOnlineWeather((current) => ({
+            temperature: current.temperature ?? null,
+            humidity: current.humidity ?? null,
+            loading: false,
+          }))
+        }
+      }
+    }
+
+    loadOnlineWeather()
+    const refreshTimer = window.setInterval(loadOnlineWeather, 10 * 60 * 1000)
+
+    return () => {
+      active = false
+      window.clearInterval(refreshTimer)
+    }
+  }, [])
+
+  const displayTemperature = onlineWeather.temperature
+  const displayHumidity = onlineWeather.humidity
 
   useEffect(() => {
     let active = true
@@ -435,32 +342,32 @@ function LiveMonitoring() {
       setHistoryLoading(true)
 
       try {
-        const response =
-          await getDetectionHistory({
-            limit: historyLimit,
-            status:
-              historyFilter === 'ALL'
-                ? undefined
-                : historyFilter,
-          })
+        const response = await getDetectionHistory({
+          limit: historyLimit,
+          status: historyFilter === 'ALL' ? undefined : historyFilter,
+        })
 
         if (!active) {
           return
         }
 
-        setHistory(
-          response?.detections || [],
-        )
+        const clearedAtMs = historyClearedAt ? new Date(historyClearedAt).getTime() : NaN
+        const detections = Array.isArray(response?.detections) ? response.detections : []
+
+        const visibleDetections = Number.isFinite(clearedAtMs)
+          ? detections.filter((item) => {
+              const detectionTime = new Date(getDetectionTime(item) || '').getTime()
+              return Number.isFinite(detectionTime) && detectionTime > clearedAtMs
+            })
+          : detections
+
+        setHistory(visibleDetections)
       } catch (historyFetchError) {
         if (!active) {
           return
         }
 
-        console.error(
-          'Unable to load detection history:',
-          historyFetchError,
-        )
-
+        console.error('Unable to load detection history:', historyFetchError)
         setHistory([])
       } finally {
         if (active) {
@@ -474,14 +381,7 @@ function LiveMonitoring() {
     return () => {
       active = false
     }
-  }, [
-    historyFilter,
-    historyLimit,
-  ])
-
-  // -------------------------------------------------
-  // High-risk popup
-  // -------------------------------------------------
+  }, [historyFilter, historyLimit, historyClearedAt])
 
   useEffect(() => {
     if (!liveDetection) {
@@ -493,160 +393,95 @@ function LiveMonitoring() {
       return
     }
 
-    if (
-      liveDetection.status !==
-      'HARMFUL_PEST'
-    ) {
+    if (liveDetection.status !== 'HARMFUL_PEST') {
       return
     }
 
-    const popupKey =
-      liveDetection.id ??
-      liveDetection.detected_at ??
-      liveDetection.timestamp
+    const popupKey = liveDetection.id ?? liveDetection.detected_at ?? liveDetection.timestamp
 
-    if (
-      !popupKey ||
-      popupKey ===
-        alertedKeyRef.current
-    ) {
+    if (!popupKey || popupKey === alertedKeyRef.current) {
       return
     }
 
     alertedKeyRef.current = popupKey
-
     setPopup({
-      pest: getDisplayPestName(
-        liveDetection.pest,
-      ),
-      confidence:
-        liveDetection.confidence,
-      risk:
-        liveDetection.risk || '—',
-      time:
-        liveDetection.detected_at ||
-        liveDetection.timestamp,
-      deviceId:
-        liveDetection.device_id ||
-        deviceId,
+      pest: liveDetection.pest || 'Unknown pest',
+      confidence: liveDetection.confidence,
+      risk: liveDetection.risk || '—',
+      time: liveDetection.detected_at || liveDetection.timestamp,
+      deviceId: liveDetection.device_id || deviceId,
     })
-  }, [
-    liveDetection,
-    deviceId,
-    pestDirectory,
-  ])
+  }, [liveDetection, deviceId])
 
-  const filters = [
-    'ALL',
-    'HARMFUL_PEST',
-    'NON_PEST',
-    'UNKNOWN',
-  ]
+  // Add each new WebSocket detection to the visible history immediately.
+  // The existing Clear History button remains UI-only until a new detection arrives.
+  useEffect(() => {
+    if (!detection) {
+      return
+    }
 
-  const filteredHistory =
-    history.filter((item) => {
-      if (historyFilter === 'ALL') {
-        return true
+    const detectionKey = detection.id ?? detection.detected_at ?? detection.timestamp
+
+    if (!detectionKey) {
+      return
+    }
+
+    const clearedAtMs = historyClearedAt ? new Date(historyClearedAt).getTime() : NaN
+    const detectionTime = new Date(getDetectionTime(detection) || '').getTime()
+
+    if (Number.isFinite(clearedAtMs) && (!Number.isFinite(detectionTime) || detectionTime <= clearedAtMs)) {
+      return
+    }
+
+    setHistory((current) => {
+      const alreadyExists = current.some(
+        (item) => (item.id ?? item.detected_at ?? item.timestamp) === detectionKey,
+      )
+
+      if (alreadyExists) {
+        return current
       }
 
-      return (
-        item.status ===
-        historyFilter
-      )
+      return [detection, ...current]
     })
+  }, [detection, historyClearedAt])
 
-  const canLoadMore =
-    filteredHistory.length >=
-    historyLimit
+  const filters = ['ALL', 'HARMFUL_PEST', 'NON_PEST', 'UNKNOWN']
+  const filteredHistory = history.filter((item) => {
+    if (historyFilter === 'ALL') {
+      return true
+    }
+
+    return item.status === historyFilter
+  })
+
+  const canLoadMore = filteredHistory.length >= historyLimit
 
   return (
     <main className="monitoring-page">
       {popup && (
-        <div
-          className="harmful-alert-backdrop"
-          onClick={() => setPopup(null)}
-          aria-hidden="true"
-        >
-          <div
-            className="harmful-alert-popup"
-            onClick={(event) =>
-              event.stopPropagation()
-            }
-            role="dialog"
-            aria-live="assertive"
-          >
+        <div className="harmful-alert-backdrop" onClick={() => setPopup(null)} aria-hidden="true">
+          <div className="harmful-alert-popup" onClick={(event) => event.stopPropagation()} role="dialog" aria-live="assertive">
             <div className="popup-header">
-              <span className="popup-badge">
-                HARMFUL PEST DETECTED
-              </span>
-
-              <button
-                type="button"
-                className="popup-close"
-                onClick={() =>
-                  setPopup(null)
-                }
-                aria-label="Dismiss alert"
-              >
+              <span className="popup-badge">HARMFUL PEST DETECTED</span>
+              <button type="button" className="popup-close" onClick={() => setPopup(null)} aria-label="Dismiss alert">
                 ×
               </button>
             </div>
 
-            <h3>{popup.pest}</h3>
-
+            <h3>{getDisplayPestName(popup.pest)}</h3>
             <div className="popup-details">
-              <div>
-                <span>Confidence</span>
-                <strong>
-                  {formatConfidence(
-                    popup.confidence,
-                  )}
-                </strong>
-              </div>
-
-              <div>
-                <span>Risk</span>
-                <strong>
-                  {popup.risk}
-                </strong>
-              </div>
-
-              <div>
-                <span>Time</span>
-                <strong>
-                  {formatDate(
-                    popup.time,
-                  )}
-                </strong>
-              </div>
-
-              <div>
-                <span>Device</span>
-                <strong>
-                  {popup.deviceId}
-                </strong>
-              </div>
+              <div><span>Confidence</span><strong>{formatConfidence(popup.confidence)}</strong></div>
+              <div><span>Risk</span><strong>{popup.risk}</strong></div>
+              <div><span>Time</span><strong>{formatDate(popup.time)}</strong></div>
+              <div><span>Device</span><strong>{popup.deviceId}</strong></div>
             </div>
 
             <div className="popup-actions">
-              <button
-                type="button"
-                className="popup-primary"
-                onClick={() => {
-                  setPopup(null)
-                  navigate('/solutions')
-                }}
-              >
+              <button type="button" className="popup-primary" onClick={() => { setPopup(null); navigate(`/solutions?pest=${encodeURIComponent(popup.pest || '')}`) }}>
                 View Solution
               </button>
-
-              <button
-                type="button"
-                className="popup-secondary"
-                onClick={() =>
-                  setPopup(null)
-                }
-              >
+              <button type="button" className="popup-secondary" onClick={() => setPopup(null)}>
                 Dismiss
               </button>
             </div>
@@ -656,212 +491,74 @@ function LiveMonitoring() {
 
       <section className="monitoring-hero">
         <div className="monitoring-hero-copy">
-          <p className="monitoring-eyebrow">
-            Live field monitoring
-          </p>
-
-          <h1>
-            Listen to the Field.
-            <br />
-            <em>Protect the Crop.</em>
-          </h1>
-
+          <p className="monitoring-eyebrow">Live field monitoring</p>
+          <h1>Listen to the Field.<br /><em>Protect the Crop.</em></h1>
           <p>
-            Monitor sound-based pest activity
-            from the connected Pest Guard field
-            unit and view the latest AI detection
-            in real time.
+            Monitor sound-based pest activity from the connected Pest Guard field unit and view the latest AI detection in real time.
           </p>
         </div>
 
-        <div
-          className={`system-status-card system-status-${connectionState.toLowerCase()}`}
-        >
-          <div className="status-card-label">
-            <span className="monitoring-status-dot" />
-            Live system
-          </div>
-
-          <strong>
-            {connectionState}
-          </strong>
-
-          <small>
-            {error
-              ? 'Backend connection unavailable'
-              : 'REST + WebSocket monitoring'}
-          </small>
+        <div className={`system-status-card system-status-${connectionState.toLowerCase()}`}>
+          <div className="status-card-label"><span className="monitoring-status-dot" />Live system</div>
+          <strong>{connectionState}</strong>
+          <small>{error ? 'Backend connection unavailable' : onlineWeather.loading ? 'Loading online weather' : 'REST + WebSocket + online weather'}</small>
         </div>
       </section>
 
       <section className="monitoring-grid">
-        <article
-          className={`monitoring-card latest-card latest-card-${statusClass}`}
-        >
+        <article className={`monitoring-card latest-card latest-card-${statusClass}`}>
           <div className="monitoring-card-heading">
             <div>
-              <p className="monitoring-card-eyebrow">
-                AI classification
-              </p>
-
+              <p className="monitoring-card-eyebrow">AI classification</p>
               <h2>Latest Detection</h2>
             </div>
-
-            <span className="detection-status-pill">
-              {displayStatus(
-                detectionStatus,
-              )}
-            </span>
+            <span className="detection-status-pill">{displayStatus(detectionStatus, liveDetection?.pest)}</span>
           </div>
 
           {liveDetection ? (
             <>
               <div className="latest-detection-main">
                 <span className="detection-indicator" />
-
                 <div>
-                  <strong>
-                    {getDisplayPestName(
-                      liveDetection.pest,
-                    )}
-                  </strong>
-
-                  <p>
-                    {getDetectionMessage(
-                      detectionStatus,
-                    )}
-                  </p>
+                  <strong>{getDisplayPestName(liveDetection.pest)}</strong>
+                  <p>{getDetectionMessage(detectionStatus, liveDetection.pest)}</p>
                 </div>
               </div>
 
               <div className="confidence-visual">
                 <div className="confidence-header">
-                  <span>
-                    AI Confidence
-                  </span>
-
-                  <strong>
-                    {confidencePercent ===
-                    null
-                      ? 'Confidence —'
-                      : `${confidencePercent.toFixed(1)}%`}
-                  </strong>
+                  <span>AI Confidence</span>
+                  <strong>{confidencePercent === null ? 'Confidence —' : `${confidencePercent.toFixed(1)}%`}</strong>
                 </div>
 
                 {confidencePercent === null ? (
-                  <p className="confidence-empty">
-                    No confidence value
-                    available.
-                  </p>
+                  <p className="confidence-empty">No confidence value available.</p>
                 ) : (
                   <div className="confidence-bar-wrap">
                     <div
-                      className={`confidence-bar-fill ${getConfidenceTone(
-                        liveDetection.confidence,
-                      )}`}
-                      style={{
-                        width: `${Math.min(
-                          Math.max(
-                            confidencePercent,
-                            0,
-                          ),
-                          100,
-                        )}%`,
-                      }}
+                      className={`confidence-bar-fill ${getConfidenceTone(liveDetection.confidence)}`}
+                      style={{ width: `${Math.min(Math.max(confidencePercent, 0), 100)}%` }}
                     />
                   </div>
                 )}
               </div>
 
               <div className="detection-details">
-                <div>
-                  <span>Pest</span>
-                  <strong>
-                    {getDisplayPestName(
-                      liveDetection.pest,
-                    )}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>Status</span>
-                  <strong>
-                    {displayStatus(
-                      detectionStatus,
-                    )}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>Confidence</span>
-                  <strong>
-                    {formatConfidence(
-                      liveDetection.confidence,
-                    )}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>Risk</span>
-                  <strong>
-                    {liveDetection.risk ||
-                      '—'}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>Date / time</span>
-                  <strong>
-                    {formatDate(
-                      liveDetection.detected_at ||
-                        liveDetection.timestamp,
-                    )}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>Device ID</span>
-                  <strong>
-                    {liveDetection.device_id ||
-                      deviceId}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>Temperature</span>
-                  <strong>
-                    {formatTemperature(
-                      liveDetection.temperature ??
-                        latestTemperature,
-                    )}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>Humidity</span>
-                  <strong>
-                    {formatHumidity(
-                      liveDetection.humidity ??
-                        latestHumidity,
-                    )}
-                  </strong>
-                </div>
+                <div><span>Pest</span><strong>{getDisplayPestName(liveDetection.pest)}</strong></div>
+                <div><span>Status</span><strong>{displayStatus(detectionStatus, liveDetection.pest)}</strong></div>
+                <div><span>Confidence</span><strong>{formatConfidence(liveDetection.confidence)}</strong></div>
+                <div><span>Risk</span><strong>{liveDetection.risk || '—'}</strong></div>
+                <div><span>Date / time</span><strong>{formatDate(liveDetection.detected_at || liveDetection.timestamp)}</strong></div>
+                <div><span>Device ID</span><strong>{liveDetection.device_id || deviceId}</strong></div>
+                <div><span>Temperature</span><strong>{formatOnlineTemperature(displayTemperature)}</strong></div>
+                <div><span>Humidity</span><strong>{formatOnlineHumidity(displayHumidity)}</strong></div>
               </div>
             </>
           ) : (
             <div className="no-detection-state">
-              <div className="no-detection-icon">
-                <LeafIcon size={23} />
-              </div>
-
-              <strong>
-                No Detection Yet
-              </strong>
-
-              <p>
-                Waiting for the field unit
-                to send an AI detection.
-              </p>
+              <div className="no-detection-icon"><LeafIcon size={23} /></div>
+              <strong>No Detection Yet</strong>
+              <p>Waiting for the field unit to send an AI detection.</p>
             </div>
           )}
         </article>
@@ -869,85 +566,46 @@ function LiveMonitoring() {
         <article className="monitoring-card device-health-card">
           <div className="monitoring-card-heading">
             <div>
-              <p className="monitoring-card-eyebrow">
-                Field health
-              </p>
-
+              <p className="monitoring-card-eyebrow">Field health</p>
               <h2>Device Health</h2>
             </div>
-
             <HealthIcon size={22} />
           </div>
 
           {error && (
             <div className="backend-notice">
-              <strong>
-                Backend connection unavailable
-              </strong>
-
-              <span>
-                The device health panel is
-                waiting for live field data.
-              </span>
+              <strong>Backend connection unavailable</strong>
+              <span>The device health panel is waiting for live field data.</span>
             </div>
           )}
 
           <div className="device-health-list">
             <div className="device-health-row">
               <span>Device ID</span>
-              <strong>
-                {deviceId}
-              </strong>
+              <strong>{deviceId}</strong>
             </div>
-
             <div className="device-health-row">
               <span>Connection</span>
-
-              <strong
-                className={`health-status ${healthTone}`}
-              >
+              <strong className={`health-status ${healthTone}`}>
                 <span className="status-indicator" />
                 {connectionState}
               </strong>
             </div>
-
             <div className="device-health-row">
               <span>Status</span>
-
-              <strong>
-                {liveDevice?.status ||
-                  '—'}
-              </strong>
+              <strong>{liveDevice?.status || '—'}</strong>
             </div>
-
             <div className="device-health-row">
               <span>Last Seen</span>
-
-              <strong>
-                {formatDate(
-                  deviceTimestamp,
-                )}
-              </strong>
+              <strong>{formatDate(deviceTimestamp)}</strong>
             </div>
-
             <div className="device-health-row">
-              <span>Temperature</span>
-
-              <strong>
-                {formatTemperature(
-                  latestTemperature,
-                )}
-              </strong>
+              <span>Temperature (Online)</span>
+              <strong>{formatOnlineTemperature(displayTemperature)}</strong>
             </div>
-
             <div className="device-health-row">
-              <span>Humidity</span>
-
-              <strong>
-                {formatHumidity(
-                  latestHumidity,
-                )}
-              </strong>
+              <span>Humidity (Online)</span>
+              <strong>{formatOnlineHumidity(displayHumidity)}</strong>
             </div>
           </div>
         </article>
@@ -957,244 +615,104 @@ function LiveMonitoring() {
         <article className="monitoring-card history-card">
           <div className="monitoring-card-heading">
             <div>
-              <p className="monitoring-card-eyebrow">
-                Recent events
-              </p>
-
-              <h2>
-                Detection History
-              </h2>
+              <p className="monitoring-card-eyebrow">Recent events</p>
+              <h2>Detection History</h2>
             </div>
-
-            <SparkIcon size={21} />
+            <div className="history-header-actions">
+              <button
+                type="button"
+                className="history-filter"
+                onClick={() => {
+                  const clearedAt = new Date().toISOString()
+                  try {
+                    window.localStorage.setItem(HISTORY_CLEAR_KEY, clearedAt)
+                  } catch {
+                    // Ignore storage failures.
+                  }
+                  setHistoryClearedAt(clearedAt)
+                  setHistory([])
+                  setHistoryLimit(8)
+                  setHistoryLoading(false)
+                }}
+                disabled={history.length === 0}
+              >
+                Clear History
+              </button>
+              <SparkIcon size={21} />
+            </div>
           </div>
 
-          <div
-            className="history-filters"
-            role="tablist"
-            aria-label="Detection history filters"
-          >
+          <div className="history-filters" role="tablist" aria-label="Detection history filters">
             {filters.map((filter) => (
               <button
                 key={filter}
                 type="button"
-                className={
-                  filter ===
-                  historyFilter
-                    ? 'history-filter active'
-                    : 'history-filter'
-                }
+                className={filter === historyFilter ? 'history-filter active' : 'history-filter'}
                 onClick={() => {
-                  setHistoryFilter(
-                    filter,
-                  )
+                  setHistoryFilter(filter)
                   setHistoryLimit(8)
                 }}
               >
-                {filter === 'ALL'
-                  ? 'All'
-                  : filter ===
-                      'HARMFUL_PEST'
-                    ? 'Harmful Pest'
-                    : filter ===
-                        'NON_PEST'
-                      ? 'Non-Pest'
-                      : 'Unknown'}
+                {filter === 'ALL' ? 'All' : filter === 'HARMFUL_PEST' ? 'Harmful Pest' : filter === 'NON_PEST' ? 'Non-Pest' : 'Unknown'}
               </button>
             ))}
           </div>
 
-          {historyLoading && (
-            <p className="inline-loading">
-              Loading detection history...
-            </p>
+          {historyLoading && <p className="inline-loading">Loading detection history...</p>}
+
+          {!historyLoading && filteredHistory.length === 0 && (
+            <div className="empty-history">
+              <strong>No Detection History</strong>
+              <p>The field unit has not recorded any detection events yet.</p>
+            </div>
           )}
 
-          {!historyLoading &&
-            filteredHistory.length ===
-              0 && (
-              <div className="empty-history">
-                <strong>
-                  No Detection History
-                </strong>
+          {!historyLoading && filteredHistory.length > 0 && (
+            <div className="history-list">
+              {filteredHistory.map((item) => (
+                <div key={item.id ?? `${item.device_id}-${item.detected_at}`} className="history-row">
+                  <div className="history-main">
+                    <span className="history-time">{formatDate(item.detected_at)}</span>
+                    <strong>{getDisplayPestName(item.pest)}</strong>
+                  </div>
 
-                <p>
-                  The field unit has not
-                  recorded any detection
-                  events yet.
-                </p>
-              </div>
-            )}
+                  <div className="history-meta">
+                    <span>{item.status || 'UNKNOWN'}</span>
+                    <strong>{formatConfidence(item.confidence)}</strong>
+                    <strong>{item.risk || '—'}</strong>
+                    <strong>{item.device_id || deviceId}</strong>
+                  </div>
+                </div>
+              ))}
 
-          {!historyLoading &&
-            filteredHistory.length > 0 && (
-              <div className="history-list">
-                {filteredHistory.map(
-                  (item) => (
-                    <div
-                      key={
-                        item.id ??
-                        `${item.device_id}-${item.detected_at}`
-                      }
-                      className="history-row"
-                    >
-                      <div className="history-main">
-                        <span className="history-time">
-                          {formatDate(
-                            item.detected_at,
-                          )}
-                        </span>
-
-                        <strong>
-                          {getDisplayPestName(
-                            item.pest,
-                          )}
-                        </strong>
-                      </div>
-
-                      <div className="history-meta">
-                        <span>
-                          {item.status ||
-                            'UNKNOWN'}
-                        </span>
-
-                        <strong>
-                          {formatConfidence(
-                            item.confidence,
-                          )}
-                        </strong>
-
-                        <strong>
-                          {item.risk ||
-                            '—'}
-                        </strong>
-
-                        <strong>
-                          {item.device_id ||
-                            deviceId}
-                        </strong>
-                      </div>
-                    </div>
-                  ),
-                )}
-
-                {canLoadMore && (
-                  <button
-                    type="button"
-                    className="history-load-more"
-                    onClick={() =>
-                      setHistoryLimit(
-                        (value) =>
-                          value + 8,
-                      )
-                    }
-                  >
-                    Load more
-                  </button>
-                )}
-              </div>
-            )}
+              {canLoadMore && (
+                <button type="button" className="history-load-more" onClick={() => setHistoryLimit((value) => value + 8)}>
+                  Load more
+                </button>
+              )}
+            </div>
+          )}
         </article>
       </section>
 
       <section className="monitoring-support-grid">
         <article className="sensor-summary monitoring-card">
-          <div className="monitoring-card-heading">
-            <div>
-              <p className="monitoring-card-eyebrow">
-                Hardware stack
-              </p>
-
-              <h2>
-                Sensor Summary
-              </h2>
-            </div>
-
-            <SparkIcon size={21} />
-          </div>
-
+          <div className="monitoring-card-heading"><div><p className="monitoring-card-eyebrow">Hardware stack</p><h2>Sensor Summary</h2></div><SparkIcon size={21} /></div>
           <div className="sensor-list">
-            <div>
-              <span>Acoustic sensor</span>
-              <strong>
-                INMP441
-              </strong>
-            </div>
-
-            <div>
-              <span>Vibration sensor</span>
-              <strong>
-                Piezoelectric
-                Vibration Module
-              </strong>
-            </div>
-
-            <div>
-              <span>Controller</span>
-              <strong>
-                ESP32-S3 N16R8
-              </strong>
-            </div>
-
-            <div>
-              <span>Connection</span>
-              <strong>Wi-Fi</strong>
-            </div>
+            <div><span>Acoustic sensor</span><strong>INMP441</strong></div>
+            <div><span>Vibration sensor</span><strong>Piezoelectric Vibration Module</strong></div>
+            <div><span>Controller</span><strong>ESP32-S3 N16R8</strong></div>
+            <div><span>Connection</span><strong>Wi-Fi</strong></div>
           </div>
         </article>
 
         <article className="flow-card monitoring-card">
-          <div className="monitoring-card-heading">
-            <div>
-              <p className="monitoring-card-eyebrow">
-                System path
-              </p>
-
-              <h2>
-                Detection Flow
-              </h2>
-            </div>
-
-            <ArrowIcon size={21} />
-          </div>
-
-          <div className="detection-flow">
-            <span>
-              Sound + Vibration
-            </span>
-
-            <i>↓</i>
-
-            <span>
-              ESP32-S3
-            </span>
-
-            <i>↓</i>
-
-            <span>
-              AI CNN
-            </span>
-
-            <i>↓</i>
-
-            <span>
-              FastAPI
-            </span>
-
-            <i>↓</i>
-
-            <span>
-              Pest Guard
-            </span>
-          </div>
+          <div className="monitoring-card-heading"><div><p className="monitoring-card-eyebrow">System path</p><h2>Detection Flow</h2></div><ArrowIcon size={21} /></div>
+          <div className="detection-flow"><span>Sound + Vibration</span><i>↓</i><span>ESP32-S3</span><i>↓</i><span>AI CNN</span><i>↓</i><span>FastAPI</span><i>↓</i><span>Pest Guard</span></div>
         </article>
       </section>
 
-      <p className="monitoring-note">
-        Pest Guard combines field sensing and
-        AI classification to support earlier,
-        more informed crop protection decisions.
-      </p>
+      <p className="monitoring-note">Pest Guard combines field sensing and AI classification to support earlier, more informed crop protection decisions.</p>
     </main>
   )
 }
