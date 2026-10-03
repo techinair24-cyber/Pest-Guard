@@ -410,7 +410,7 @@ async def ai_predict(request: Request):
 
 def send_high_risk_sms(detection):
     """
-    Send HIGH-risk pest alerts to all configured phone numbers.
+    Send a Twilio trial SMS for HIGH-risk pest detections.
     """
 
     if detection.get("risk") != "HIGH":
@@ -418,11 +418,11 @@ def send_high_risk_sms(detection):
 
     account_sid = os.getenv("TWILIO_ACCOUNT_SID")
     auth_token = os.getenv("TWILIO_AUTH_TOKEN")
-    from_number = os.getenv("TWILIO_FROM_NUMBER")
+
     to_number_1 = os.getenv("TWILIO_TO_NUMBER")
     to_number_2 = os.getenv("TWILIO_TO_NUMBER_2")
 
-    if not account_sid or not auth_token or not from_number:
+    if not account_sid or not auth_token:
         print("Twilio is not configured.")
         return
 
@@ -439,22 +439,14 @@ def send_high_risk_sms(detection):
     try:
         client = Client(account_sid, auth_token)
 
-        message_body = (
-            f"Pest Guard ALERT: HIGH risk pest detected. "
-            f"Pest: {detection.get('pest', 'Unknown')}. "
-            f"Confidence: "
-            f"{float(detection.get('confidence', 0)) * 100:.1f}%."
-        )
-
         for recipient in recipients:
             message = client.messages.create(
-                body=message_body,
-                from_=from_number,
+                body="sms_internal_alerts",
                 to=recipient,
             )
 
             print(
-                f"SMS sent to {recipient}. "
+                f"Trial SMS sent to {recipient}. "
                 f"Message SID: {message.sid}"
             )
 
