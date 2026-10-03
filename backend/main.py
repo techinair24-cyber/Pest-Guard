@@ -418,11 +418,12 @@ def send_high_risk_sms(detection):
 
     account_sid = os.getenv("TWILIO_ACCOUNT_SID")
     auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+    from_number = os.getenv("TWILIO_FROM_NUMBER")
 
     to_number_1 = os.getenv("TWILIO_TO_NUMBER")
     to_number_2 = os.getenv("TWILIO_TO_NUMBER_2")
 
-    if not account_sid or not auth_token:
+    if not account_sid or not auth_token or not from_number:
         print("Twilio is not configured.")
         return
 
@@ -442,6 +443,7 @@ def send_high_risk_sms(detection):
         for recipient in recipients:
             message = client.messages.create(
                 body="sms_internal_alerts",
+                from_=from_number,
                 to=recipient,
             )
 
