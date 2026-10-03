@@ -69,7 +69,11 @@ function getFallbackPestName(pest) {
     return ''
   }
 
-  return FALLBACK_COMMON_PEST_NAMES[key] || ''
+  const fallbackEntry = Object.entries(FALLBACK_COMMON_PEST_NAMES).find(
+    ([scientificName]) => normalizePestKey(scientificName) === key,
+  )
+
+  return fallbackEntry?.[1] || ''
 }
 
 
