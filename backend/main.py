@@ -1,3 +1,5 @@
+import os
+from twilio.rest import Client
 import json
 import numpy as np
 import tensorflow as tf
@@ -402,7 +404,62 @@ async def ai_predict(request: Request):
             status_code=500,
             detail=f"AI prediction failed: {str(error)}",
         )
+# -------------------------------------------------------------------
+# SMS ALERT
+# -------------------------------------------------------------------
 
+def send_high_risk_sms(detection):
+    """
+    Send HIGH-risk pest alerts to all configured phone numbers.
+    """
+
+    if detection.get("risk") != "HIGH":
+        return
+
+    account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+    from_number = os.getenv("TWILIO_FROM_NUMBER")
+    to_number_1 = os.getenv("TWILIO_TO_NUMBER")
+    to_number_2 = os.getenv("TWILIO_TO_NUMBER_2")
+
+    if not account_sid or not auth_token or not from_number:
+        print("Twilio is not configured.")
+        return
+
+    recipients = [
+        number
+        for number in [to_number_1, to_number_2]
+        if number
+    ]
+
+    if not recipients:
+        print("No Twilio recipient numbers configured.")
+        return
+
+    try:
+        client = Client(account_sid, auth_token)
+
+        message_body = (
+            f"Pest Guard ALERT: HIGH risk pest detected. "
+            f"Pest: {detection.get('pest', 'Unknown')}. "
+            f"Confidence: "
+            f"{float(detection.get('confidence', 0)) * 100:.1f}%."
+        )
+
+        for recipient in recipients:
+            message = client.messages.create(
+                body=message_body,
+                from_=from_number,
+                to=recipient,
+            )
+
+            print(
+                f"SMS sent to {recipient}. "
+                f"Message SID: {message.sid}"
+            )
+
+    except Exception as error:
+        print("Twilio SMS error:", repr(error))
 # -------------------------------------------------------------------
 # Detection API
 # -------------------------------------------------------------------
@@ -493,6 +550,9 @@ async def create_detection(
             else None
         ),
     }
+
+    # Send SMS only for HIGH-risk detections.
+    send_high_risk_sms(detection_data)
 
     # Send the new detection immediately to connected website clients.
     await manager.broadcast(detection_data)
