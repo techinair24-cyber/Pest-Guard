@@ -1,14 +1,18 @@
+import asyncio
 import os
+import urllib.error
+import urllib.request
 from twilio.rest import Client
 import json
 import numpy as np
 import tensorflow as tf
 from pathlib import Path
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
@@ -95,6 +99,96 @@ def predict_pest(audio):
         "pest": class_names[index],
         "confidence": float(prediction[index])
     }
+
+
+class AISolutionRequest(BaseModel):
+    pest: str = Field(min_length=1, max_length=200)
+    common_name: str = Field(min_length=1, max_length=200)
+    risk: Literal["HIGH", "MEDIUM"]
+    confidence: float = Field(ge=0, le=1)
+
+
+class AISolutionResponse(BaseModel):
+    pest: str
+    common_name: str
+    risk: Literal["HIGH", "MEDIUM"]
+    confidence: float
+    about: str
+    recommended_action: str
+    prevention: str
+    precautions: str
+
+
+def _request_openai_solution(payload: AISolutionRequest) -> dict:
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="AI solution generation is not configured.",
+        )
+
+    prompt = (
+        "You are an agricultural pest-management assistant.\n\n"
+        "The Pest Guard sensor detected this insect:\n\n"
+        f"Common name: {payload.common_name}\n"
+        f"Scientific name: {payload.pest}\n"
+        f"Risk: {payload.risk}\n"
+        f"AI confidence: {payload.confidence:.2f}\n\n"
+        "Generate a concise pest-management response with these JSON string "
+        "fields: about, recommended_action, prevention, precautions.\n\n"
+        "Use the identified pest only. Do not replace it with another species. "
+        "Do not claim certainty when confidence is low. Prefer integrated "
+        "pest-management guidance. Do not recommend dangerous pesticide "
+        "mixing, unsafe dosages, or illegal products. Crop information is "
+        "unavailable, so clearly say that exact treatment depends on the crop "
+        "and local agricultural guidance. Return valid JSON only."
+    )
+    request_body = json.dumps(
+        {
+            "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            "messages": [{"role": "user", "content": prompt}],
+            "response_format": {"type": "json_object"},
+            "temperature": 0.2,
+        }
+    ).encode("utf-8")
+    provider_request = urllib.request.Request(
+        "https://api.openai.com/v1/chat/completions",
+        data=request_body,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(provider_request, timeout=25) as response:
+            provider_data = json.loads(response.read().decode("utf-8"))
+        content = provider_data["choices"][0]["message"]["content"]
+        generated = json.loads(content)
+    except (urllib.error.URLError, TimeoutError, KeyError, IndexError, TypeError, ValueError) as error:
+        raise RuntimeError("AI solution provider returned an invalid or unavailable response.") from error
+
+    required_fields = (
+        "about",
+        "recommended_action",
+        "prevention",
+        "precautions",
+    )
+    if not isinstance(generated, dict) or any(
+        not isinstance(generated.get(field), str) or not generated[field].strip()
+        for field in required_fields
+    ):
+        raise RuntimeError("AI solution provider returned incomplete guidance.")
+
+    return {
+        "pest": payload.pest,
+        "common_name": payload.common_name,
+        "risk": payload.risk,
+        "confidence": payload.confidence,
+        **{field: generated[field].strip() for field in required_fields},
+    }
+
 
 # -------------------------------------------------------------------
 # Database
@@ -404,6 +498,22 @@ async def ai_predict(request: Request):
             status_code=500,
             detail=f"AI prediction failed: {str(error)}",
         )
+
+
+@app.post("/api/ai/solution", response_model=AISolutionResponse)
+async def generate_ai_solution(payload: AISolutionRequest):
+    try:
+        return await asyncio.to_thread(_request_openai_solution, payload)
+    except HTTPException:
+        raise
+    except Exception as error:
+        print("AI solution generation failed:", repr(error))
+        raise HTTPException(
+            status_code=502,
+            detail="AI solution generation is temporarily unavailable. Please try again.",
+        ) from error
+
+
 # -------------------------------------------------------------------
 # SMS ALERT
 # -------------------------------------------------------------------

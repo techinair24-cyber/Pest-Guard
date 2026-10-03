@@ -1,13 +1,45 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { ArrowIcon, LeafIcon, SignalIcon, SparkIcon } from '../components/Icons'
 import { formatTemperature, formatHumidity } from '../utils/formatters'
 import { useLiveDetection } from '../hooks/useLiveDetection'
-import { getPestInfo, getSolution } from '../services/api'
+import { API_BASE_URL, getSolution } from '../services/api'
 import solutionsField from '../assets/solutions-field.jpg'
 import './Solutions.css'
 
+const PEST_DIRECTORY_URL = 'https://pest-guard-1q36.onrender.com/api/pests'
+
+function normalizePestName(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+}
+
+async function generateAISolution(payload) {
+  let response
+
+  try {
+    response = await fetch(`${API_BASE_URL}/api/ai/solution`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+  } catch (requestError) {
+    throw new Error(`Unable to connect to AI solution service: ${requestError.message}`)
+  }
+
+  const data = await response.json().catch(() => null)
+  if (!response.ok) {
+    throw new Error(
+      data?.detail || `AI solution request failed with status ${response.status}.`,
+    )
+  }
+
+  return data
+}
+
 function Solutions() {
+  const location = useLocation()
   const { detection, loading: detectionLoading } = useLiveDetection()
   const [solution, setSolution] = useState(null)
   const [pest, setPest] = useState(null)
@@ -15,11 +47,25 @@ function Solutions() {
   const [error, setError] = useState('')
   const [retryKey, setRetryKey] = useState(0)
 
+  const queryPest = new URLSearchParams(location.search).get('pest')?.trim()
+  const requestedPest = queryPest || detection?.pest || ''
+  const risk = String(detection?.risk || '').toUpperCase()
+  const status = String(detection?.status || '').toUpperCase()
+  const isLowRisk = risk === 'LOW'
+  const solutionRisk = isLowRisk
+    ? null
+    : risk === 'HIGH' || status === 'HARMFUL_PEST'
+      ? 'HIGH'
+      : risk === 'MEDIUM' || status === 'UNKNOWN'
+        ? 'MEDIUM'
+        : null
+  const canShowGuidance = Boolean(solutionRisk)
+
   useEffect(() => {
     let active = true
 
     async function loadLiveSolution() {
-      if (!detection?.pest) {
+      if (!requestedPest) {
         setSolution(null)
         setPest(null)
         setError('')
@@ -33,34 +79,92 @@ function Solutions() {
       setPest(null)
 
       try {
-        const [solutionResult, pestResult] = await Promise.allSettled([
-          getSolution(detection.pest),
-          getPestInfo(detection.pest),
-        ])
+        const pestResponse = await fetch(PEST_DIRECTORY_URL)
+        if (!pestResponse.ok) {
+          throw new Error(`Pest directory request failed with status ${pestResponse.status}.`)
+        }
+
+        const pestData = await pestResponse.json()
+        const normalizedDetection = normalizePestName(requestedPest)
+        const nextPest = (Array.isArray(pestData?.pests) ? pestData.pests : []).find(
+          (item) =>
+            [item?.scientific_name, item?.name, item?.pest_id].some(
+              (value) => normalizePestName(value) === normalizedDetection,
+            ),
+        )
 
         if (!active) return
 
-        const nextSolution =
-          solutionResult.status === 'fulfilled'
-            ? solutionResult.value?.solution || solutionResult.value
-            : null
+        if (!nextPest) {
+          setError(`No pest record was found for "${requestedPest}".`)
+          return
+        }
 
-        const nextPest =
-          pestResult.status === 'fulfilled' ? pestResult.value : null
-
-        setSolution(nextSolution)
         setPest(nextPest)
 
-        if (!nextSolution) {
+        if (!canShowGuidance) {
+          return
+        }
+
+        if (!nextPest.pest_id) {
+          setError('The matched pest record does not include a pest ID.')
+          return
+        }
+
+        const scientificName = nextPest.scientific_name || requestedPest
+        const commonName =
+          nextPest.name &&
+          normalizePestName(nextPest.name) !== normalizePestName(scientificName)
+            ? nextPest.name
+            : 'Detected pest'
+
+        let nextSolution = null
+        try {
+          const solutionResult = await getSolution(nextPest.pest_id)
+          if (!active) return
+
+          nextSolution = solutionResult?.solution ?? null
+        } catch (solutionError) {
+          if (!/solution not found|status 404/i.test(solutionError.message || '')) {
+            throw solutionError
+          }
+        }
+
+        if (!active) return
+
+        if (nextSolution) {
+          setSolution(nextSolution)
+          return
+        }
+
+        if (!solutionRisk) {
+          setError('No treatment guidance is available for this detection risk.')
+          return
+        }
+
+        try {
+          const generatedSolution = await generateAISolution({
+            pest: scientificName,
+            common_name: commonName,
+            risk: solutionRisk,
+            confidence: Number.isFinite(Number(detection?.confidence))
+              ? Number(detection.confidence)
+              : 0,
+          })
+
+          if (!active) return
+          setSolution({ ...generatedSolution, generated: true })
+        } catch (aiError) {
+          if (!active) return
           setError(
-            'A live AI prediction was received, but detailed curated solution guidance is not available for this model class yet.',
+            `No curated solution is available, and AI guidance could not be generated: ${aiError.message}`,
           )
         }
-      } catch {
+      } catch (loadError) {
         if (active) {
           setSolution(null)
           setPest(null)
-          setError('Unable to load the live pest solution information.')
+          setError(`Unable to load pest information: ${loadError.message}`)
         }
       } finally {
         if (active) {
@@ -74,7 +178,7 @@ function Solutions() {
     return () => {
       active = false
     }
-  }, [detection?.pest, detection?.status, retryKey])
+  }, [requestedPest, solutionRisk, detection?.confidence, retryKey])
 
   const isLoading = detectionLoading || loadingSolution
   const hasLiveDetection = Boolean(detection?.pest)
@@ -90,7 +194,16 @@ function Solutions() {
         ? 'NON-PEST'
         : 'AI PREDICTION'
 
-  const pestName = pest?.name || detection?.pest || 'Detected insect'
+  const scientificName = pest?.scientific_name || requestedPest
+  const commonName =
+    pest?.name &&
+    normalizePestName(pest.name) !== normalizePestName(scientificName)
+      ? pest.name
+      : 'Detected pest'
+  const pestName = scientificName
+    ? `${commonName} (${scientificName})`
+    : commonName
+  const riskLabel = detection?.risk || pest?.risk || statusLabel
 
   return (
     <div className="solutions-page">
@@ -149,9 +262,9 @@ function Solutions() {
               </div>
 
               <div className="risk-block">
-                <span>Status</span>
-                <strong className={`risk-${String(detection.risk || 'unknown').toLowerCase()}`}>
-                  {statusLabel}
+                <span>Risk</span>
+                <strong className={`risk-${String(riskLabel).toLowerCase()}`}>
+                  {riskLabel}
                 </strong>
               </div>
             </div>
@@ -172,25 +285,31 @@ function Solutions() {
               </div>
             </div>
 
-            {pest && (
+            {isLowRisk ? (
+              <div className="solution-error">
+                <p>No treatment guidance shown because this detection is low risk.</p>
+                {error && <p>{error}</p>}
+              </div>
+            ) : canShowGuidance && solution ? (
               <div className="solution-sections">
                 <section>
                   <span className="section-number">01</span>
                   <div>
                     <h3>About this pest</h3>
-                    <p>{pest.description}</p>
+                    <p>
+                      {solution.about ||
+                        pest?.description ||
+                        solution.description ||
+                        'Not available.'}
+                    </p>
                   </div>
                 </section>
-              </div>
-            )}
 
-            {solution ? (
-              <div className="solution-sections">
                 <section>
                   <span className="section-number">02</span>
                   <div>
                     <h3>Recommended action</h3>
-                    <p>{solution.recommended_action}</p>
+                    <p>{solution.recommended_action || 'Not available.'}</p>
                   </div>
                 </section>
 
@@ -198,14 +317,26 @@ function Solutions() {
                   <span className="section-number">03</span>
                   <div>
                     <h3>Prevention</h3>
-                    <p>{solution.prevention}</p>
+                    <p>{solution.prevention || 'Not available.'}</p>
                   </div>
                 </section>
+
+                {solution.generated && (
+                  <section>
+                    <span className="section-number">04</span>
+                    <div>
+                      <h3>Precautions</h3>
+                      <p>{solution.precautions || 'Not available.'}</p>
+                    </div>
+                  </section>
+                )}
               </div>
-            ) : (
+            ) : error ? (
               <div className="solution-error">
                 <p>{error}</p>
               </div>
+            ) : (
+              null
             )}
 
             <Link className="solutions-button" to="/live-monitoring">
