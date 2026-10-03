@@ -13,8 +13,15 @@ const DEVICE_ID =
 const DEVICE_CACHE_KEY =
   'pest_guard_device_status'
 
-const DEVICE_STALE_MS =
-  3 * 1000
+const DETECTION_CACHE_KEY =
+  'pest_guard_latest_detection'
+
+/*
+ * ESP32 heartbeat is every 3 seconds.
+ * Keep a wider window so normal network/render delay
+ * does not make the UI flicker Offline.
+ */
+const DEVICE_STALE_MS = 10 * 1000
 
 function parseServerTimestamp(value) {
   if (!value) {
@@ -31,18 +38,11 @@ function parseServerTimestamp(value) {
     /[zZ]|[+-]\d{2}:\d{2}$/.test(text)
 
   const normalizedText =
-    hasTimezone
-      ? text
-      : `${text}Z`
+    hasTimezone ? text : `${text}Z`
 
-  const date =
-    new Date(normalizedText)
+  const date = new Date(normalizedText)
 
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
+  if (Number.isNaN(date.getTime())) {
     return null
   }
 
@@ -54,24 +54,17 @@ function isDeviceFresh(device) {
     return false
   }
 
-  const lastSeen =
-    parseServerTimestamp(
-      device.last_seen ||
-        device.lastSeen,
-    )
+  const lastSeen = parseServerTimestamp(
+    device.last_seen || device.lastSeen,
+  )
 
   if (!lastSeen) {
     return false
   }
 
-  const age =
-    Date.now() -
-    lastSeen.getTime()
+  const age = Date.now() - lastSeen.getTime()
 
-  return (
-    age >= 0 &&
-    age <= DEVICE_STALE_MS
-  )
+  return age >= 0 && age <= DEVICE_STALE_MS
 }
 
 function normalizeDevice(device) {
@@ -79,54 +72,38 @@ function normalizeDevice(device) {
     return null
   }
 
-  const fresh =
-    isDeviceFresh(device)
+  const fresh = isDeviceFresh(device)
 
   return {
     ...device,
 
-    status:
-      fresh
-        ? (
-            device.status ||
-            'ONLINE'
-          )
-        : 'OFFLINE',
+    status: fresh
+      ? (device.status || 'ONLINE')
+      : 'OFFLINE',
 
-    connection:
-      fresh
-        ? (
-            device.connection ||
-            'CONNECTED'
-          )
-        : 'DISCONNECTED',
+    connection: fresh
+      ? (device.connection || 'CONNECTED')
+      : 'DISCONNECTED',
   }
 }
 
 function getCachedDevice() {
   try {
-    const cached =
-      window.localStorage.getItem(
-        DEVICE_CACHE_KEY,
-      )
+    const cached = window.localStorage.getItem(
+      DEVICE_CACHE_KEY,
+    )
 
     if (!cached) {
       return null
     }
 
-    const device =
-      JSON.parse(cached)
+    const device = JSON.parse(cached)
 
-    if (
-      !device ||
-      !device.device_id
-    ) {
+    if (!device || !device.device_id) {
       return null
     }
 
-    return normalizeDevice(
-      device,
-    )
+    return normalizeDevice(device)
   } catch {
     return null
   }
@@ -147,141 +124,154 @@ function cacheDevice(device) {
   }
 }
 
+function getCachedDetection() {
+  try {
+    const cached = window.localStorage.getItem(
+      DETECTION_CACHE_KEY,
+    )
+
+    if (!cached) {
+      return null
+    }
+
+    const detection = JSON.parse(cached)
+
+    if (!detection || typeof detection !== 'object') {
+      return null
+    }
+
+    return detection
+  } catch {
+    return null
+  }
+}
+
+function cacheDetection(detection) {
+  if (!detection) {
+    return
+  }
+
+  try {
+    window.localStorage.setItem(
+      DETECTION_CACHE_KEY,
+      JSON.stringify(detection),
+    )
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
 export function useLiveDetection() {
-  const mountedRef =
-    useRef(false)
+  const mountedRef = useRef(false)
 
-  const [liveStatus, setLiveStatus] =
-    useState(() => ({
-      detection: null,
-      device: getCachedDevice(),
-    }))
+  const [liveStatus, setLiveStatus] = useState(() => ({
+    detection: getCachedDetection(),
+    device: getCachedDevice(),
+  }))
 
-  const [loading, setLoading] =
-    useState(() => {
-      const cached =
-        getCachedDevice()
+  const [loading, setLoading] = useState(() => {
+    return !getCachedDevice()
+  })
 
-      return !cached
-    })
+  const [error, setError] = useState(null)
 
-  const [error, setError] =
-    useState(null)
+  const updateDeviceStatus = async () => {
+    try {
+      const response = await getDeviceStatusById(
+        DEVICE_ID,
+      )
 
-  const updateDeviceStatus =
-    async () => {
-      try {
-        const response =
-          await getDeviceStatusById(
-            DEVICE_ID,
-          )
-
-        if (!mountedRef.current) {
-          return
-        }
-
-        if (!response) {
-          throw new Error(
-            'Pest Guard device status was empty.',
-          )
-        }
-
-        const normalizedDevice =
-          normalizeDevice(
-            response,
-          )
-
-        cacheDevice(
-          normalizedDevice,
-        )
-
-        setLiveStatus(
-          (current) => ({
-            ...current,
-            device:
-              normalizedDevice,
-          }),
-        )
-
-        setError(null)
-        setLoading(false)
-      } catch (deviceError) {
-        if (!mountedRef.current) {
-          return
-        }
-
-        console.error(
-          'Unable to update device status:',
-          deviceError,
-        )
-
-        setLiveStatus(
-          (current) => {
-            if (!current.device) {
-              return current
-            }
-
-            const refreshedDevice =
-              normalizeDevice(
-                current.device,
-              )
-
-            cacheDevice(
-              refreshedDevice,
-            )
-
-            return {
-              ...current,
-              device:
-                refreshedDevice,
-            }
-          },
-        )
-
-        setError(deviceError)
-        setLoading(false)
+      if (!mountedRef.current) {
+        return
       }
-    }
 
-  const loadLatestDetection =
-    async () => {
-      try {
-        const response =
-          await getLatestDetection()
-
-        if (!mountedRef.current) {
-          return
-        }
-
-        setLiveStatus(
-          (current) => ({
-            ...current,
-            detection:
-              response?.detection ||
-              null,
-          }),
-        )
-      } catch (
-        detectionError
-      ) {
-        if (!mountedRef.current) {
-          return
-        }
-
-        console.error(
-          'Unable to load latest detection:',
-          detectionError,
+      if (!response) {
+        throw new Error(
+          'Pest Guard device status was empty.',
         )
       }
-    }
 
-  const loadInitialData =
-    async () => {
-      await Promise.allSettled([
-        updateDeviceStatus(),
-        loadLatestDetection(),
-      ])
+      const normalizedDevice = normalizeDevice(
+        response,
+      )
+
+      cacheDevice(normalizedDevice)
+
+      setLiveStatus((current) => ({
+        ...current,
+        device: normalizedDevice,
+      }))
+
+      setError(null)
+      setLoading(false)
+    } catch (deviceError) {
+      if (!mountedRef.current) {
+        return
+      }
+
+      console.error(
+        'Unable to update device status:',
+        deviceError,
+      )
+
+      /*
+       * Keep the last known device state during a
+       * temporary request failure. Do not immediately
+       * flip the UI to Offline.
+       */
+      setLiveStatus((current) => current)
+
+      setError(deviceError)
+      setLoading(false)
     }
+  }
+
+  const loadLatestDetection = async () => {
+    try {
+      const response = await getLatestDetection()
+
+      if (!mountedRef.current) {
+        return
+      }
+
+      const incomingDetection =
+        response?.detection || null
+
+      /*
+       * IMPORTANT:
+       * Never erase the current detection just because
+       * the backend temporarily returns null.
+       */
+      if (incomingDetection) {
+        cacheDetection(incomingDetection)
+
+        setLiveStatus((current) => ({
+          ...current,
+          detection: incomingDetection,
+        }))
+      }
+    } catch (detectionError) {
+      if (!mountedRef.current) {
+        return
+      }
+
+      console.error(
+        'Unable to load latest detection:',
+        detectionError,
+      )
+
+      /*
+       * Keep the last valid detection.
+       */
+    }
+  }
+
+  const loadInitialData = async () => {
+    await Promise.allSettled([
+      updateDeviceStatus(),
+      loadLatestDetection(),
+    ])
+  }
 
   useEffect(() => {
     mountedRef.current = true
@@ -293,7 +283,7 @@ export function useLiveDetection() {
         () => {
           loadLatestDetection()
         },
-        10000,
+        5000,
       )
 
     const deviceRefreshTimer =
@@ -306,18 +296,12 @@ export function useLiveDetection() {
 
     const disconnect =
       connectDetectionSocket(
-        async (
-          incomingDetection,
-        ) => {
-          if (
-            !mountedRef.current
-          ) {
+        async (incomingDetection) => {
+          if (!mountedRef.current) {
             return
           }
 
-          if (
-            !incomingDetection
-          ) {
+          if (!incomingDetection) {
             return
           }
 
@@ -326,13 +310,15 @@ export function useLiveDetection() {
             incomingDetection,
           )
 
-          setLiveStatus(
-            (current) => ({
-              ...current,
-              detection:
-                incomingDetection,
-            }),
-          )
+          /*
+           * Save every new real detection immediately.
+           */
+          cacheDetection(incomingDetection)
+
+          setLiveStatus((current) => ({
+            ...current,
+            detection: incomingDetection,
+          }))
 
           setError(null)
 
@@ -340,15 +326,11 @@ export function useLiveDetection() {
         },
 
         (socketState) => {
-          if (
-            !mountedRef.current
-          ) {
+          if (!mountedRef.current) {
             return
           }
 
-          if (
-            socketState === 'error'
-          ) {
+          if (socketState === 'error') {
             console.error(
               'Detection WebSocket error',
             )
@@ -372,14 +354,9 @@ export function useLiveDetection() {
   }, [])
 
   return {
-    detection:
-      liveStatus.detection,
-
-    device:
-      liveStatus.device,
-
+    detection: liveStatus.detection,
+    device: liveStatus.device,
     loading,
-
     error,
   }
 }
