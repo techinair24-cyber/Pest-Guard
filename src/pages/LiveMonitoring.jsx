@@ -24,6 +24,7 @@ const FALLBACK_COMMON_PEST_NAMES = {
   Chorthippusvagans: 'Heath Grasshopper',
   Pseudochorthippusparallelus: 'Meadow Grasshopper',
   Oecanthuspellucens: 'European Tree Cricket',
+  Roeselianaroeselii: "Roesel's Bush-cricket",
 }
 
 function normalizePestKey(value) {
@@ -95,6 +96,39 @@ function getStoredClearTime() {
 
 function getDetectionTime(item) {
   return item?.detected_at || item?.timestamp || item?.created_at || null
+}
+
+function parseServerTimestamp(value) {
+  if (!value) {
+    return NaN
+  }
+
+  const text = String(value).trim()
+
+  if (!text) {
+    return NaN
+  }
+
+  const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(text)
+  const normalized = hasTimezone ? text : `${text}Z`
+  const timestamp = new Date(normalized).getTime()
+
+  return Number.isFinite(timestamp) ? timestamp : NaN
+}
+
+function isAfterHistoryClear(item, clearedAt) {
+  if (!clearedAt) {
+    return true
+  }
+
+  const clearedAtMs = parseServerTimestamp(clearedAt)
+  const detectionTimeMs = parseServerTimestamp(getDetectionTime(item))
+
+  if (!Number.isFinite(clearedAtMs)) {
+    return true
+  }
+
+  return Number.isFinite(detectionTimeMs) && detectionTimeMs > clearedAtMs
 }
 
 function HealthIcon({ size = 18 }) {
@@ -351,17 +385,55 @@ function LiveMonitoring() {
           return
         }
 
-        const clearedAtMs = historyClearedAt ? new Date(historyClearedAt).getTime() : NaN
         const detections = Array.isArray(response?.detections) ? response.detections : []
 
-        const visibleDetections = Number.isFinite(clearedAtMs)
-          ? detections.filter((item) => {
-              const detectionTime = new Date(getDetectionTime(item) || '').getTime()
-              return Number.isFinite(detectionTime) && detectionTime > clearedAtMs
-            })
+        const visibleDetections = historyClearedAt
+          ? detections.filter((item) => isAfterHistoryClear(item, historyClearedAt))
           : detections
 
-        setHistory(visibleDetections)
+        setHistory((current) => {
+          const currentVisible =
+            historyFilter === 'ALL'
+              ? current
+              : current.filter((item) => item.status === historyFilter)
+
+          const combined = [...currentVisible, ...visibleDetections]
+          const seen = new Set()
+
+          return combined
+            .filter((item) => {
+              const key =
+                item.id ??
+                item.detected_at ??
+                item.timestamp ??
+                `${item.device_id || 'device'}-${item.pest || 'unknown'}`
+
+              if (seen.has(String(key))) {
+                return false
+              }
+
+              seen.add(String(key))
+              return true
+            })
+            .sort((a, b) => {
+              const aTime = parseServerTimestamp(getDetectionTime(a))
+              const bTime = parseServerTimestamp(getDetectionTime(b))
+
+              if (!Number.isFinite(aTime) && !Number.isFinite(bTime)) {
+                return 0
+              }
+
+              if (!Number.isFinite(aTime)) {
+                return 1
+              }
+
+              if (!Number.isFinite(bTime)) {
+                return -1
+              }
+
+              return bTime - aTime
+            })
+        })
       } catch (historyFetchError) {
         if (!active) {
           return
@@ -426,10 +498,7 @@ function LiveMonitoring() {
       return
     }
 
-    const clearedAtMs = historyClearedAt ? new Date(historyClearedAt).getTime() : NaN
-    const detectionTime = new Date(getDetectionTime(detection) || '').getTime()
-
-    if (Number.isFinite(clearedAtMs) && (!Number.isFinite(detectionTime) || detectionTime <= clearedAtMs)) {
+    if (!isAfterHistoryClear(detection, historyClearedAt)) {
       return
     }
 
@@ -447,7 +516,34 @@ function LiveMonitoring() {
   }, [detection, historyClearedAt])
 
   const filters = ['ALL', 'HARMFUL_PEST', 'NON_PEST', 'UNKNOWN']
-  const filteredHistory = history.filter((item) => {
+
+  const historyWithLiveDetection = (() => {
+    const merged = [...history]
+
+    if (detection && isAfterHistoryClear(detection, historyClearedAt)) {
+      const detectionKey = detection.id ?? detection.detected_at ?? detection.timestamp
+      const alreadyExists = merged.some(
+        (item) =>
+          (item.id ?? item.detected_at ?? item.timestamp) === detectionKey,
+      )
+
+      if (!alreadyExists) {
+        merged.unshift(detection)
+      }
+    }
+
+    return merged.sort((a, b) => {
+      const aTime = parseServerTimestamp(getDetectionTime(a))
+      const bTime = parseServerTimestamp(getDetectionTime(b))
+
+      if (!Number.isFinite(aTime) && !Number.isFinite(bTime)) return 0
+      if (!Number.isFinite(aTime)) return 1
+      if (!Number.isFinite(bTime)) return -1
+      return bTime - aTime
+    })
+  })()
+
+  const filteredHistory = historyWithLiveDetection.filter((item) => {
     if (historyFilter === 'ALL') {
       return true
     }
