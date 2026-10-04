@@ -847,6 +847,45 @@ function Solutions() {
 
   const riskLabel = detection?.risk || pest?.risk || statusLabel
 
+  const handleClearHistory = async () => {
+    if (!confirmClearHistory) {
+      setConfirmClearHistory(true)
+      setClearHistoryError('')
+      return
+    }
+
+    setClearingHistory(true)
+    setClearHistoryError('')
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/solutions/history/high-risk`,
+        {
+          method: 'DELETE',
+        },
+      )
+
+      const data = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        throw new Error(
+          data?.detail ||
+            `Clear history failed with status ${response.status}.`,
+        )
+      }
+
+      setHighRiskHistory([])
+      setConfirmClearHistory(false)
+    } catch (clearError) {
+      setClearHistoryError(
+        clearError.message || 'Unable to clear HIGH-risk solution history.',
+      )
+      setConfirmClearHistory(false)
+    } finally {
+      setClearingHistory(false)
+    }
+  }
+
 
 
 
