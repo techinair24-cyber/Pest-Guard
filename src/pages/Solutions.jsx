@@ -927,11 +927,9 @@ function Solutions() {
                         borderTop: '1px solid rgba(20, 70, 57, 0.10)',
                       }}
                     >
-                      {item.solution_title && (
-                        <h4 style={{ margin: '22px 0 10px', fontSize: '1.05rem' }}>
-                          {item.solution_title}
-                        </h4>
-                      )}
+                      <h4 style={{ margin: '22px 0 10px', fontSize: '1.05rem' }}>
+                        {historyName} HIGH Risk AI Solution
+                      </h4>
 
                       {item.solution_description && (
                         <div style={{ marginBottom: '18px' }}>
@@ -953,6 +951,11 @@ function Solutions() {
                           <p>{item.prevention}</p>
                         </div>
                       )}
+
+                      <div style={{ marginBottom: '18px' }}>
+                        <p className="card-eyebrow">Precautions</p>
+                        <p>{item.precautions || 'Do not mix pesticides or use unlabelled products. Any chemical treatment must be selected for the specific crop and pest and used exactly according to the local product label and agricultural guidance.'}</p>
+                      </div>
 
                       {item.temperature != null || item.humidity != null ? (
                         <div
