@@ -1266,21 +1266,53 @@ async def create_detection(
     db.add(detection)
     db.flush()
 
-    # Save HIGH-risk detections with the solution available at detection time.
+    # Save every HIGH-risk detection together with the solution that was
+    # available at detection time. If curated guidance is unavailable and
+    # OpenAI is unavailable, keep a safe built-in fallback so the history
+    # record is never saved without solution content.
     if payload.risk == "HIGH":
         pest_record = None
-        if payload.pest:
-            pest_record = (db.query(Pest).filter(
-                (Pest.pest_id == payload.pest) |
-                (Pest.name == payload.pest) |
-                (Pest.scientific_name == payload.pest)
-            ).first())
 
-        common_name = pest_record.name if pest_record else payload.pest
+        if payload.pest:
+            pest_record = (
+                db.query(Pest)
+                .filter(
+                    (Pest.pest_id == payload.pest)
+                    | (Pest.name == payload.pest)
+                    | (Pest.scientific_name == payload.pest)
+                )
+                .first()
+            )
+
+        # Also try the seeded pest data directly. This keeps the resolver
+        # useful even if the database does not yet contain a matching row.
+        if not pest_record and payload.pest:
+            for item in PEST_DATA:
+                if (
+                    item.get("pest_id") == payload.pest
+                    or item.get("name") == payload.pest
+                    or item.get("scientific_name") == payload.pest
+                ):
+                    pest_record = Pest(
+                        pest_id=item.get("pest_id"),
+                        name=item.get("name") or payload.pest,
+                        scientific_name=item.get("scientific_name"),
+                        description=item.get("description"),
+                        risk=item.get("risk"),
+                        symptoms=item.get("symptoms"),
+                    )
+                    break
+
+        common_name = pest_record.name if pest_record else (payload.pest or "Unknown pest")
         pest_id = pest_record.pest_id if pest_record else None
+
         solution_record = None
         if pest_id:
-            solution_record = db.query(Solution).filter(Solution.pest_id == pest_id).first()
+            solution_record = (
+                db.query(Solution)
+                .filter(Solution.pest_id == pest_id)
+                .first()
+            )
 
         solution_title = None
         solution_description = None
@@ -1288,37 +1320,92 @@ async def create_detection(
         prevention = None
 
         if solution_record:
+            # Preferred path: use the curated solution already stored in DB.
             solution_title = solution_record.title
             solution_description = solution_record.description
             recommended_action = solution_record.recommended_action
             prevention = solution_record.prevention
         else:
+            # Second path: generate the same type of guidance used by the
+            # Solutions page.
             try:
                 ai_solution_payload = AISolutionRequest(
-                    pest=payload.pest or common_name or "Unknown pest",
-                    common_name=common_name or payload.pest or "Unknown pest",
+                    pest=payload.pest or common_name,
+                    common_name=common_name,
                     risk="HIGH",
                     confidence=payload.confidence or 0.0,
                     pest_id=pest_id or "",
-                    pest_description=pest_record.description if pest_record else "",
-                    pest_symptoms=pest_record.symptoms if pest_record else "",
+                    pest_description=(
+                        pest_record.description if pest_record else ""
+                    ),
+                    pest_symptoms=(
+                        pest_record.symptoms if pest_record else ""
+                    ),
                 )
-                generated_solution = await asyncio.to_thread(_request_openai_solution, ai_solution_payload)
+
+                generated_solution = await asyncio.to_thread(
+                    _request_openai_solution,
+                    ai_solution_payload,
+                )
+
                 solution_title = f"{common_name} HIGH Risk Solution"
                 solution_description = generated_solution.get("about")
-                recommended_action = generated_solution.get("recommended_action")
+                recommended_action = generated_solution.get(
+                    "recommended_action"
+                )
                 prevention = generated_solution.get("prevention")
-            except Exception as error:
-                print("HIGH-risk solution generation failed:", repr(error))
 
-        db.add(HighRiskSolutionHistory(
-            detection_id=detection.id, device_id=payload.device_id, pest_id=pest_id,
-            pest=payload.pest, common_name=common_name, image_url=None, risk="HIGH",
-            confidence=payload.confidence, temperature=payload.temperature,
-            humidity=payload.humidity, solution_title=solution_title,
-            solution_description=solution_description, recommended_action=recommended_action,
-            prevention=prevention, detected_at=detected_time,
-        ))
+            except Exception as error:
+                # Final fallback: do not leave the saved HIGH-risk alert
+                # without guidance just because the external AI provider
+                # is temporarily unavailable.
+                print(
+                    "HIGH-risk AI solution generation failed; "
+                    "using built-in fallback:",
+                    repr(error),
+                )
+
+                solution_title = f"{common_name} HIGH Risk Safety Guidance"
+                solution_description = (
+                    f"A HIGH-risk detection was recorded for {common_name}. "
+                    "Confirm the pest in the field before treatment and "
+                    "inspect affected plants for feeding damage or visible "
+                    "insects."
+                )
+                recommended_action = (
+                    "Isolate the affected area if practical, inspect nearby "
+                    "plants, remove heavily affected plant material where "
+                    "appropriate, and use an integrated pest-management "
+                    "method recommended for the crop and confirmed pest."
+                )
+                prevention = (
+                    "Continue field monitoring, remove suitable pest habitat "
+                    "where practical, maintain crop hygiene, and follow local "
+                    "agricultural guidance for the confirmed pest and crop."
+                )
+
+        db.add(
+            HighRiskSolutionHistory(
+                detection_id=detection.id,
+                device_id=payload.device_id,
+                pest_id=pest_id,
+                pest=payload.pest,
+                common_name=common_name,
+                # Pest images are owned by the Vercel frontend asset mapping.
+                # The Solutions page resolves the correct image from the
+                # stored pest/model name when image_url is not present.
+                image_url=None,
+                risk="HIGH",
+                confidence=payload.confidence,
+                temperature=payload.temperature,
+                humidity=payload.humidity,
+                solution_title=solution_title,
+                solution_description=solution_description,
+                recommended_action=recommended_action,
+                prevention=prevention,
+                detected_at=detected_time,
+            )
+        )
 
     # Update device information from the detection.
 
