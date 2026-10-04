@@ -114,3 +114,96 @@ class Solution(Base):
         default=datetime.utcnow,
         nullable=False,
     )
+
+
+class HighRiskSolutionHistory(Base):
+    __tablename__ = "high_risk_solution_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    detection_id = Column(
+        Integer,
+        index=True,
+        nullable=False,
+    )
+
+    device_id = Column(
+        String(100),
+        index=True,
+        nullable=False,
+    )
+
+    pest_id = Column(
+        String(100),
+        index=True,
+        nullable=True,
+    )
+
+    pest = Column(
+        String(150),
+        nullable=True,
+    )
+
+    common_name = Column(
+        String(150),
+        nullable=True,
+    )
+
+    image_url = Column(
+        String(500),
+        nullable=True,
+    )
+
+    risk = Column(
+        String(50),
+        nullable=False,
+        default="HIGH",
+    )
+
+    confidence = Column(
+        Float,
+        nullable=True,
+    )
+
+    temperature = Column(
+        Float,
+        nullable=True,
+    )
+
+    humidity = Column(
+        Float,
+        nullable=True,
+    )
+
+    solution_title = Column(
+        String(200),
+        nullable=True,
+    )
+
+    solution_description = Column(
+        Text,
+        nullable=True,
+    )
+
+    recommended_action = Column(
+        Text,
+        nullable=True,
+    )
+
+    prevention = Column(
+        Text,
+        nullable=True,
+    )
+
+    detected_at = Column(
+        DateTime,
+        nullable=False,
+        index=True,
+    )
+
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+        index=True,
+    )

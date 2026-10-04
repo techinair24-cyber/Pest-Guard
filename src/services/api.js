@@ -115,6 +115,26 @@ export const getDetectionHistory = async (params = {}) => {
   return data
 }
 
+export const getHighRiskSolutionHistory = async (
+  params = {},
+) => {
+  const query = new URLSearchParams()
+
+  if (params.limit) {
+    query.set('limit', params.limit)
+  }
+
+  const queryString = query.toString()
+
+  const data = await request(
+    `/api/solutions/history/high-risk${
+      queryString ? `?${queryString}` : ''
+    }`,
+  )
+
+  return data.history || []
+}
+
 export const sendDetection = (payload) =>
   request('/api/device/detection', {
     method: 'POST',
