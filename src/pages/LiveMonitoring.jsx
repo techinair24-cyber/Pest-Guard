@@ -4,78 +4,12 @@ import { useNavigate } from 'react-router-dom'
 import { useLiveDetection } from '../hooks/useLiveDetection'
 import { ArrowIcon, LeafIcon, SparkIcon } from '../components/Icons'
 import { getDetectionHistory, getPests } from '../services/api'
+import { buildPestDirectory, getDisplayPestName } from '../utils/pestNames'
 import './LiveMonitoring.css'
 
 const HISTORY_CLEAR_KEY = 'pest_guard_history_cleared_at'
+const ALERTED_DETECTIONS_KEY = 'pest_guard_alerted_detection_keys'
 const WEATHER_CACHE_KEY = 'pest_guard_online_weather'
-
-const FALLBACK_COMMON_PEST_NAMES = {
-  Popplepsaltanotialis: 'Cicada',
-  Yoyettarepetens: 'Cicada',
-  Yoyettacelis: 'Cicada',
-  Neotibicenpruinosus: 'Cicada',
-  Atrapsaltaencaustica: 'Cicada',
-  Achetadomesticus: 'House Cricket',
-  Grylluscampestris: 'Field Cricket',
-  Gryllusbimaculatus: 'Two-spotted Cricket',
-  Chorthippusvagans: 'Heath Grasshopper',
-  Pseudochorthippusparallelus: 'Meadow Grasshopper',
-  Oecanthuspellucens: 'European Tree Cricket',
-  Roeselianaroeselii: "Roesel's Bush-cricket",
-}
-
-function normalizePestKey(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '')
-}
-
-function buildPestDirectory(items) {
-  const directory = {}
-
-  if (!Array.isArray(items)) {
-    return directory
-  }
-
-  items.forEach((item) => {
-    const commonName = String(item?.name || '').trim()
-    const scientificName = String(item?.scientific_name || '').trim()
-    const pestId = String(item?.pest_id || '').trim()
-
-    const entry = {
-      commonName:
-        commonName &&
-        normalizePestKey(commonName) !== normalizePestKey(scientificName)
-          ? commonName
-          : '',
-      scientificName,
-    }
-
-    ;[commonName, scientificName, pestId].forEach((candidate) => {
-      const key = normalizePestKey(candidate)
-      if (key) {
-        directory[key] = entry
-      }
-    })
-  })
-
-  return directory
-}
-
-function getFallbackPestName(pest) {
-  const key = normalizePestKey(pest)
-  if (!key) {
-    return ''
-  }
-
-  const fallbackEntry = Object.entries(FALLBACK_COMMON_PEST_NAMES).find(
-    ([scientificName]) => normalizePestKey(scientificName) === key,
-  )
-
-  return fallbackEntry?.[1] || ''
-}
-
 
 function formatOnlineTemperature(value) {
   const number = Number(value)
@@ -92,6 +26,17 @@ function getStoredClearTime() {
     return window.localStorage.getItem(HISTORY_CLEAR_KEY) || ''
   } catch {
     return ''
+  }
+}
+
+function getStoredAlertedKeys() {
+  try {
+    const storedKeys = JSON.parse(
+      window.localStorage.getItem(ALERTED_DETECTIONS_KEY) || '[]',
+    )
+    return new Set(Array.isArray(storedKeys) ? storedKeys.map(String) : [])
+  } catch {
+    return new Set()
   }
 }
 
@@ -240,7 +185,7 @@ function getConfidenceTone(value) {
 
 function LiveMonitoring() {
   const navigate = useNavigate()
-  const { detection, newDetection, device, loading, error } = useLiveDetection()
+  const { detection, device, loading, error } = useLiveDetection()
   const [history, setHistory] = useState([])
   const [historyFilter, setHistoryFilter] = useState('ALL')
   const [historyLimit, setHistoryLimit] = useState(8)
@@ -248,7 +193,7 @@ function LiveMonitoring() {
   const [historyClearedAt, setHistoryClearedAt] = useState(() => getStoredClearTime())
   const [popup, setPopup] = useState(null)
   const [pestDirectory, setPestDirectory] = useState({})
-  const alertedKeysRef = useRef(new Set())
+  const alertedKeysRef = useRef(getStoredAlertedKeys())
 
   const liveDetection = detection || history[0] || null
   const liveDevice = device || (liveDetection ? {
@@ -276,31 +221,6 @@ function LiveMonitoring() {
     ? confidenceValue * 100
     : null
   const healthTone = connectionState === 'Online' ? 'online' : 'offline'
-
-  function getDisplayPestName(pest) {
-    const rawName = String(pest || '').trim()
-
-    if (!rawName) {
-      return 'Unknown pest'
-    }
-
-    const entry = pestDirectory[normalizePestKey(rawName)]
-    const entryCommonName = String(entry?.commonName || '').trim()
-    const fallbackName = getFallbackPestName(rawName)
-    const scientificName = String(entry?.scientificName || rawName).trim()
-
-    const commonName =
-      entryCommonName &&
-      normalizePestKey(entryCommonName) !== normalizePestKey(rawName)
-        ? entryCommonName
-        : fallbackName
-
-    if (commonName && normalizePestKey(commonName) !== normalizePestKey(scientificName)) {
-      return `${commonName} (${scientificName})`
-    }
-
-    return rawName
-  }
 
   useEffect(() => {
     let active = true
@@ -457,27 +377,39 @@ function LiveMonitoring() {
   }, [historyFilter, historyLimit, historyClearedAt])
 
   useEffect(() => {
-    if (!newDetection || newDetection.status !== 'HARMFUL_PEST') {
+    if (!detection || detection.status !== 'HARMFUL_PEST') {
       return
     }
 
     const popupKey =
-      newDetection.id ??
-      parseServerTimestamp(getDetectionTime(newDetection))
+      detection.id != null
+        ? `id:${detection.id}`
+        : Number.isFinite(parseServerTimestamp(getDetectionTime(detection)))
+          ? `time:${parseServerTimestamp(getDetectionTime(detection))}`
+          : ''
 
-    if (popupKey == null || String(popupKey) === '' || alertedKeysRef.current.has(String(popupKey))) {
+    if (!popupKey || alertedKeysRef.current.has(popupKey)) {
       return
     }
 
-    alertedKeysRef.current.add(String(popupKey))
+    alertedKeysRef.current.add(popupKey)
+    try {
+      window.localStorage.setItem(
+        ALERTED_DETECTIONS_KEY,
+        JSON.stringify(Array.from(alertedKeysRef.current).slice(-200)),
+      )
+    } catch {
+      // Keep deduplication in memory if storage is unavailable.
+    }
+
     setPopup({
-      pest: newDetection.pest || 'Unknown pest',
-      confidence: newDetection.confidence,
-      risk: newDetection.risk || '—',
-      time: getDetectionTime(newDetection),
-      deviceId: newDetection.device_id || deviceId,
+      pest: detection.pest || 'Unknown pest',
+      confidence: detection.confidence,
+      risk: detection.risk || '—',
+      time: getDetectionTime(detection),
+      deviceId: detection.device_id || deviceId,
     })
-  }, [newDetection, deviceId])
+  }, [detection, deviceId])
 
   // Keep the newest live WebSocket detection visible in the history immediately.
   // Clearing history does not remove the current live detection.
@@ -520,7 +452,7 @@ function LiveMonitoring() {
               </button>
             </div>
 
-            <h3>{getDisplayPestName(popup.pest)}</h3>
+            <h3>{getDisplayPestName(popup.pest, pestDirectory)}</h3>
             <div className="popup-details">
               <div><span>Confidence</span><strong>{formatConfidence(popup.confidence)}</strong></div>
               <div><span>Risk</span><strong>{popup.risk}</strong></div>
@@ -571,7 +503,7 @@ function LiveMonitoring() {
               <div className="latest-detection-main">
                 <span className="detection-indicator" />
                 <div>
-                  <strong>{getDisplayPestName(liveDetection.pest)}</strong>
+                  <strong>{getDisplayPestName(liveDetection.pest, pestDirectory)}</strong>
                   <p>{getDetectionMessage(detectionStatus, liveDetection.pest)}</p>
                 </div>
               </div>
@@ -595,7 +527,7 @@ function LiveMonitoring() {
               </div>
 
               <div className="detection-details">
-                <div><span>Pest</span><strong>{getDisplayPestName(liveDetection.pest)}</strong></div>
+                <div><span>Pest</span><strong>{getDisplayPestName(liveDetection.pest, pestDirectory)}</strong></div>
                 <div><span>Status</span><strong>{displayStatus(detectionStatus, liveDetection.pest)}</strong></div>
                 <div><span>Confidence</span><strong>{formatConfidence(liveDetection.confidence)}</strong></div>
                 <div><span>Risk</span><strong>{liveDetection.risk || '—'}</strong></div>
@@ -724,7 +656,7 @@ function LiveMonitoring() {
                 <div key={item.id ?? `${item.device_id}-${item.detected_at}`} className="history-row">
                   <div className="history-main">
                     <span className="history-time">{formatDate(getDetectionTime(item))}</span>
-                    <strong>{getDisplayPestName(item.pest)}</strong>
+                    <strong>{getDisplayPestName(item.pest, pestDirectory)}</strong>
                   </div>
 
                   <div className="history-meta">

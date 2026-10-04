@@ -3,17 +3,15 @@ import { Link, useLocation } from 'react-router-dom'
 import { ArrowIcon, LeafIcon, SignalIcon, SparkIcon } from '../components/Icons'
 import { formatTemperature, formatHumidity } from '../utils/formatters'
 import { useLiveDetection } from '../hooks/useLiveDetection'
-import { API_BASE_URL, getSolution } from '../services/api'
+import { API_BASE_URL, getPests, getSolution } from '../services/api'
+import {
+  buildPestDirectory,
+  getCommonPestName,
+  getDisplayPestName,
+  normalizePestName,
+} from '../utils/pestNames'
 import solutionsField from '../assets/solutions-field.jpg'
 import './Solutions.css'
-
-const PEST_DIRECTORY_URL = 'https://pest-guard-1q36.onrender.com/api/pests'
-
-function normalizePestName(value) {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '')
-}
 
 async function generateAISolution(payload) {
   let response
@@ -43,6 +41,7 @@ function Solutions() {
   const { detection, loading: detectionLoading } = useLiveDetection()
   const [solution, setSolution] = useState(null)
   const [pest, setPest] = useState(null)
+  const [pestDirectory, setPestDirectory] = useState({})
   const [loadingSolution, setLoadingSolution] = useState(false)
   const [error, setError] = useState('')
   const [retryKey, setRetryKey] = useState(0)
@@ -79,14 +78,18 @@ function Solutions() {
       setPest(null)
 
       try {
-        const pestResponse = await fetch(PEST_DIRECTORY_URL)
-        if (!pestResponse.ok) {
-          throw new Error(`Pest directory request failed with status ${pestResponse.status}.`)
+        let pests = []
+        let directoryError = ''
+        try {
+          pests = await getPests()
+        } catch (loadError) {
+          directoryError = loadError.message
         }
 
-        const pestData = await pestResponse.json()
+        const nextDirectory = buildPestDirectory(pests)
+        setPestDirectory(nextDirectory)
         const normalizedDetection = normalizePestName(requestedPest)
-        const nextPest = (Array.isArray(pestData?.pests) ? pestData.pests : []).find(
+        const nextPest = pests.find(
           (item) =>
             [item?.scientific_name, item?.name, item?.pest_id].some(
               (value) => normalizePestName(value) === normalizedDetection,
@@ -95,38 +98,29 @@ function Solutions() {
 
         if (!active) return
 
-        if (!nextPest) {
-          setError(`No pest record was found for "${requestedPest}".`)
-          return
-        }
-
         setPest(nextPest)
 
         if (!canShowGuidance) {
+          if (!nextPest && directoryError) {
+            setError(`Unable to resolve pest information: ${directoryError}`)
+          }
           return
         }
 
-        if (!nextPest.pest_id) {
-          setError('The matched pest record does not include a pest ID.')
-          return
-        }
-
-        const scientificName = nextPest.scientific_name || requestedPest
-        const commonName =
-          nextPest.name &&
-          normalizePestName(nextPest.name) !== normalizePestName(scientificName)
-            ? nextPest.name
-            : 'Detected pest'
+        const scientificName = nextPest?.scientific_name || requestedPest
+        const commonName = getCommonPestName(requestedPest, nextDirectory)
 
         let nextSolution = null
-        try {
-          const solutionResult = await getSolution(nextPest.pest_id)
-          if (!active) return
+        if (nextPest?.pest_id) {
+          try {
+            const solutionResult = await getSolution(nextPest.pest_id)
+            if (!active) return
 
-          nextSolution = solutionResult?.solution ?? null
-        } catch (solutionError) {
-          if (!/solution not found|status 404/i.test(solutionError.message || '')) {
-            throw solutionError
+            nextSolution = solutionResult?.solution ?? null
+          } catch (solutionError) {
+            if (!/solution not found|status 404/i.test(solutionError.message || '')) {
+              throw solutionError
+            }
           }
         }
 
@@ -150,6 +144,9 @@ function Solutions() {
             confidence: Number.isFinite(Number(detection?.confidence))
               ? Number(detection.confidence)
               : 0,
+            pest_id: nextPest?.pest_id || '',
+            pest_description: nextPest?.description || '',
+            pest_symptoms: nextPest?.symptoms || '',
           })
 
           if (!active) return
@@ -178,7 +175,7 @@ function Solutions() {
     return () => {
       active = false
     }
-  }, [requestedPest, solutionRisk, detection?.confidence, retryKey])
+  }, [requestedPest, solutionRisk, canShowGuidance, detection?.confidence, retryKey])
 
   const isLoading = detectionLoading || loadingSolution
   const hasLiveDetection = Boolean(detection?.pest)
@@ -194,15 +191,7 @@ function Solutions() {
         ? 'NON-PEST'
         : 'AI PREDICTION'
 
-  const scientificName = pest?.scientific_name || requestedPest
-  const commonName =
-    pest?.name &&
-    normalizePestName(pest.name) !== normalizePestName(scientificName)
-      ? pest.name
-      : 'Detected pest'
-  const pestName = scientificName
-    ? `${commonName} (${scientificName})`
-    : commonName
+  const pestName = getDisplayPestName(requestedPest, pestDirectory)
   const riskLabel = detection?.risk || pest?.risk || statusLabel
 
   return (
@@ -259,6 +248,7 @@ function Solutions() {
               <div>
                 <p className="card-eyebrow">Latest live detection</p>
                 <h2>{pestName}</h2>
+                {solution?.generated && <span className="card-eyebrow">AI-generated guidance</span>}
               </div>
 
               <div className="risk-block">

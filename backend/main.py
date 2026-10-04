@@ -106,6 +106,9 @@ class AISolutionRequest(BaseModel):
     common_name: str = Field(min_length=1, max_length=200)
     risk: Literal["HIGH", "MEDIUM"]
     confidence: float = Field(ge=0, le=1)
+    pest_id: str = Field(default="", max_length=200)
+    pest_description: str = Field(default="", max_length=2000)
+    pest_symptoms: str = Field(default="", max_length=2000)
 
 
 class AISolutionResponse(BaseModel):
@@ -134,6 +137,9 @@ def _request_openai_solution(payload: AISolutionRequest) -> dict:
         f"Scientific name: {payload.pest}\n"
         f"Risk: {payload.risk}\n"
         f"AI confidence: {payload.confidence:.2f}\n\n"
+        f"Known pest ID: {payload.pest_id or 'unavailable'}\n"
+        f"Known description: {payload.pest_description or 'unavailable'}\n"
+        f"Known symptoms: {payload.pest_symptoms or 'unavailable'}\n\n"
         "Generate a concise pest-management response with these JSON string "
         "fields: about, recommended_action, prevention, precautions.\n\n"
         "Use the identified pest only. Do not replace it with another species. "
