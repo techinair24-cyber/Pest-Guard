@@ -281,43 +281,27 @@ def _request_openai_solution(payload: AISolutionRequest) -> dict:
             detail="Gemini solution generation is not configured.",
         )
 
-
-
     prompt = (
-
         "You are an agricultural pest-management assistant.\n\n"
-
         "The Pest Guard sensor detected this insect.\n\n"
-
         f"Common name: {payload.common_name}\n"
-
         f"Scientific name: {payload.pest}\n"
-
         f"Risk: {payload.risk}\n"
-
         f"AI confidence: {payload.confidence:.2f}\n"
-
         f"Known pest ID: {payload.pest_id or 'unavailable'}\n"
-
         f"Known description: {payload.pest_description or 'unavailable'}\n"
-
         f"Known symptoms: {payload.pest_symptoms or 'unavailable'}\n\n"
-
         "Generate concise pest-management guidance.\n"
         "Return ONLY valid JSON with exactly these string fields:\n"
         "about, recommended_action, prevention, precautions.\n\n"
         "Use the identified pest only. Do not replace it with another species. "
         "Prefer integrated pest-management guidance. "
         "Do not recommend dangerous pesticide mixing, unsafe dosages, "
-        "or illegal products. "
-        "Exact treatment depends on the crop and local agricultural guidance."
-
+        "or illegal products."
     )
 
     request_body = json.dumps(
-
         {
-
             "contents": [
                 {
                     "parts": [
@@ -326,88 +310,81 @@ def _request_openai_solution(payload: AISolutionRequest) -> dict:
                         }
                     ]
                 }
-            ],
-            "generationConfig": {
-                "temperature": 0.2,
-                "responseMimeType": "application/json"
-            }
-
+            ]
         }
-
     ).encode("utf-8")
 
     provider_request = urllib.request.Request(
-
-        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}",
-
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
         data=request_body,
-
         headers={
             "Content-Type": "application/json",
-
+            "x-goog-api-key": api_key,
         },
-
         method="POST",
-
     )
 
-
-
     try:
-
         with urllib.request.urlopen(provider_request, timeout=30) as response:
             provider_data = json.loads(
                 response.read().decode("utf-8")
             )
+    except urllib.error.HTTPError as error:
+        error_body = error.read().decode("utf-8", errors="replace")
+        print(f"Gemini HTTP ERROR {error.code}: {error_body}")
+        raise RuntimeError(
+            f"Gemini API returned HTTP {error.code}: {error_body}"
+        ) from error
+
+    except Exception as error:
+        print("Gemini connection error:", repr(error))
+        raise RuntimeError(
+            "Gemini connection failed."
+        ) from error
+
+    try:
         content = (
             provider_data["candidates"][0]["content"]["parts"][0]["text"]
         )
+
         generated = json.loads(content)
+
     except Exception as error:
+        print("Gemini response parsing error:", repr(error))
+        print(
+            "Gemini response:",
+            json.dumps(provider_data, ensure_ascii=False)
+        )
         raise RuntimeError(
-            "Gemini solution provider returned an invalid or unavailable response."
+            "Gemini returned an invalid response."
         ) from error
 
-
-
     required_fields = (
-
         "about",
-
         "recommended_action",
-
         "prevention",
-
         "precautions",
-
     )
 
     if not isinstance(generated, dict) or any(
-
-        not isinstance(generated.get(field), str) or not generated[field].strip()
-
+        not isinstance(generated.get(field), str)
+        or not generated[field].strip()
         for field in required_fields
-
     ):
-
+        print("Gemini returned incomplete fields:", generated)
         raise RuntimeError(
-            "Gemini solution provider returned incomplete guidance."
+            "Gemini returned incomplete guidance."
         )
 
-
-
     return {
-
         "pest": payload.pest,
-
         "common_name": payload.common_name,
-
         "risk": payload.risk,
-
         "confidence": payload.confidence,
-
-        **{field: generated[field].strip() for field in required_fields},
-
+        **{
+            field: generated[field].strip()
+            for field in required_fields
+        },
     }
 
 
