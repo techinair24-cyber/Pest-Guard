@@ -858,6 +858,20 @@ def get_high_risk_solution_history(
     ]}
 
 
+@app.delete("/api/solutions/history/high-risk")
+def clear_high_risk_solution_history(
+    db: Session = Depends(get_db),
+):
+    deleted_count = db.query(HighRiskSolutionHistory).delete(
+        synchronize_session=False
+    )
+    db.commit()
+    return {
+        "message": "HIGH-risk solution history cleared.",
+        "deleted_count": deleted_count,
+    }
+
+
 
 # WebSocket connection manager
 
