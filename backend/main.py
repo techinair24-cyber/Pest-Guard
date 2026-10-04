@@ -267,17 +267,18 @@ class AISolutionResponse(BaseModel):
 
 
 def _request_openai_solution(payload: AISolutionRequest) -> dict:
-
-    api_key = os.getenv("OPENAI_API_KEY")
+    """
+    Generate pest-management guidance using Google Gemini.
+    Function name is kept unchanged so the existing detection code
+    does not need to be modified.
+    """
+    api_key = os.getenv("GEMINI_API_KEY")
+    model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
     if not api_key:
-
         raise HTTPException(
-
             status_code=503,
-
-            detail="AI solution generation is not configured.",
-
+            detail="Gemini solution generation is not configured.",
         )
 
 
@@ -286,7 +287,7 @@ def _request_openai_solution(payload: AISolutionRequest) -> dict:
 
         "You are an agricultural pest-management assistant.\n\n"
 
-        "The Pest Guard sensor detected this insect:\n\n"
+        "The Pest Guard sensor detected this insect.\n\n"
 
         f"Common name: {payload.common_name}\n"
 
@@ -294,7 +295,7 @@ def _request_openai_solution(payload: AISolutionRequest) -> dict:
 
         f"Risk: {payload.risk}\n"
 
-        f"AI confidence: {payload.confidence:.2f}\n\n"
+        f"AI confidence: {payload.confidence:.2f}\n"
 
         f"Known pest ID: {payload.pest_id or 'unavailable'}\n"
 
@@ -302,21 +303,14 @@ def _request_openai_solution(payload: AISolutionRequest) -> dict:
 
         f"Known symptoms: {payload.pest_symptoms or 'unavailable'}\n\n"
 
-        "Generate a concise pest-management response with these JSON string "
-
-        "fields: about, recommended_action, prevention, precautions.\n\n"
-
+        "Generate concise pest-management guidance.\n"
+        "Return ONLY valid JSON with exactly these string fields:\n"
+        "about, recommended_action, prevention, precautions.\n\n"
         "Use the identified pest only. Do not replace it with another species. "
-
-        "Do not claim certainty when confidence is low. Prefer integrated "
-
-        "pest-management guidance. Do not recommend dangerous pesticide "
-
-        "mixing, unsafe dosages, or illegal products. Crop information is "
-
-        "unavailable, so clearly say that exact treatment depends on the crop "
-
-        "and local agricultural guidance. Return valid JSON only."
+        "Prefer integrated pest-management guidance. "
+        "Do not recommend dangerous pesticide mixing, unsafe dosages, "
+        "or illegal products. "
+        "Exact treatment depends on the crop and local agricultural guidance."
 
     )
 
@@ -324,13 +318,19 @@ def _request_openai_solution(payload: AISolutionRequest) -> dict:
 
         {
 
-            "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-
-            "messages": [{"role": "user", "content": prompt}],
-
-            "response_format": {"type": "json_object"},
-
-            "temperature": 0.2,
+            "contents": [
+                {
+                    "parts": [
+                        {
+                            "text": prompt
+                        }
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.2,
+                "responseMimeType": "application/json"
+            }
 
         }
 
@@ -338,14 +338,11 @@ def _request_openai_solution(payload: AISolutionRequest) -> dict:
 
     provider_request = urllib.request.Request(
 
-        "https://api.openai.com/v1/chat/completions",
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}",
 
         data=request_body,
 
         headers={
-
-            "Authorization": f"Bearer {api_key}",
-
             "Content-Type": "application/json",
 
         },
@@ -358,17 +355,18 @@ def _request_openai_solution(payload: AISolutionRequest) -> dict:
 
     try:
 
-        with urllib.request.urlopen(provider_request, timeout=25) as response:
-
-            provider_data = json.loads(response.read().decode("utf-8"))
-
-        content = provider_data["choices"][0]["message"]["content"]
-
+        with urllib.request.urlopen(provider_request, timeout=30) as response:
+            provider_data = json.loads(
+                response.read().decode("utf-8")
+            )
+        content = (
+            provider_data["candidates"][0]["content"]["parts"][0]["text"]
+        )
         generated = json.loads(content)
-
-    except (urllib.error.URLError, TimeoutError, KeyError, IndexError, TypeError, ValueError) as error:
-
-        raise RuntimeError("AI solution provider returned an invalid or unavailable response.") from error
+    except Exception as error:
+        raise RuntimeError(
+            "Gemini solution provider returned an invalid or unavailable response."
+        ) from error
 
 
 
@@ -392,7 +390,9 @@ def _request_openai_solution(payload: AISolutionRequest) -> dict:
 
     ):
 
-        raise RuntimeError("AI solution provider returned incomplete guidance.")
+        raise RuntimeError(
+            "Gemini solution provider returned incomplete guidance."
+        )
 
 
 
