@@ -12,6 +12,7 @@ export const FALLBACK_COMMON_PEST_NAMES = {
   Oecanthuspellucens: 'European Tree Cricket',
   Roeselianaroeselii: "Roesel's Bush-cricket",
   Chorthippusbiguttulus: 'Bow-winged Grasshopper',
+  Chorthippusbrunneus: 'Field Grasshopper',
 }
 
 export function normalizePestName(value) {
