@@ -12,6 +12,8 @@ import urllib.error
 
 import urllib.request
 
+import time
+
 
 
 from twilio.rest import Client
@@ -566,10 +568,48 @@ def _request_gemini_solution(payload: AISolutionRequest) -> dict:
         method="POST",
     )
 
-    try:
-        with urllib.request.urlopen(provider_request, timeout=30) as response:
-            provider_data = json.loads(response.read().decode("utf-8"))
+    provider_data = None
+    last_provider_error = None
 
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(provider_request, timeout=30) as response:
+                provider_data = json.loads(response.read().decode("utf-8"))
+            break
+        except urllib.error.HTTPError as error:
+            try:
+                provider_error_body = error.read().decode("utf-8", errors="replace")
+            except Exception:
+                provider_error_body = ""
+
+            print("Gemini HTTP error:", error.code, provider_error_body[:4000])
+            last_provider_error = error
+
+            if error.code == 503 and attempt < 2:
+                retry_seconds = 2 ** (attempt + 1)
+                print(f"Gemini 503 received. Retrying in {retry_seconds} seconds...")
+                time.sleep(retry_seconds)
+                continue
+
+            raise RuntimeError(
+                f"Gemini solution provider HTTP error {error.code}."
+            ) from error
+        except (urllib.error.URLError, TimeoutError) as error:
+            print("Gemini solution provider error:", repr(error))
+            last_provider_error = error
+            if attempt < 2:
+                retry_seconds = 2 ** (attempt + 1)
+                print(f"Gemini connection error. Retrying in {retry_seconds} seconds...")
+                time.sleep(retry_seconds)
+                continue
+            raise RuntimeError(
+                "Gemini solution provider returned an invalid or unavailable response."
+            ) from error
+
+    if provider_data is None:
+        raise RuntimeError("Gemini solution provider did not return a response.") from last_provider_error
+
+    try:
         candidates = provider_data.get("candidates") or []
         if not candidates:
             raise RuntimeError(f"Gemini returned no candidates: {json.dumps(provider_data)[:4000]}")
@@ -592,25 +632,7 @@ def _request_gemini_solution(payload: AISolutionRequest) -> dict:
             content = content[:-3]
         generated = json.loads(content.strip())
 
-    except urllib.error.HTTPError as error:
-        try:
-            provider_error_body = error.read().decode("utf-8", errors="replace")
-        except Exception:
-            provider_error_body = ""
-
-        print("Gemini HTTP error:", error.code, provider_error_body[:4000])
-        raise RuntimeError(
-            f"Gemini solution provider HTTP error {error.code}."
-        ) from error
-
-    except (
-        urllib.error.URLError,
-        TimeoutError,
-        KeyError,
-        IndexError,
-        TypeError,
-        ValueError,
-    ) as error:
+    except (KeyError, IndexError, TypeError, ValueError) as error:
         print("Gemini solution provider error:", repr(error))
         raise RuntimeError(
             "Gemini solution provider returned an invalid or unavailable response."
