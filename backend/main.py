@@ -591,6 +591,32 @@ def _request_gemini_solution(payload: AISolutionRequest) -> dict:
                 time.sleep(retry_seconds)
                 continue
 
+            if error.code == 503:
+                print("Gemini remained unavailable after retries. Using safe local fallback solution.")
+                return {
+                    "pest": payload.pest,
+                    "common_name": payload.common_name,
+                    "risk": payload.risk,
+                    "confidence": payload.confidence,
+                    "about": (
+                        f"{payload.common_name} was identified by the Pest Guard system. "
+                        "The detection should be verified in the field before treatment decisions are made."
+                    ),
+                    "recommended_action": (
+                        "Inspect the affected crop and confirm the pest and damage level. "
+                        "Use integrated pest management first and follow crop-specific local agricultural guidance. "
+                        "Use only products legally registered for the crop and pest, following the product label."
+                    ),
+                    "prevention": (
+                        "Regularly scout the field, remove suitable pest breeding or shelter sites where appropriate, "
+                        "and encourage beneficial insects and other natural enemies."
+                    ),
+                    "precautions": (
+                        "Do not mix pesticides or use unlabelled dosages. Wear the protective equipment required by the label "
+                        "and obtain local agricultural advice for the exact crop and treatment."
+                    ),
+                }
+
             raise RuntimeError(
                 f"Gemini solution provider HTTP error {error.code}."
             ) from error
