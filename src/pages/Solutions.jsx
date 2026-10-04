@@ -271,13 +271,9 @@ function Solutions() {
             nextSolution = solutionResult?.solution ?? null
 
           } catch (solutionError) {
-
-            if (!/solution not found|status 404/i.test(solutionError.message || '')) {
-
-              throw solutionError
-
-            }
-
+            // Curated solutions are optional. Fall through to AI whenever the
+            // curated lookup is unavailable or fails.
+            nextSolution = null
           }
 
         }
@@ -767,6 +763,7 @@ function Solutions() {
               {highRiskHistory.map((item) => {
                 const historyName =
                   item.common_name ||
+                  getCommonPestName(item.pest || item.pest_id || '', pestDirectory) ||
                   getDisplayPestName(item.pest || item.pest_id || '', pestDirectory)
                 const historyConfidence = Number(item.confidence)
                 const historyConfidenceLabel = Number.isFinite(historyConfidence)
