@@ -271,9 +271,13 @@ function Solutions() {
             nextSolution = solutionResult?.solution ?? null
 
           } catch (solutionError) {
-            // Curated solutions are optional. Fall through to AI whenever the
-            // curated lookup is unavailable or fails.
-            nextSolution = null
+
+            if (!/solution not found|status 404/i.test(solutionError.message || '')) {
+
+              throw solutionError
+
+            }
+
           }
 
         }
@@ -759,37 +763,226 @@ function Solutions() {
               <p>When a HIGH-risk pest alert is detected, its solution will be saved here for later review.</p>
             </div>
           ) : (
-            <div className="solution-sections">
+            <div
+              className="solution-history-grid"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+                gap: '22px',
+                marginTop: '24px',
+              }}
+            >
               {highRiskHistory.map((item) => {
+                const historyKey = item.pest || item.pest_id || ''
+                const mappedName = getCommonPestName(historyKey, pestDirectory)
                 const historyName =
+                  mappedName ||
                   item.common_name ||
-                  getCommonPestName(item.pest || item.pest_id || '', pestDirectory) ||
-                  getDisplayPestName(item.pest || item.pest_id || '', pestDirectory)
+                  getDisplayPestName(historyKey, pestDirectory) ||
+                  'Unknown pest'
+
+                const historyScientificName =
+                  item.pest && item.pest !== historyName
+                    ? item.pest
+                    : ''
+
                 const historyConfidence = Number(item.confidence)
                 const historyConfidenceLabel = Number.isFinite(historyConfidence)
                   ? `${(historyConfidence * 100).toFixed(1)}%`
                   : 'Not available'
 
+                const detectedLabel = item.detected_at
+                  ? new Date(item.detected_at).toLocaleString()
+                  : 'Time not available'
+
                 return (
-                  <section key={item.id}>
-                    <span className="section-number">HIGH</span>
-                    <div>
-                      <h3>{historyName}</h3>
-                      <p>Risk: <strong>{item.risk || 'HIGH'}</strong></p>
-                      <p>AI confidence: <strong>{historyConfidenceLabel}</strong></p>
-                      {item.solution_title && <p><strong>{item.solution_title}</strong></p>}
-                      {item.solution_description && <p>{item.solution_description}</p>}
+                  <details
+                    key={item.id}
+                    className="history-alert-card"
+                    style={{
+                      background: '#fffdf8',
+                      border: '1px solid rgba(20, 70, 57, 0.14)',
+                      borderRadius: '18px',
+                      overflow: 'hidden',
+                      boxShadow: '0 10px 28px rgba(20, 70, 57, 0.07)',
+                    }}
+                  >
+                    <summary
+                      style={{
+                        listStyle: 'none',
+                        cursor: 'pointer',
+                        padding: '22px',
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'flex-start',
+                          gap: '16px',
+                        }}
+                      >
+                        <div>
+                          <p
+                            className="card-eyebrow"
+                            style={{ marginBottom: '7px' }}
+                          >
+                            HIGH-RISK ALERT
+                          </p>
+                          <h3
+                            style={{
+                              margin: 0,
+                              fontSize: '1.45rem',
+                              lineHeight: 1.15,
+                            }}
+                          >
+                            {historyName}
+                          </h3>
+                          {historyScientificName && (
+                            <p
+                              style={{
+                                margin: '7px 0 0',
+                                fontSize: '0.82rem',
+                                opacity: 0.68,
+                                fontStyle: 'italic',
+                              }}
+                            >
+                              {historyScientificName}
+                            </p>
+                          )}
+                        </div>
+
+                        <span
+                          style={{
+                            flexShrink: 0,
+                            padding: '6px 10px',
+                            borderRadius: '999px',
+                            background: '#f5d9ce',
+                            color: '#a64f35',
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            letterSpacing: '0.12em',
+                          }}
+                        >
+                          HIGH
+                        </span>
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                          gap: '10px',
+                          marginTop: '20px',
+                        }}
+                      >
+                        <div>
+                          <span className="card-eyebrow">Confidence</span>
+                          <strong style={{ display: 'block', marginTop: '5px' }}>
+                            {historyConfidenceLabel}
+                          </strong>
+                        </div>
+                        <div>
+                          <span className="card-eyebrow">Detected</span>
+                          <strong
+                            style={{
+                              display: 'block',
+                              marginTop: '5px',
+                              fontSize: '0.82rem',
+                            }}
+                          >
+                            {detectedLabel}
+                          </strong>
+                        </div>
+                        <div>
+                          <span className="card-eyebrow">Device</span>
+                          <strong
+                            style={{
+                              display: 'block',
+                              marginTop: '5px',
+                              fontSize: '0.82rem',
+                            }}
+                          >
+                            {item.device_id || 'Field Unit'}
+                          </strong>
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: '18px',
+                          paddingTop: '15px',
+                          borderTop: '1px solid rgba(20, 70, 57, 0.10)',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                        }}
+                      >
+                        View saved solution ↓
+                      </div>
+                    </summary>
+
+                    <div
+                      style={{
+                        padding: '0 22px 24px',
+                        borderTop: '1px solid rgba(20, 70, 57, 0.10)',
+                      }}
+                    >
+                      {item.solution_title && (
+                        <h4 style={{ margin: '22px 0 10px', fontSize: '1.05rem' }}>
+                          {item.solution_title}
+                        </h4>
+                      )}
+
+                      {item.solution_description && (
+                        <div style={{ marginBottom: '18px' }}>
+                          <p className="card-eyebrow">About this pest</p>
+                          <p>{item.solution_description}</p>
+                        </div>
+                      )}
+
                       {item.recommended_action && (
-                        <p><strong>Recommended action:</strong> {item.recommended_action}</p>
+                        <div style={{ marginBottom: '18px' }}>
+                          <p className="card-eyebrow">Recommended action</p>
+                          <p>{item.recommended_action}</p>
+                        </div>
                       )}
+
                       {item.prevention && (
-                        <p><strong>Prevention:</strong> {item.prevention}</p>
+                        <div style={{ marginBottom: '18px' }}>
+                          <p className="card-eyebrow">Prevention</p>
+                          <p>{item.prevention}</p>
+                        </div>
                       )}
-                      {item.detected_at && (
-                        <p>{new Date(item.detected_at).toLocaleString()}</p>
-                      )}
+
+                      {item.temperature != null || item.humidity != null ? (
+                        <div
+                          style={{
+                            display: 'flex',
+                            gap: '24px',
+                            paddingTop: '16px',
+                            borderTop: '1px solid rgba(20, 70, 57, 0.10)',
+                          }}
+                        >
+                          {item.temperature != null && (
+                            <div>
+                              <span className="card-eyebrow">Temperature</span>
+                              <strong style={{ display: 'block', marginTop: '5px' }}>
+                                {formatTemperature(item.temperature)}
+                              </strong>
+                            </div>
+                          )}
+                          {item.humidity != null && (
+                            <div>
+                              <span className="card-eyebrow">Humidity</span>
+                              <strong style={{ display: 'block', marginTop: '5px' }}>
+                                {formatHumidity(item.humidity)}
+                              </strong>
+                            </div>
+                          )}
+                        </div>
+                      ) : null}
                     </div>
-                  </section>
+                  </details>
                 )
               })}
             </div>
