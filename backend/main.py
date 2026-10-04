@@ -535,7 +535,8 @@ def _request_gemini_solution(payload: AISolutionRequest) -> dict:
         "and local agricultural guidance. Return valid JSON only."
     )
 
-    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip() or "gemini-3.8-flash"
+    print("Gemini solution request model:", model)
 
     request_body = json.dumps(
         {
@@ -549,8 +550,8 @@ def _request_gemini_solution(payload: AISolutionRequest) -> dict:
                 }
             ],
             "generationConfig": {
-                "temperature": 0.2,
                 "responseMimeType": "application/json",
+                "maxOutputTokens": 1200,
             },
         }
     ).encode("utf-8")
@@ -569,8 +570,27 @@ def _request_gemini_solution(payload: AISolutionRequest) -> dict:
         with urllib.request.urlopen(provider_request, timeout=30) as response:
             provider_data = json.loads(response.read().decode("utf-8"))
 
-        content = provider_data["candidates"][0]["content"]["parts"][0]["text"]
-        generated = json.loads(content)
+        candidates = provider_data.get("candidates") or []
+        if not candidates:
+            raise RuntimeError(f"Gemini returned no candidates: {json.dumps(provider_data)[:4000]}")
+
+        parts = candidates[0].get("content", {}).get("parts", [])
+        content = "".join(
+            part.get("text", "")
+            for part in parts
+            if isinstance(part, dict) and part.get("text")
+        ).strip()
+
+        if not content:
+            raise RuntimeError(f"Gemini returned empty content: {json.dumps(provider_data)[:4000]}")
+
+        if content.startswith("```json"):
+            content = content[7:]
+        elif content.startswith("```"):
+            content = content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+        generated = json.loads(content.strip())
 
     except urllib.error.HTTPError as error:
         try:
