@@ -591,32 +591,6 @@ def _request_gemini_solution(payload: AISolutionRequest) -> dict:
                 time.sleep(retry_seconds)
                 continue
 
-            if error.code == 503:
-                print("Gemini remained unavailable after retries. Using safe local fallback solution.")
-                return {
-                    "pest": payload.pest,
-                    "common_name": payload.common_name,
-                    "risk": payload.risk,
-                    "confidence": payload.confidence,
-                    "about": (
-                        f"{payload.common_name} was identified by the Pest Guard system. "
-                        "The detection should be verified in the field before treatment decisions are made."
-                    ),
-                    "recommended_action": (
-                        "Inspect the affected crop and confirm the pest and damage level. "
-                        "Use integrated pest management first and follow crop-specific local agricultural guidance. "
-                        "Use only products legally registered for the crop and pest, following the product label."
-                    ),
-                    "prevention": (
-                        "Regularly scout the field, remove suitable pest breeding or shelter sites where appropriate, "
-                        "and encourage beneficial insects and other natural enemies."
-                    ),
-                    "precautions": (
-                        "Do not mix pesticides or use unlabelled dosages. Wear the protective equipment required by the label "
-                        "and obtain local agricultural advice for the exact crop and treatment."
-                    ),
-                }
-
             raise RuntimeError(
                 f"Gemini solution provider HTTP error {error.code}."
             ) from error
@@ -1981,51 +1955,41 @@ async def ai_predict(request: Request):
 
 
 
+def _fallback_ai_solution(payload: AISolutionRequest) -> dict:
+    return {
+        "pest": payload.pest,
+        "common_name": payload.common_name,
+        "risk": payload.risk,
+        "confidence": payload.confidence,
+        "about": (
+            f"{payload.common_name} ({payload.pest}) was identified by the Pest Guard AI. "
+            "Monitor the affected crop and confirm the identification in the field before treatment."
+        ),
+        "recommended_action": (
+            "Inspect affected plants and nearby areas, remove heavily affected plant material where appropriate, "
+            "and use crop-specific integrated pest-management measures. For severe outbreaks, follow local "
+            "agricultural recommendations and the product label for the crop."
+        ),
+        "prevention": (
+            "Regularly scout the field, remove suitable pest habitat where appropriate, keep crop areas clean, "
+            "and encourage beneficial insects and other natural predators."
+        ),
+        "precautions": (
+            "Do not mix pesticides or use unlabelled products. Any chemical treatment must be selected for the "
+            "specific crop and pest and used exactly according to the local product label and agricultural guidance."
+        ),
+    }
+
+
 @app.post("/api/ai/solution", response_model=AISolutionResponse)
-
-
-
 async def generate_ai_solution(payload: AISolutionRequest):
-
-
-
     try:
-
-
-
         return await asyncio.to_thread(_request_gemini_solution, payload)
-
-
-
     except HTTPException:
-
-
-
         raise
-
-
-
     except Exception as error:
-
-
-
-        print("AI solution generation failed:", repr(error))
-
-
-
-        raise HTTPException(
-
-
-
-            status_code=502,
-
-
-
-            detail="AI solution generation is temporarily unavailable. Please try again.",
-
-
-
-        ) from error
+        print("Gemini unavailable, using safe fallback solution:", repr(error))
+        return _fallback_ai_solution(payload)
 
 
 
