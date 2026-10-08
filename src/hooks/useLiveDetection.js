@@ -199,7 +199,7 @@ export function useLiveDetection() {
 
       setLiveStatus((current) => ({
         ...current,
-        detection: response?.detection || null,
+        detection: response || null,
       }))
     } catch (detectionError) {
       if (!mountedRef.current) {
