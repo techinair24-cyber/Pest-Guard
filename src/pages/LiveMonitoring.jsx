@@ -134,12 +134,11 @@ function formatConfidence(value) {
 }
 
 function formatDate(value) {
-  if (!value) {
-    return '—'
-  }
+  const timestamp = parseServerTimestamp(value)
 
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString()
+  return Number.isFinite(timestamp)
+    ? new Date(timestamp).toLocaleString()
+    : '—'
 }
 
 function displayStatus(status, pest) {
