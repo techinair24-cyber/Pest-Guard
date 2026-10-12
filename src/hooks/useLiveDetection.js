@@ -13,7 +13,7 @@ const DEVICE_ID =
 const DEVICE_CACHE_KEY =
   'pest_guard_device_status'
 
-const DEVICE_STALE_MS = 15 * 1000
+const DEVICE_STALE_MS = 60 * 1000
 
 function parseServerTimestamp(value) {
   if (!value) {
