@@ -9,7 +9,6 @@ import './LiveMonitoring.css'
 
 const HISTORY_CLEAR_KEY = 'pest_guard_history_cleared_at'
 const ALERTED_DETECTIONS_KEY = 'pest_guard_alerted_detection_keys'
-const WEATHER_CACHE_KEY = 'pest_guard_online_weather'
 
 function formatOnlineTemperature(value) {
   const number = Number(value)
@@ -243,30 +242,31 @@ function LiveMonitoring() {
       active = false
     }
   }, [])
-  const [onlineWeather, setOnlineWeather] = useState(() => {
-    try {
-      const cached = JSON.parse(window.localStorage.getItem(WEATHER_CACHE_KEY) || 'null')
-      if (cached && Number.isFinite(Number(cached.temperature)) && Number.isFinite(Number(cached.humidity))) {
-        return {
-          temperature: Number(cached.temperature),
-          humidity: Number(cached.humidity),
-          loading: false,
-        }
-      }
-    } catch {
-      // Ignore invalid cached weather.
-    }
-
-    return { temperature: null, humidity: null, loading: true }
+  const [onlineWeather, setOnlineWeather] = useState({
+    temperature: null,
+    humidity: null,
+    loading: true,
+    locationError: '',
   })
 
   useEffect(() => {
     let active = true
+    let watchId = null
+    let refreshTimer = null
+    let lastCoords = null
+    let lastWeatherCoords = null
 
-    async function loadOnlineWeather() {
+    async function loadOnlineWeather(coords) {
       try {
+        const params = new URLSearchParams({
+          latitude: String(coords.latitude),
+          longitude: String(coords.longitude),
+          current: 'temperature_2m,relative_humidity_2m',
+          timezone: 'auto',
+        })
+
         const response = await fetch(
-          'https://api.open-meteo.com/v1/forecast?latitude=12.9716&longitude=77.5946&current=temperature_2m,relative_humidity_2m&timezone=auto',
+          `https://api.open-meteo.com/v1/forecast?${params.toString()}`
         )
 
         if (!response.ok) {
@@ -274,51 +274,104 @@ function LiveMonitoring() {
         }
 
         const data = await response.json()
-        const current = data?.current || {}
-
-        const temperature = Number(current.temperature_2m)
-        const humidity = Number(current.relative_humidity_2m)
+        const temperature = Number(data?.current?.temperature_2m)
+        const humidity = Number(data?.current?.relative_humidity_2m)
 
         if (!Number.isFinite(temperature) || !Number.isFinite(humidity)) {
-          throw new Error('Weather response did not contain temperature and humidity.')
-        }
-
-        const nextWeather = {
-          temperature,
-          humidity,
-          loading: false,
-        }
-
-        try {
-          window.localStorage.setItem(
-            WEATHER_CACHE_KEY,
-            JSON.stringify({ temperature, humidity, updatedAt: new Date().toISOString() }),
-          )
-        } catch {
-          // Ignore storage failures.
+          throw new Error('Weather data is incomplete.')
         }
 
         if (active) {
-          setOnlineWeather(nextWeather)
+          setOnlineWeather({
+            temperature,
+            humidity,
+            loading: false,
+            locationError: '',
+          })
         }
       } catch (weatherError) {
-        console.error('Unable to load online weather:', weatherError)
+        console.error('Unable to load location weather:', weatherError)
+
         if (active) {
           setOnlineWeather((current) => ({
-            temperature: current.temperature ?? null,
-            humidity: current.humidity ?? null,
+            ...current,
             loading: false,
+            locationError: 'Weather unavailable for your location.',
           }))
         }
       }
     }
 
-    loadOnlineWeather()
-    const refreshTimer = window.setInterval(loadOnlineWeather, 10 * 60 * 1000)
+    if (!navigator.geolocation) {
+      setOnlineWeather({
+        temperature: null,
+        humidity: null,
+        loading: false,
+        locationError: 'Browser location is not supported.',
+      })
+
+      return () => {
+        active = false
+      }
+    }
+
+    watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const coords = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        }
+
+        lastCoords = coords
+
+        const locationChanged =
+          !lastWeatherCoords ||
+          Math.abs(coords.latitude - lastWeatherCoords.latitude) >= 0.01 ||
+          Math.abs(coords.longitude - lastWeatherCoords.longitude) >= 0.01
+
+        if (locationChanged) {
+          lastWeatherCoords = coords
+          loadOnlineWeather(coords)
+        }
+      },
+      (locationError) => {
+        if (!active) return
+
+        console.error('Browser geolocation error:', locationError)
+
+        setOnlineWeather((current) => ({
+          ...current,
+          loading: false,
+          locationError:
+            locationError.code === 1
+              ? 'Allow browser location access to load local weather.'
+              : 'Unable to detect your location.',
+        }))
+      },
+      {
+        enableHighAccuracy: false,
+        maximumAge: 300000,
+        timeout: 15000,
+      }
+    )
+
+    refreshTimer = window.setInterval(() => {
+      if (lastCoords) {
+        lastWeatherCoords = lastCoords
+        loadOnlineWeather(lastCoords)
+      }
+    }, 10 * 60 * 1000)
 
     return () => {
       active = false
-      window.clearInterval(refreshTimer)
+
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId)
+      }
+
+      if (refreshTimer !== null) {
+        window.clearInterval(refreshTimer)
+      }
     }
   }, [])
 
@@ -484,7 +537,14 @@ function LiveMonitoring() {
         <div className={`system-status-card system-status-${connectionState.toLowerCase()}`}>
           <div className="status-card-label"><span className="monitoring-status-dot" />Live system</div>
           <strong>{connectionState}</strong>
-          <small>{error ? 'Backend connection unavailable' : onlineWeather.loading ? 'Loading online weather' : 'REST + WebSocket + online weather'}</small>
+          <small>
+            {error
+              ? 'Backend connection unavailable'
+              : onlineWeather.loading
+                ? 'Detecting location and loading weather'
+                : onlineWeather.locationError ||
+                  'REST + WebSocket + current-location weather'}
+          </small>
         </div>
       </section>
 
