@@ -639,6 +639,43 @@ def health():
 
 # -------------------------------------------------------------------
 
+DEVICE_STALE_SECONDS = 60
+
+
+def _device_response(device):
+    last_seen = device.last_seen
+
+    if isinstance(last_seen, str):
+        try:
+            last_seen = datetime.fromisoformat(
+                last_seen.strip().replace("Z", "+00:00").replace("z", "+00:00")
+            )
+        except ValueError:
+            last_seen = None
+
+    is_online = False
+    if isinstance(last_seen, datetime):
+        if last_seen.tzinfo is None or last_seen.utcoffset() is None:
+            last_seen = last_seen.replace(tzinfo=timezone.utc)
+        else:
+            last_seen = last_seen.astimezone(timezone.utc)
+
+        age_seconds = (
+            datetime.now(timezone.utc) - last_seen
+        ).total_seconds()
+        is_online = 0 <= age_seconds <= DEVICE_STALE_SECONDS
+
+    return {
+        "device_id": device.device_id,
+        "name": device.name,
+        "status": "ONLINE" if is_online else "OFFLINE",
+        "connection": "CONNECTED" if is_online else "DISCONNECTED",
+        "last_seen": device.last_seen,
+        "temperature": device.temperature,
+        "humidity": device.humidity,
+    }
+
+
 @app.get("/api/devices")
 
 def get_devices(db: Session = Depends(get_db)):
@@ -646,31 +683,10 @@ def get_devices(db: Session = Depends(get_db)):
     devices = db.query(Device).order_by(Device.id.asc()).all()
 
     return {
-
         "devices": [
-
-            {
-
-                "device_id": device.device_id,
-
-                "name": device.name,
-
-                "status": device.status,
-
-                "connection": device.connection,
-
-                "last_seen": device.last_seen,
-
-                "temperature": device.temperature,
-
-                "humidity": device.humidity,
-
-            }
-
+            _device_response(device)
             for device in devices
-
         ]
-
     }
 
 @app.get(
@@ -708,25 +724,7 @@ def get_device(
         )
 
     return {
-
-        "device": {
-
-            "device_id": device.device_id,
-
-            "name": device.name,
-
-            "status": device.status,
-
-            "connection": device.connection,
-
-            "last_seen": device.last_seen,
-
-            "temperature": device.temperature,
-
-            "humidity": device.humidity,
-
-        }
-
+        "device": _device_response(device)
     }
 
 @app.post(
@@ -778,31 +776,10 @@ def device_heartbeat(
     device.last_seen = datetime.now(timezone.utc).replace(tzinfo=None)
 
     db.commit()
-
     db.refresh(device)
-
     return {
-
         "message": "Heartbeat received",
-
-        "device": {
-
-            "device_id": device.device_id,
-
-            "name": device.name,
-
-            "status": device.status,
-
-            "connection": device.connection,
-
-            "last_seen": device.last_seen,
-
-            "temperature": device.temperature,
-
-            "humidity": device.humidity,
-
-        },
-
+        "device": _device_response(device),
     }
 
 # PEST_GUARD_DETECTION_CONTROL_ENDPOINTS
