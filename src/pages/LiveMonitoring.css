@@ -1018,3 +1018,49 @@
   }
 }
 
+/* Refined Detection Control panel */
+.detection-control-panel {
+  width: min(calc(100% - 2rem), 680px);
+  box-sizing: border-box;
+  margin: 1.25rem auto 1.5rem;
+  padding: 1.4rem;
+  border: 1px solid rgba(125, 150, 132, 0.25);
+  border-radius: 18px;
+  background: #fffdf8;
+  box-shadow: 0 8px 24px rgba(20, 45, 30, 0.06);
+}
+
+.detection-control-copy h2 {
+  font-size: 1.3rem;
+  margin: 0.3rem 0 0.5rem;
+}
+
+.detection-control-actions {
+  gap: 0.6rem;
+}
+
+.detection-control-button {
+  min-height: 42px;
+  padding: 0.65rem 1.1rem;
+  border-radius: 10px;
+}
+
+.detection-control-start {
+  background: #247a47;
+}
+
+.detection-control-stop {
+  background: #b83b36;
+}
+
+@media (max-width: 560px) {
+  .detection-control-panel {
+    width: calc(100% - 2rem);
+    padding: 1rem;
+  }
+
+  .detection-control-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+}
