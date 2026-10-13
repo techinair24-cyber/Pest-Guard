@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
+import { getDetectionControl, setDetectionEnabled } from '../services/api'
+
 import { useLiveDetection } from '../hooks/useLiveDetection'
 import { ArrowIcon, LeafIcon, SparkIcon } from '../components/Icons'
 import { getDetectionHistory, getPests } from '../services/api'
@@ -190,6 +192,10 @@ function LiveMonitoring() {
   const [historyLoading, setHistoryLoading] = useState(true)
   const [historyClearedAt, setHistoryClearedAt] = useState(() => getStoredClearTime())
   const [popup, setPopup] = useState(null)
+  const [detectionControlEnabled, setDetectionControlEnabled] = useState(false)
+  const [detectionControlBusy, setDetectionControlBusy] = useState(false)
+  const [detectionControlError, setDetectionControlError] = useState('')
+  const [detectionControlMessage, setDetectionControlMessage] = useState('Detection is stopped.')
   const [pestDirectory, setPestDirectory] = useState({})
   const alertedKeysRef = useRef(getStoredAlertedKeys())
 
@@ -213,6 +219,51 @@ function LiveMonitoring() {
         ? 'unknown'
         : 'empty'
   const deviceId = liveDevice?.device_id || liveDetection?.device_id || 'FIELD-UNIT-01'
+
+
+  // PEST_GUARD_DETECTION_CONTROL_HANDLERS
+  useEffect(() => {
+    let active = true
+
+    getDetectionControl(deviceId)
+      .then((result) => {
+        if (!active) return
+        const enabled = Boolean(result?.enabled)
+        setDetectionControlEnabled(enabled)
+        setDetectionControlMessage(
+          enabled ? 'Detection is running.' : 'Detection is stopped.'
+        )
+        setDetectionControlError('')
+      })
+      .catch((controlError) => {
+        if (!active) return
+        setDetectionControlError(`Unable to read device control: ${controlError.message}`)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [deviceId])
+
+  const handleDetectionControl = async (enabled) => {
+    setDetectionControlBusy(true)
+    setDetectionControlError('')
+
+    try {
+      const result = await setDetectionEnabled(deviceId, enabled)
+      const accepted = Boolean(result?.enabled)
+      setDetectionControlEnabled(accepted)
+      setDetectionControlMessage(
+        accepted
+          ? 'Detect requested. The field unit will start at its next control check.'
+          : 'Stop requested. A detection cycle already in progress may finish.'
+      )
+    } catch (controlError) {
+      setDetectionControlError(`Control request failed: ${controlError.message}`)
+    } finally {
+      setDetectionControlBusy(false)
+    }
+  }
   const deviceTimestamp = liveDevice?.last_seen || liveDevice?.lastSeen
   const confidenceValue = Number(liveDetection?.confidence)
   const confidencePercent = Number.isFinite(confidenceValue)
@@ -544,6 +595,38 @@ function LiveMonitoring() {
                 : onlineWeather.locationError ||
                   'REST + WebSocket + current-location weather'}
           </small>
+        </div>
+      </section>
+
+      <section className="detection-control-panel" aria-label="Manual detection controls">
+        <div className="detection-control-copy">
+          <p className="monitoring-card-eyebrow">FIELD UNIT CONTROL</p>
+          <h2>Detection Control</h2>
+          <p>{detectionControlMessage}</p>
+          {detectionControlError && (
+            <p className="detection-control-error" role="alert">{detectionControlError}</p>
+          )}
+        </div>
+        <div className="detection-control-actions">
+          <span className={`detection-control-state ${detectionControlEnabled ? 'is-running' : 'is-stopped'}`}>
+            {detectionControlEnabled ? 'RUNNING' : 'STOPPED'}
+          </span>
+          <button
+            type="button"
+            className="detection-control-button detection-control-start"
+            onClick={() => handleDetectionControl(true)}
+            disabled={detectionControlBusy || detectionControlEnabled}
+          >
+            {detectionControlBusy ? 'Please wait…' : 'Detect'}
+          </button>
+          <button
+            type="button"
+            className="detection-control-button detection-control-stop"
+            onClick={() => handleDetectionControl(false)}
+            disabled={detectionControlBusy || !detectionControlEnabled}
+          >
+            {detectionControlBusy ? 'Please wait…' : 'Stop'}
+          </button>
         </div>
       </section>
 

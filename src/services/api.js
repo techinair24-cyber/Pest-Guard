@@ -70,6 +70,22 @@ export const sendDeviceHeartbeat = (
     },
   )
 
+export const setDetectionEnabled = (
+  deviceId,
+  enabled,
+) =>
+  request(
+    `/api/devices/${encodeURIComponent(deviceId)}/detection-control`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ enabled }),
+    },
+  )
+
+export const getDetectionControl = async (deviceId) => {
+  return request(`/api/devices/${encodeURIComponent(deviceId)}/detection-control`)
+}
+
 export const getLatestDetection = async () => {
   const data = await request('/api/detections/latest')
   return data.detection || null

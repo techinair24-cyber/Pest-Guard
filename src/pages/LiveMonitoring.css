@@ -918,3 +918,103 @@
     flex-direction: column;
   }
 }
+
+/* PEST_GUARD_DETECTION_CONTROL_STYLES */
+.detection-control-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin: 1.5rem 0;
+  padding: clamp(1.1rem, 2.5vw, 1.75rem);
+  border: 1px solid rgba(125, 150, 132, 0.28);
+  border-radius: 22px;
+  background: var(--card, #fff);
+  box-shadow: 0 12px 32px rgba(20, 45, 30, 0.06);
+}
+
+.detection-control-copy h2 {
+  margin: 0.15rem 0 0.45rem;
+}
+
+.detection-control-copy > p:not(.monitoring-card-eyebrow) {
+  margin: 0;
+  max-width: 52rem;
+  color: var(--muted, #647067);
+  line-height: 1.55;
+}
+
+.detection-control-copy .detection-control-error {
+  margin-top: 0.55rem !important;
+  color: #b42318 !important;
+}
+
+.detection-control-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  min-width: max-content;
+}
+
+.detection-control-state {
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.detection-control-state.is-running {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.detection-control-state.is-stopped {
+  color: #475569;
+  background: #e2e8f0;
+}
+
+.detection-control-button {
+  min-height: 44px;
+  padding: 0.7rem 1.1rem;
+  border: 0;
+  border-radius: 12px;
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+  transition: transform 140ms ease, opacity 140ms ease;
+}
+
+.detection-control-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.detection-control-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.detection-control-start {
+  color: #fff;
+  background: #15803d;
+}
+
+.detection-control-stop {
+  color: #fff;
+  background: #b91c1c;
+}
+
+@media (max-width: 720px) {
+  .detection-control-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .detection-control-actions {
+    justify-content: flex-start;
+    min-width: 0;
+  }
+}
+
