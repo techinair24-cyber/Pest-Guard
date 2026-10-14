@@ -70,15 +70,26 @@ from schemas import (
 
 AI_DIR = Path(__file__).resolve().parent / "ai_model"
 
-ai_model = tf.keras.models.load_model(
+# Original CNN remains the default.
+USE_YAMNET = os.getenv("PEST_MODEL", "cnn").strip().lower() == "yamnet"
 
-    AI_DIR / "best_cnn_v3.keras"
+if USE_YAMNET:
+    import tensorflow_hub as hub
 
-)
+    YAMNET_DIR = AI_DIR / "pest_yamnet_updated_candidate"
+    ai_model = tf.keras.models.load_model(
+        YAMNET_DIR / "best_candidate.keras"
+    )
+    with open(YAMNET_DIR / "class_names.json", "r", encoding="utf-8") as f:
+        class_names = json.load(f)
 
-with open(AI_DIR / "class_names.json", "r", encoding="utf-8") as f:
-
-    class_names = json.load(f)
+    yamnet = hub.load("https://tfhub.dev/google/yamnet/1")
+else:
+    ai_model = tf.keras.models.load_model(
+        AI_DIR / "best_cnn_v3.keras"
+    )
+    with open(AI_DIR / "class_names.json", "r", encoding="utf-8") as f:
+        class_names = json.load(f)
 
 MEL_MATRIX = tf.signal.linear_to_mel_weight_matrix(
 
@@ -147,25 +158,70 @@ def prepare_audio(audio):
     return mel[..., tf.newaxis]
 
 def predict_pest(audio):
+    if USE_YAMNET:
+        waveform = np.asarray(audio, dtype=np.float32).reshape(-1)
 
-    features = prepare_audio(audio)
+        # Match the YAMNet training pipeline: 5-second clips at 16 kHz.
+        sample_rate = 16000
+        clip_samples = sample_rate * 5
+        predictions = []
 
-    prediction = ai_model.predict(
+        for start in range(0, len(waveform), clip_samples):
+            clip = waveform[start:start + clip_samples]
 
-        tf.expand_dims(features, 0),
+            # Ignore a trailing fragment shorter than 1 second.
+            if len(clip) < sample_rate:
+                continue
 
-        verbose=0
+            if len(clip) < clip_samples:
+                clip = np.pad(clip, (0, clip_samples - len(clip)))
 
-    )[0]
+            # Normalize each clip before extracting YAMNet embeddings.
+            peak = float(np.max(np.abs(clip)))
+            if peak > 0:
+                clip = clip / peak
+
+            _, embeddings, _ = yamnet(
+                tf.convert_to_tensor(clip, dtype=tf.float32)
+            )
+
+            features = tf.reduce_mean(
+                embeddings, axis=0
+            ).numpy().astype(np.float32)
+
+            scores = ai_model.predict(
+                features[np.newaxis, :], verbose=0
+            )[0]
+
+            predictions.append(scores)
+
+        if not predictions:
+            raise HTTPException(
+                status_code=400,
+                detail="Audio is too short for pest detection."
+            )
+
+        # Average predictions across the available audio clips.
+        prediction = np.mean(np.stack(predictions), axis=0)
+
+    else:
+        # Preserve the existing production CNN pipeline.
+        features = prepare_audio(audio)
+        prediction = ai_model.predict(
+            tf.expand_dims(features, 0),
+            verbose=0
+        )[0]
+
+    if len(prediction) != len(class_names):
+        raise RuntimeError(
+            "Model output does not match the class labels."
+        )
 
     index = int(np.argmax(prediction))
 
     return {
-
         "pest": class_names[index],
-
         "confidence": float(prediction[index])
-
     }
 
 class AISolutionRequest(BaseModel):
