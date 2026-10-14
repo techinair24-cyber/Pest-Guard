@@ -13,68 +13,10 @@ const DEVICE_ID =
 const DEVICE_CACHE_KEY =
   'pest_guard_device_status'
 
-const DEVICE_STALE_MS = 60 * 1000
-
-function parseServerTimestamp(value) {
-  if (!value) {
-    return null
-  }
-
-  const text = String(value).trim()
-
-  if (!text) {
-    return null
-  }
-
-  const hasTimezone =
-    /[zZ]|[+-]\d{2}:\d{2}$/.test(text)
-
-  const normalizedText =
-    hasTimezone ? text : `${text}Z`
-
-  const date = new Date(normalizedText)
-
-  if (Number.isNaN(date.getTime())) {
-    return null
-  }
-
-  return date
-}
-
-function isDeviceFresh(device) {
-  if (!device) {
-    return false
-  }
-
-  const lastSeen = parseServerTimestamp(
-    device.last_seen || device.lastSeen,
-  )
-
-  if (!lastSeen) {
-    return false
-  }
-
-  const age = Date.now() - lastSeen.getTime()
-
-  return age >= 0 && age <= DEVICE_STALE_MS
-}
+const DEVICE_STATUS_STALE_MS = 60 * 1000
 
 function normalizeDevice(device) {
-  if (!device) {
-    return null
-  }
-
-  const fresh = isDeviceFresh(device)
-
-  return {
-    ...device,
-    status: fresh
-      ? device.status || 'ONLINE'
-      : 'OFFLINE',
-    connection: fresh
-      ? device.connection || 'CONNECTED'
-      : 'DISCONNECTED',
-  }
+  return device || null
 }
 
 function getCachedDevice() {
@@ -93,7 +35,11 @@ function getCachedDevice() {
       return null
     }
 
-    return normalizeDevice(device)
+    return {
+      ...device,
+      status: 'OFFLINE',
+      connection: 'DISCONNECTED',
+    }
   } catch {
     return null
   }
@@ -116,6 +62,7 @@ function cacheDevice(device) {
 
 export function useLiveDetection() {
   const mountedRef = useRef(false)
+  const lastDeviceStatusSuccessAtRef = useRef(null)
 
   const [liveStatus, setLiveStatus] = useState(() => ({
     detection: null,
@@ -147,6 +94,7 @@ export function useLiveDetection() {
       const normalizedDevice = normalizeDevice(
         response,
       )
+      lastDeviceStatusSuccessAtRef.current = performance.now()
 
       cacheDevice(normalizedDevice)
 
@@ -172,9 +120,17 @@ export function useLiveDetection() {
           return current
         }
 
-        const refreshedDevice = normalizeDevice(
-          current.device,
-        )
+        const lastSuccessAt = lastDeviceStatusSuccessAtRef.current
+        const statusIsStale =
+          lastSuccessAt === null ||
+          performance.now() - lastSuccessAt > DEVICE_STATUS_STALE_MS
+        const refreshedDevice = statusIsStale
+          ? {
+              ...current.device,
+              status: 'OFFLINE',
+              connection: 'DISCONNECTED',
+            }
+          : current.device
 
         cacheDevice(refreshedDevice)
 

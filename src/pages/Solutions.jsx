@@ -36,7 +36,7 @@ import solutionsField from '../assets/solutions-field.jpg'
 
 import './Solutions.css'
 
-async function generateAISolution(payload) {
+async function requestPestSolution(payload) {
 
  let response
 
@@ -54,7 +54,7 @@ async function generateAISolution(payload) {
 
  } catch (requestError) {
 
-  throw new Error(`Unable to connect to AI solution service: ${requestError.message}`)
+  throw new Error(`Unable to connect to Pest Guard solution service: ${requestError.message}`)
 
  }
 
@@ -64,14 +64,129 @@ async function generateAISolution(payload) {
 
   throw new Error(
 
-   data?.detail || `AI solution request failed with status ${response.status}.`,
+   data?.detail || `Pest solution request failed with status ${response.status}.`,
 
   )
 
  }
 
  return data
+}
 
+const CROP_OPTIONS = [
+ ['rice', 'Rice'],
+ ['maize', 'Maize'],
+ ['vegetables', 'Vegetables'],
+ ['fruit', 'Fruit crops'],
+]
+
+function getCropName(selection) {
+ if (selection?.type === 'other') return selection.name.trim()
+ return CROP_OPTIONS.find(([value]) => value === selection?.type)?.[1] || ''
+}
+
+function getPesticideRecommendation(crop, uncertain) {
+ if (uncertain) {
+  return 'The pest identification is uncertain. Do not choose or apply a pest-specific pesticide. Confirm the pest and crop with a local agricultural officer first.'
+ }
+
+ if (!crop) {
+  return 'Select your crop before seeking crop-specific pesticide advice. Pest Guard has no verified locally registered product or crop-specific label dose for this pest. Ask a local agricultural officer to confirm both.'
+ }
+
+ return `Pest Guard has no verified locally registered product or crop-specific label dose for this pest on ${crop}. Do not guess a product or dose. Ask a local agricultural officer to confirm a registered product and its label rate.`
+}
+
+function toSteps(value) {
+ return String(value || '')
+  .split(/\r?\n/)
+  .map((step) => step.replace(/^\s*\d+[.)]\s*/, '').trim())
+  .filter(Boolean)
+}
+
+function CropSelector({ id, selection, onChange }) {
+ return (
+  <div className="crop-selection">
+   <label htmlFor={id}>Select your crop</label>
+   <select
+    id={id}
+    value={selection?.type || ''}
+    onChange={(event) => onChange({ type: event.target.value, name: '' })}
+   >
+    <option value="">Choose a crop</option>
+    {CROP_OPTIONS.map(([value, label]) => (
+     <option key={value} value={value}>{label}</option>
+    ))}
+    <option value="other">Other crop</option>
+   </select>
+   {selection?.type === 'other' && (
+    <input
+     type="text"
+     value={selection.name || ''}
+     onChange={(event) => onChange({ ...selection, name: event.target.value })}
+     placeholder="Enter crop name"
+     aria-label="Enter crop name"
+     maxLength={100}
+    />
+   )}
+  </div>
+ )
+}
+
+function SolutionSections({ solution, pest, crop, uncertain }) {
+ const damageSteps = uncertain
+  ? toSteps(solution?.about || solution?.description || 'The pest identification is uncertain.')
+  : [
+    ...toSteps(pest?.description || solution?.about || solution?.description),
+    ...toSteps(pest?.symptoms),
+   ]
+ const protectSteps = [
+  ...(pest?.symptoms && !uncertain
+   ? [`Inspect affected and nearby plants for these signs: ${pest.symptoms}`]
+   : []),
+  ...toSteps(solution?.recommended_action),
+ ]
+ const pesticideSteps = toSteps(
+  getPesticideRecommendation(crop, uncertain),
+ )
+ const safeApplicationSteps = [
+  uncertain
+   ? 'Do not apply a pesticide based on this uncertain identification. Confirm the pest and crop with a local agricultural officer first.'
+   : 'Do not apply a pesticide until a locally registered product and its label are confirmed for this pest and crop.',
+  'If an officer recommends a product, wear the protective equipment listed on its label. Follow label instructions for mixing, spraying, re-entry, storage, and disposal. Never mix products.',
+  "Follow the label's pre-harvest waiting period. Pest Guard has no verified product label or waiting period for this case.",
+ ]
+ const preventionSteps = [
+  ...toSteps(solution?.prevention || pest?.prevention),
+  'Inspect the affected and nearby plants again in 2–3 days. If damage spreads, record what you see and ask a local agricultural officer for help.',
+ ]
+ const sections = [
+  ['Pest and Crop Damage', damageSteps],
+  ['How to Protect the Crop', protectSteps],
+  ['Recommended Pesticide/Medicine', pesticideSteps],
+  ['Safe Application Instructions', safeApplicationSteps],
+  ['Prevention and Follow-up', preventionSteps],
+ ]
+
+ return (
+  <div className="solution-sections">
+   {sections.map(([heading, steps], index) => (
+    <section key={heading}>
+     <span className="section-number">{String(index + 1).padStart(2, '0')}</span>
+     <div>
+      <h3>{heading}</h3>
+      {steps.length ? (
+       <ol className="solution-steps">
+        {steps.map((step, stepIndex) => <li key={`${heading}-${stepIndex}`}>{step}</li>)}
+       </ol>
+      ) : (
+       <ol className="solution-steps"><li>Not available.</li></ol>
+      )}
+     </div>
+    </section>
+   ))}
+  </div>
+ )
 }
 
 function Solutions() {
@@ -81,8 +196,9 @@ function Solutions() {
  const { detection, loading: detectionLoading } = useLiveDetection()
 
  const [solution, setSolution] = useState(null)
-
  const [pest, setPest] = useState(null)
+ const [cropSelection, setCropSelection] = useState({ type: '', name: '' })
+ const [historyCropSelections, setHistoryCropSelections] = useState({})
 
  const [pestDirectory, setPestDirectory] = useState({})
 
@@ -107,28 +223,31 @@ function Solutions() {
  const queryPest = new URLSearchParams(location.search).get('pest')?.trim()
 
  const requestedPest = queryPest || detection?.pest || ''
+ const selectedCrop = getCropName(cropSelection)
 
  const risk = String(detection?.risk || '').toUpperCase()
 
  const status = String(detection?.status || '').toUpperCase()
 
- const isLowRisk = risk === 'LOW'
+ const detectionConfidence = Number(detection?.confidence)
 
- const solutionRisk = isLowRisk
+ const canShowSpeciesGuidance =
+  status === 'HARMFUL_PEST' &&
+  risk === 'HIGH' &&
+  Number.isFinite(detectionConfidence) &&
+  detectionConfidence >= 0.70 &&
+  (!queryPest ||
+   normalizePestName(queryPest) === normalizePestName(detection?.pest))
 
-  ? null
+ const isNonPest = status === 'NON_PEST'
 
-  : risk === 'HIGH' || status === 'HARMFUL_PEST'
+ const solutionRisk = canShowSpeciesGuidance
+  ? 'HIGH'
+  : risk === 'LOW' || detectionConfidence < 0.40
+   ? 'LOW'
+   : 'MEDIUM'
 
-   ? 'HIGH'
-
-   : risk === 'MEDIUM' || status === 'UNKNOWN'
-
-    ? 'MEDIUM'
-
-    : null
-
- const canShowGuidance = Boolean(solutionRisk)
+ const canShowGuidance = !isNonPest
 
  useEffect(() => {
 
@@ -244,30 +363,47 @@ function Solutions() {
 
     setPest(nextPest)
 
-    if (!canShowGuidance) {
-
-     if (!nextPest && directoryError) {
-
-      setError(`Unable to resolve pest information: ${directoryError}`)
-
-     }
-
+    if (isNonPest) {
      return
-
     }
 
-    const scientificName = nextPest?.scientific_name || requestedPest
+    const allowSpeciesGuidance =
+     canShowSpeciesGuidance && Boolean(nextPest?.pest_id)
 
-    const commonName = getCommonPestName(requestedPest, nextDirectory)
+    if (!allowSpeciesGuidance) {
+     if (directoryError) {
+      setError(
+       `Unable to verify the pest catalog; showing general guidance instead: ${directoryError}`,
+      )
+     }
 
-    const normalizedRequestedPest = normalizePestName(requestedPest)
-    const savedHistory = solutionRisk === 'HIGH'
-      ? highRiskHistory.find((item) =>
-          [item?.pest, item?.common_name, item?.pest_id].some(
-            (value) => normalizePestName(value) === normalizedRequestedPest,
-          ),
-        )
-      : null
+     const uncertainSolution = await requestPestSolution({
+      pest: requestedPest || 'Unknown insect',
+      common_name: 'Unconfirmed insect',
+      risk: solutionRisk,
+      confidence: Number.isFinite(detectionConfidence)
+       ? detectionConfidence
+       : 0,
+      pest_id: '',
+      pest_description: '',
+      pest_symptoms: '',
+     })
+
+     if (!active) return
+
+     setSolution(uncertainSolution)
+     return
+    }
+
+    const scientificName =
+     nextPest.scientific_name || nextPest.name
+    const commonName = nextPest.name
+
+    const savedHistory = highRiskHistory.find(
+     (item) =>
+      item?.pest_id === nextPest.pest_id &&
+      Number(item?.confidence) >= 0.70,
+    )
 
     if (savedHistory) {
       setSolution({
@@ -283,7 +419,7 @@ function Solutions() {
 
     let nextSolution = null
 
-    if (nextPest?.pest_id) {
+    if (nextPest.pest_id) {
 
      try {
 
@@ -315,29 +451,17 @@ function Solutions() {
 
     }
 
-    if (!solutionRisk) {
-
-     setError('No treatment guidance is available for this detection risk.')
-
-     return
-
-    }
-
     try {
 
-     const generatedSolution = await generateAISolution({
+     const generatedSolution = await requestPestSolution({
 
       pest: scientificName,
 
       common_name: commonName,
 
-      risk: solutionRisk,
+      risk: 'HIGH',
 
-      confidence: Number.isFinite(Number(detection?.confidence))
-
-       ? Number(detection.confidence)
-
-       : 0,
+      confidence: detectionConfidence,
 
       pest_id: nextPest?.pest_id || '',
 
@@ -349,7 +473,7 @@ function Solutions() {
 
      if (!active) return
 
-     setSolution({ ...generatedSolution, generated: true })
+     setSolution(generatedSolution)
 
     } catch (aiError) {
 
@@ -357,7 +481,7 @@ function Solutions() {
 
      setError(
 
-      `No curated solution is available, and AI guidance could not be generated: ${aiError.message}`,
+      `No curated solution is available, and fallback guidance could not be loaded: ${aiError.message}`,
 
      )
 
@@ -397,9 +521,11 @@ function Solutions() {
 
  }, [
   requestedPest,
+  status,
+  canShowSpeciesGuidance,
   solutionRisk,
-  canShowGuidance,
-  detection?.confidence,
+  detectionConfidence,
+  isNonPest,
   retryKey,
   historyLoading,
   highRiskHistory,
@@ -409,7 +535,7 @@ function Solutions() {
 
  const hasLiveDetection = Boolean(detection?.pest)
 
- const confidence = Number(detection?.confidence)
+ const confidence = detectionConfidence
 
  const confidenceLabel = Number.isFinite(confidence)
 
@@ -427,9 +553,11 @@ function Solutions() {
 
     ? 'NON-PEST'
 
-    : 'AI PREDICTION'
+    : 'UNCERTAIN IDENTIFICATION'
 
- const pestName = getDisplayPestName(requestedPest, pestDirectory)
+ const pestName = canShowSpeciesGuidance && pest?.pest_id
+  ? getDisplayPestName(requestedPest, pestDirectory)
+  : 'Uncertain identification'
 
  const riskLabel = detection?.risk || pest?.risk || statusLabel
 
@@ -478,6 +606,7 @@ function Solutions() {
    }
 
    setHighRiskHistory([])
+   setHistoryCropSelections({})
 
    setConfirmClearHistory(false)
 
@@ -513,7 +642,7 @@ function Solutions() {
 
      <p className="solutions-intro">
 
-      This page follows the latest live AI detection and shows the available guidance for that detected insect.
+      This page follows the latest live AI detection. Species-specific guidance is shown only for a sufficiently confident identification matched to a verified pest record.
 
      </p>
 
@@ -597,7 +726,6 @@ function Solutions() {
 
         <h2>{pestName}</h2>
 
-        {solution?.generated && <span className="card-eyebrow">AI-generated guidance</span>}
 
        </div>
 
@@ -643,11 +771,11 @@ function Solutions() {
 
       </div>
 
-      {isLowRisk ? (
+      {isNonPest ? (
 
        <div className="solution-error">
 
-        <p>No treatment guidance shown because this detection is low risk.</p>
+        <p>No pest-specific guidance is needed because the latest event was classified as a non-pest sound.</p>
 
         {error && <p>{error}</p>}
 
@@ -655,79 +783,19 @@ function Solutions() {
 
       ) : canShowGuidance && solution ? (
 
-       <div className="solution-sections">
-
-        <section>
-
-         <span className="section-number">01</span>
-
-         <div>
-
-          <h3>About this pest</h3>
-
-          <p>
-
-           {solution.about ||
-
-            pest?.description ||
-
-            solution.description ||
-
-            'Not available.'}
-
-          </p>
-
-         </div>
-
-        </section>
-
-        <section>
-
-         <span className="section-number">02</span>
-
-         <div>
-
-          <h3>Recommended action</h3>
-
-          <p>{solution.recommended_action || 'Not available.'}</p>
-
-         </div>
-
-        </section>
-
-        <section>
-
-         <span className="section-number">03</span>
-
-         <div>
-
-          <h3>Prevention</h3>
-
-          <p>{solution.prevention || 'Not available.'}</p>
-
-         </div>
-
-        </section>
-
-        {solution.generated && (
-
-         <section>
-
-          <span className="section-number">04</span>
-
-          <div>
-
-           <h3>Precautions</h3>
-
-           <p>{solution.precautions || 'Not available.'}</p>
-
-          </div>
-
-         </section>
-
-        )}
-
-       </div>
+       <>
+        <CropSelector
+         id="live-crop-selection"
+         selection={cropSelection}
+         onChange={setCropSelection}
+        />
+        <SolutionSections
+         solution={solution}
+         pest={pest}
+         crop={selectedCrop}
+         uncertain={!canShowSpeciesGuidance}
+        />
+       </>
 
       ) : error ? (
 
@@ -929,27 +997,29 @@ function Solutions() {
 
         const historyKey = item.pest || item.pest_id || ''
 
+        const historyConfidence = Number(item.confidence)
+
+        const historyPestRecord =
+         pestDirectory[normalizePestName(historyKey)]
+
+        const verifiedHistoryPest =
+         Number.isFinite(historyConfidence) &&
+         historyConfidence >= 0.70 &&
+         Boolean(item.pest_id) &&
+         item.pest_verified === true
+
         const mappedName = getCommonPestName(historyKey, pestDirectory)
 
-        const historyName =
-
-         mappedName ||
-
-         item.common_name ||
-
-         getDisplayPestName(historyKey, pestDirectory) ||
-
-         'Unknown pest'
+        const historyName = verifiedHistoryPest
+         ? mappedName ||
+           item.common_name ||
+           getDisplayPestName(historyKey, pestDirectory)
+         : 'Uncertain identification'
 
         const historyScientificName =
-
-         item.pest && item.pest !== historyName
-
+         verifiedHistoryPest && item.pest && item.pest !== historyName
           ? item.pest
-
           : ''
-
-        const historyConfidence = Number(item.confidence)
 
         const historyConfidenceLabel = Number.isFinite(historyConfidence)
 
@@ -1027,7 +1097,7 @@ function Solutions() {
 
              >
 
-              HIGH-RISK ALERT
+              {verifiedHistoryPest ? 'HIGH-RISK ALERT' : 'UNCERTAIN IDENTIFICATION'}
 
              </p>
 
@@ -1099,7 +1169,7 @@ function Solutions() {
 
             >
 
-             HIGH
+             {verifiedHistoryPest ? 'HIGH' : 'UNVERIFIED'}
 
             </span>
 
@@ -1219,55 +1289,30 @@ function Solutions() {
 
           >
 
-           <h4 style={{ margin: '22px 0 10px', fontSize: '1.05rem' }}>
-
-            {historyName} HIGH Risk AI Solution
-
-           </h4>
-
-           {item.solution_description && (
-
-            <div style={{ marginBottom: '18px' }}>
-
-             <p className="card-eyebrow">About this pest</p>
-
-             <p>{item.solution_description}</p>
-
-            </div>
-
-           )}
-
-           {item.recommended_action && (
-
-            <div style={{ marginBottom: '18px' }}>
-
-             <p className="card-eyebrow">Recommended action</p>
-
-             <p>{item.recommended_action}</p>
-
-            </div>
-
-           )}
-
-           {item.prevention && (
-
-            <div style={{ marginBottom: '18px' }}>
-
-             <p className="card-eyebrow">Prevention</p>
-
-             <p>{item.prevention}</p>
-
-            </div>
-
-           )}
-
-           <div style={{ marginBottom: '18px' }}>
-
-            <p className="card-eyebrow">Precautions</p>
-
-            <p>{item.precautions || 'Do not mix pesticides or use unlabelled products. Any chemical treatment must be selected for the specific crop and pest and used exactly according to the local product label and agricultural guidance.'}</p>
-
-           </div>
+           <CropSelector
+            id={`history-crop-${item.id}`}
+            selection={historyCropSelections[item.id] || { type: '', name: '' }}
+            onChange={(selection) =>
+             setHistoryCropSelections((current) => ({
+              ...current,
+              [item.id]: selection,
+             }))
+            }
+           />
+           <SolutionSections
+            solution={{
+             about: item.solution_description,
+             recommended_action: item.recommended_action,
+             prevention: item.prevention,
+             precautions: item.precautions,
+            }}
+            pest={historyPestRecord || {
+             description: item.pest_description,
+             symptoms: item.pest_symptoms,
+            }}
+            crop={getCropName(historyCropSelections[item.id])}
+            uncertain={!verifiedHistoryPest}
+           />
 
            {item.temperature != null || item.humidity != null ? (
 

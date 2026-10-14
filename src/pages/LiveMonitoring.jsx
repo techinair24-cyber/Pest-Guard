@@ -143,37 +143,31 @@ function formatDate(value) {
     : '—'
 }
 
-function displayStatus(status, pest) {
+function displayStatus(status) {
   if (status === 'HARMFUL_PEST') return 'HARMFUL PEST'
   if (status === 'NON_PEST') return 'NON-PEST'
-  if (status === 'UNKNOWN' && pest) return 'AI PREDICTION'
-  if (status === 'UNKNOWN') return 'UNKNOWN SOUND'
+  if (status === 'UNKNOWN') return 'UNCERTAIN IDENTIFICATION'
   return 'NO DETECTION'
 }
 
-function getDetectionMessage(status, pest) {
+function getDetectionMessage(status) {
   if (status === 'HARMFUL_PEST') return 'Harmful pest activity detected in the field.'
   if (status === 'NON_PEST') return 'No harmful pest detected.'
-  if (status === 'UNKNOWN' && pest) return 'The AI predicted this insect sound, but confidence is below the harmful-pest alert threshold.'
-  if (status === 'UNKNOWN') return 'Waiting for a confident pest prediction.'
+  if (status === 'UNKNOWN') return 'The displayed label is only the model’s top candidate. Identification is uncertain; do not use it for species-specific treatment.'
   return 'Waiting for an event from the field unit.'
 }
 
 function getConnectionState(device, loading) {
   if (loading) return 'Connecting'
   if (!device) return 'Offline'
-
-  const value = String(device.connection || device.status || '').toUpperCase()
+  const value = String(device.status || device.connection || '').toUpperCase()
   return value === 'CONNECTED' || value === 'ONLINE' ? 'Online' : 'Offline'
 }
-
 function getConfidenceTone(value) {
   if (value === null || value === undefined || value === '') {
     return 'empty'
   }
-
   const number = Number(value)
-
   if (!Number.isFinite(number)) {
     return 'empty'
   }
@@ -202,8 +196,8 @@ function LiveMonitoring() {
   const liveDetection = detection || history[0] || null
   const liveDevice = device || (liveDetection ? {
     device_id: liveDetection.device_id || 'FIELD-UNIT-01',
-    status: 'ONLINE',
-    connection: 'CONNECTED',
+    status: 'OFFLINE',
+    connection: 'DISCONNECTED',
     last_seen: liveDetection.detected_at || liveDetection.timestamp || null,
     temperature: liveDetection.temperature ?? null,
     humidity: liveDetection.humidity ?? null,
@@ -637,7 +631,7 @@ function LiveMonitoring() {
               <p className="monitoring-card-eyebrow">AI classification</p>
               <h2>Latest Detection</h2>
             </div>
-            <span className="detection-status-pill">{displayStatus(detectionStatus, liveDetection?.pest)}</span>
+            <span className="detection-status-pill">{displayStatus(detectionStatus)}</span>
           </div>
 
           {liveDetection ? (
@@ -646,7 +640,7 @@ function LiveMonitoring() {
                 <span className="detection-indicator" />
                 <div>
                   <strong>{getDisplayPestName(liveDetection.pest, pestDirectory)}</strong>
-                  <p>{getDetectionMessage(detectionStatus, liveDetection.pest)}</p>
+                  <p>{getDetectionMessage(detectionStatus)}</p>
                 </div>
               </div>
 
@@ -669,8 +663,15 @@ function LiveMonitoring() {
               </div>
 
               <div className="detection-details">
-                <div><span>Pest</span><strong>{getDisplayPestName(liveDetection.pest, pestDirectory)}</strong></div>
-                <div><span>Status</span><strong>{displayStatus(detectionStatus, liveDetection.pest)}</strong></div>
+                <div>
+                  <span>{detectionStatus === 'UNKNOWN' ? 'Top model candidate' : 'Pest'}</span>
+                  <strong>
+                    {detectionStatus === 'UNKNOWN'
+                      ? liveDetection.pest || 'Unidentified insect'
+                      : getDisplayPestName(liveDetection.pest, pestDirectory)}
+                  </strong>
+                </div>
+                <div><span>Status</span><strong>{displayStatus(detectionStatus)}</strong></div>
                 <div><span>Confidence</span><strong>{formatConfidence(liveDetection.confidence)}</strong></div>
                 <div><span>Risk</span><strong>{liveDetection.risk || '—'}</strong></div>
                 <div><span>Date / time</span><strong>{formatDate(liveDetection.detected_at || liveDetection.timestamp)}</strong></div>
