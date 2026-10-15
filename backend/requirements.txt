@@ -17,3 +17,4 @@ python-dotenv
 websockets
 twilio
 tensorflow-hub
+setuptools<81
