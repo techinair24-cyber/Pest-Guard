@@ -2,6 +2,8 @@ import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
+import logging
+
 import os
 
 import urllib.error
@@ -61,6 +63,8 @@ from schemas import (
     HealthResponse,
     PestResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 # -------------------------------------------------------------------
 
@@ -404,16 +408,56 @@ def _request_gemini_solution(payload: AISolutionRequest) -> dict:
     for attempt in range(3):
         try:
             with urllib.request.urlopen(provider_request, timeout=30) as response:
-                provider_data = json.loads(response.read().decode("utf-8"))
+                response_status = response.status
+                response_content_type = response.headers.get("Content-Type", "")
+                response_body = response.read()
+
+            if not response_body.strip():
+                logger.error(
+                    "Gemini provider returned an empty response "
+                    "(status=%s, content_type=%r)",
+                    response_status,
+                    response_content_type,
+                )
+                raise RuntimeError(
+                    "Gemini solution provider returned an empty response."
+                )
+
+            if "json" not in response_content_type.lower():
+                logger.error(
+                    "Gemini provider returned a non-JSON response "
+                    "(status=%s, content_type=%r, bytes=%s)",
+                    response_status,
+                    response_content_type,
+                    len(response_body),
+                )
+                raise RuntimeError(
+                    "Gemini solution provider returned a non-JSON response."
+                )
+
+            try:
+                provider_data = json.loads(response_body.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                logger.error(
+                    "Gemini provider returned invalid JSON "
+                    "(status=%s, content_type=%r, bytes=%s, error=%s)",
+                    response_status,
+                    response_content_type,
+                    len(response_body),
+                    type(error).__name__,
+                )
+                raise RuntimeError(
+                    "Gemini solution provider returned invalid JSON."
+                ) from error
             break
         except urllib.error.HTTPError as error:
-            try:
-                provider_error_body = error.read().decode("utf-8", errors="replace")
-            except Exception:
-                provider_error_body = ""
-
-            print("Gemini HTTP error:", error.code, provider_error_body[:4000])
+            logger.error(
+                "Gemini provider HTTP error (status=%s, content_type=%r)",
+                error.code,
+                error.headers.get("Content-Type", "") if error.headers else "",
+            )
             last_provider_error = error
+            error.close()
 
             if error.code == 503 and attempt < 2:
                 retry_seconds = 2 ** (attempt + 1)
@@ -439,10 +483,15 @@ def _request_gemini_solution(payload: AISolutionRequest) -> dict:
     if provider_data is None:
         raise RuntimeError("Gemini solution provider did not return a response.") from last_provider_error
 
+    if not isinstance(provider_data, dict):
+        logger.error("Gemini provider JSON response was not an object")
+        raise RuntimeError("Gemini solution provider returned an invalid response.")
+
     try:
         candidates = provider_data.get("candidates") or []
         if not candidates:
-            raise RuntimeError(f"Gemini returned no candidates: {json.dumps(provider_data)[:4000]}")
+            logger.error("Gemini provider response contained no candidates")
+            raise RuntimeError("Gemini returned no candidates.")
 
         parts = candidates[0].get("content", {}).get("parts", [])
         content = "".join(
@@ -452,7 +501,8 @@ def _request_gemini_solution(payload: AISolutionRequest) -> dict:
         ).strip()
 
         if not content:
-            raise RuntimeError(f"Gemini returned empty content: {json.dumps(provider_data)[:4000]}")
+            logger.error("Gemini provider response contained empty content")
+            raise RuntimeError("Gemini returned empty content.")
 
         if content.startswith("```json"):
             content = content[7:]
@@ -463,7 +513,10 @@ def _request_gemini_solution(payload: AISolutionRequest) -> dict:
         generated = json.loads(content.strip())
 
     except (KeyError, IndexError, TypeError, ValueError) as error:
-        print("Gemini solution provider error:", repr(error))
+        logger.error(
+            "Gemini solution response could not be parsed (%s)",
+            type(error).__name__,
+        )
         raise RuntimeError(
             "Gemini solution provider returned an invalid or unavailable response."
         ) from error
@@ -942,7 +995,25 @@ async def ai_predict(request: Request):
 
         else:
 
-            payload = await request.json()
+            try:
+                payload = await request.json()
+            except (json.JSONDecodeError, UnicodeDecodeError) as error:
+                logger.warning(
+                    "AI prediction rejected invalid JSON request "
+                    "(content_type=%r, error=%s)",
+                    content_type,
+                    type(error).__name__,
+                )
+                raise HTTPException(
+                    status_code=400,
+                    detail="Request body must contain valid JSON.",
+                ) from error
+
+            if not isinstance(payload, dict):
+                raise HTTPException(
+                    status_code=400,
+                    detail="JSON request body must be an object.",
+                )
 
             if "audio" not in payload:
 
@@ -995,6 +1066,10 @@ async def ai_predict(request: Request):
         raise
 
     except Exception as error:
+        logger.exception(
+            "AI prediction failed (model=%s)",
+            "yamnet" if USE_YAMNET else "cnn",
+        )
 
         raise HTTPException(
 
