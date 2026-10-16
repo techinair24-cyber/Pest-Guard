@@ -10,13 +10,14 @@ pydantic-settings
 python-multipart
 numpy
 scikit-learn
-tensorflow
+tensorflow==2.20.0
 librosa
 soundfile
 python-dotenv
 websockets
 twilio
 tensorflow-hub
+tf-keras==2.20.1
 setuptools<81
 psycopg2-binary
 psycopg[binary]
