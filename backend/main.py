@@ -66,6 +66,12 @@ from schemas import (
 
 logger = logging.getLogger(__name__)
 
+USE_YAMNET = os.getenv("PEST_MODEL", "cnn").strip().lower() == "yamnet"
+
+if USE_YAMNET:
+    tf.config.threading.set_intra_op_parallelism_threads(1)
+    tf.config.threading.set_inter_op_parallelism_threads(1)
+
 # -------------------------------------------------------------------
 
 # AI MODEL
@@ -75,14 +81,14 @@ logger = logging.getLogger(__name__)
 AI_DIR = Path(__file__).resolve().parent / "ai_model"
 
 # Original CNN remains the default.
-USE_YAMNET = os.getenv("PEST_MODEL", "cnn").strip().lower() == "yamnet"
 
 if USE_YAMNET:
     import tensorflow_hub as hub
 
     YAMNET_DIR = AI_DIR / "pest_yamnet_updated_candidate"
     ai_model = tf.keras.models.load_model(
-        YAMNET_DIR / "best_candidate.keras"
+        YAMNET_DIR / "best_candidate.keras",
+        compile=False,
     )
     with open(YAMNET_DIR / "class_names.json", "r", encoding="utf-8") as f:
         class_names = json.load(f)
@@ -90,7 +96,8 @@ if USE_YAMNET:
     yamnet = hub.load("https://tfhub.dev/google/yamnet/1")
 else:
     ai_model = tf.keras.models.load_model(
-        AI_DIR / "best_cnn_v3.keras"
+        AI_DIR / "best_cnn_v3.keras",
+        compile=False,
     )
     with open(AI_DIR / "class_names.json", "r", encoding="utf-8") as f:
         class_names = json.load(f)
@@ -193,9 +200,9 @@ def predict_pest(audio):
                 embeddings, axis=0
             ).numpy().astype(np.float32)
 
-            scores = ai_model.predict(
-                features[np.newaxis, :], verbose=0
-            )[0]
+            scores = ai_model(
+                features[np.newaxis, :], training=False
+            ).numpy()[0]
 
             predictions.append(scores)
 
