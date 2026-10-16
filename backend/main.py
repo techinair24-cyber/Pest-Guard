@@ -1198,67 +1198,6 @@ def _fallback_uncertain_solution(payload: AISolutionRequest) -> dict:
 
 
 def _high_risk_solution_history_response(item, db: Session) -> dict:
-    pest_record = _find_verified_pest_record(
-        db,
-        item.pest or "",
-        item.pest_id or "",
-    )
-    has_verified_solution = (
-        item.risk == "HIGH"
-        and item.confidence is not None
-        and item.confidence >= PEST_IDENTIFICATION_CONFIDENCE
-        and pest_record is not None
-        and item.pest_id == pest_record.pest_id
-    )
-
-    if has_verified_solution:
-        curated_solution = (
-            db.query(Solution)
-            .filter(Solution.pest_id == pest_record.pest_id)
-            .first()
-        )
-        safe_fallback = _fallback_ai_solution(
-            AISolutionRequest(
-                pest=pest_record.scientific_name or pest_record.name,
-                common_name=pest_record.name,
-                risk=item.risk,
-                confidence=item.confidence,
-                pest_id=pest_record.pest_id,
-                pest_description=pest_record.description or "",
-                pest_symptoms=pest_record.symptoms or "",
-            )
-        )
-        return {
-            "id": item.id,
-            "detection_id": item.detection_id,
-            "device_id": item.device_id,
-            "pest_verified": True,
-            "pest_id": item.pest_id,
-            "pest": item.pest,
-            "common_name": item.common_name,
-            "pest_description": pest_record.description,
-            "pest_symptoms": pest_record.symptoms,
-            "image_url": item.image_url,
-            "risk": item.risk,
-            "confidence": item.confidence,
-            "temperature": item.temperature,
-            "humidity": item.humidity,
-            "solution_title": item.solution_title,
-            "solution_description": pest_record.description,
-            "recommended_action": (
-                curated_solution.recommended_action
-                if curated_solution and curated_solution.recommended_action
-                else safe_fallback["recommended_action"]
-            ),
-            "prevention": (
-                curated_solution.prevention
-                if curated_solution and curated_solution.prevention
-                else safe_fallback["prevention"]
-            ),
-            "detected_at": item.detected_at,
-            "created_at": item.created_at,
-        }
-
     fallback = _fallback_uncertain_solution(
         AISolutionRequest(
             pest=item.pest or "Unconfirmed insect",
@@ -1278,7 +1217,7 @@ def _high_risk_solution_history_response(item, db: Session) -> dict:
         "pest_description": "",
         "pest_symptoms": "",
         "image_url": item.image_url,
-        "risk": item.risk,
+        "risk": "UNKNOWN",
         "confidence": item.confidence,
         "temperature": item.temperature,
         "humidity": item.humidity,
@@ -1296,61 +1235,9 @@ async def generate_ai_solution(
     payload: AISolutionRequest,
     db: Session = Depends(get_db),
 ):
-    pest_record = _find_verified_pest_record(
-        db,
-        payload.pest,
-        payload.pest_id,
-    )
-    if (
-        payload.risk != "HIGH"
-        or payload.confidence < PEST_IDENTIFICATION_CONFIDENCE
-        or not pest_record
-    ):
-        return _fallback_uncertain_solution(payload)
-
-    verified_payload = AISolutionRequest(
-        pest=pest_record.scientific_name or pest_record.name,
-        common_name=pest_record.name,
-        risk=payload.risk,
-        confidence=payload.confidence,
-        pest_id=pest_record.pest_id,
-        pest_description=pest_record.description or "",
-        pest_symptoms=pest_record.symptoms or "",
-        crop=payload.crop,
-    )
-
-    curated_solution = (
-        db.query(Solution)
-        .filter(Solution.pest_id == pest_record.pest_id)
-        .first()
-    )
-    if not curated_solution:
-        return _fallback_ai_solution(verified_payload)
-
-    damage = pest_record.description or (
-        f"{pest_record.name} was identified. Confirm the visible damage in the field."
-    )
-    if pest_record.symptoms:
-        damage = f"{damage} Signs to check: {pest_record.symptoms}"
-
-    fallback = _fallback_ai_solution(verified_payload)
-    return {
-        "pest": verified_payload.pest,
-        "common_name": verified_payload.common_name,
-        "risk": verified_payload.risk,
-        "confidence": verified_payload.confidence,
-        "crop": verified_payload.crop,
-        "about": damage,
-        "recommended_action": (
-            curated_solution.recommended_action
-            or fallback["recommended_action"]
-        ),
-        "pesticide_recommendation": _pesticide_recommendation(
-            verified_payload.crop
-        ),
-        "prevention": curated_solution.prevention or fallback["prevention"],
-        "precautions": _safe_application_instructions(),
-    }
+    # This request has no independent verification signal; confidence and a
+    # catalogue-name match are not sufficient to confirm the model prediction.
+    return _fallback_uncertain_solution(payload)
 
 # -------------------------------------------------------------------
 

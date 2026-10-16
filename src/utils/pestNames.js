@@ -77,6 +77,37 @@ export const PEST_CLASS_RISK_ESTIMATES = Object.freeze({
     rationale:
       'FAO documents rapid population growth and the potential for a 1 km² swarm to consume food comparable to 35,000 people in one day.',
   }),
+  katydid: Object.freeze({
+    canonicalName: 'Katydid',
+    risk: 'MEDIUM',
+    source: 'UC Statewide IPM Program',
+    sourceUrl: 'https://ipm.ucanr.edu/agriculture/citrus/katydids/',
+    rationale:
+      'Some katydid species can damage leaves and young fruit. Impact varies by species and crop.',
+  }),
+})
+
+const MODEL_CLASS_COMMON_NAMES = Object.freeze({
+  cicada: 'Cicada',
+  commonfieldgrasshopper: 'Common field grasshopper',
+  desertlocust: 'Desert locust',
+  dogdaycicada: 'Dog Day Cicada',
+  fieldcrickt: 'Field Cricket',
+  fruitefly: 'Fruit Fly',
+  grasshopper: 'Grasshopper',
+  greatgreenbushcricket: 'Great green bush-cricket',
+  housecricket: 'House Cricket',
+  katydid: 'Katydid',
+  migratorylocust: 'Migratory locust',
+  molecricket: 'Mole cricket',
+  rhinocerosbeetle: 'Rhinoceros beetle',
+  roeselsbushcricket: "Roesel's bush-cricket",
+  shorthornedgrasshopper: 'Short-horned grasshopper',
+  snowytreecricket: 'Snowy Tree Cricket',
+  swampcicada: 'Swamp Cicada',
+  treecricket: 'Tree Cricket',
+  twospottedcricket: 'Two-spotted cricket',
+  termite: 'Termite',
 })
 
 export function normalizePestName(value) {
@@ -126,10 +157,14 @@ export function getPestRiskEstimate(pest, directory = {}) {
 
   const catalogRisk = String(directory[key]?.risk || '').toUpperCase()
   if (['LOW', 'MEDIUM', 'HIGH'].includes(catalogRisk)) {
-    return { risk: catalogRisk, source: 'catalog' }
+    return {
+      risk: catalogRisk,
+      source: 'Pest Guard pest catalogue',
+      rationale: 'Risk category recorded in the matching pest catalogue entry.',
+    }
   }
 
-  return { risk: 'UNKNOWN', source: null }
+  return { risk: 'UNKNOWN', source: null, rationale: '' }
 }
 
 function getFallbackCommonName(...values) {
@@ -148,11 +183,13 @@ export function getCommonPestName(pest, directory = {}) {
   const rawName = String(pest || '').trim()
   if (!rawName) return 'Detected pest'
 
-  const entry = directory[normalizePestName(rawName)]
+  const key = normalizePestName(rawName)
+  const entry = directory[key]
 
   return (
     entry?.commonName ||
     getFallbackCommonName(rawName, entry?.scientificName) ||
+    MODEL_CLASS_COMMON_NAMES[key] ||
     rawName
   )
 }
@@ -162,11 +199,17 @@ export function getDisplayPestName(pest, directory = {}) {
   if (!rawName) return 'Unknown pest'
 
   const entry = directory[normalizePestName(rawName)]
-  const scientificName = String(entry?.scientificName || rawName).trim()
   const commonName = getCommonPestName(rawName, directory)
+  const scientificName = String(
+    entry?.scientificName || (getFallbackCommonName(rawName) ? rawName : ''),
+  ).trim()
+
+  if (!scientificName) {
+    return commonName
+  }
 
   if (normalizePestName(commonName) === normalizePestName(scientificName)) {
-    return scientificName
+    return commonName
   }
 
   return `${commonName} (${scientificName})`

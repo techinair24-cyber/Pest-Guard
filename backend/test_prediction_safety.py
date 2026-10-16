@@ -247,6 +247,67 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             "UNKNOWN",
         )
 
+    def test_high_score_and_catalog_match_do_not_verify_a_prediction(self):
+        payload = main.AISolutionRequest(
+            pest="Cicada",
+            common_name="Cicada",
+            risk="HIGH",
+            confidence=0.99,
+            pest_id="cicada",
+        )
+        catalog_record = Mock(
+            pest_id="cicada",
+            name="Cicada",
+            scientific_name="Cicadidae",
+        )
+
+        with patch.object(
+            main,
+            "_find_verified_pest_record",
+            return_value=catalog_record,
+        ):
+            response = asyncio.run(
+                main.generate_ai_solution(payload, Mock())
+            )
+
+        self.assertEqual(response["risk"], "UNKNOWN")
+        self.assertEqual(response["pest"], "Unconfirmed insect")
+        self.assertIn(
+            "Do not choose or apply a pest-specific pesticide",
+            response["pesticide_recommendation"],
+        )
+
+    def test_high_risk_history_is_still_unverified_and_general(self):
+        item = Mock(
+            id=7,
+            detection_id=11,
+            device_id="FIELD-UNIT-01",
+            pest_id="cicada",
+            pest="Cicada",
+            image_url=None,
+            risk="HIGH",
+            confidence=0.99,
+            temperature=None,
+            humidity=None,
+            solution_title="Legacy species-specific title",
+            detected_at=None,
+            created_at=None,
+        )
+
+        response = main._high_risk_solution_history_response(item, Mock())
+
+        self.assertFalse(response["pest_verified"])
+        self.assertEqual(response["risk"], "UNKNOWN")
+        self.assertEqual(
+            response["solution_title"],
+            "General Integrated Pest Management Guidance",
+        )
+        self.assertEqual(response["pest_description"], "")
+        self.assertIn(
+            "before choosing any species-specific treatment",
+            response["recommended_action"],
+        )
+
     def test_supported_classes_without_catalog_records_get_general_guidance(self):
         for pest in (
             "Grasshopper",

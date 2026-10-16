@@ -21,15 +21,10 @@ import {
 } from '../services/api'
 
 import {
-
  buildPestDirectory,
-
- getCommonPestName,
-
  getDisplayPestName,
-
+ getPestRiskEstimate,
  normalizePestName,
-
 } from '../utils/pestNames'
 
 import solutionsField from '../assets/solutions-field.jpg'
@@ -225,23 +220,33 @@ function Solutions() {
  const requestedPest = queryPest || detection?.pest || ''
  const selectedCrop = getCropName(cropSelection)
 
- const risk = String(detection?.risk || '').toUpperCase()
-
  const status = String(detection?.status || '').toUpperCase()
 
- const detectionConfidence = Number(detection?.confidence)
+ const detectionConfidence =
+  detection?.confidence === null ||
+  detection?.confidence === undefined ||
+  detection?.confidence === ''
+   ? Number.NaN
+   : Number(detection.confidence)
+
+ const riskEstimate = getPestRiskEstimate(requestedPest, pestDirectory)
+
+ const hasVerifiedCatalogMatch =
+  detection?.pest_verified === true &&
+  Boolean(detection?.pest_id) &&
+  detection.pest_id === pest?.pest_id
 
  const canShowSpeciesGuidance =
+  hasVerifiedCatalogMatch &&
   status === 'HARMFUL_PEST' &&
-  risk === 'HIGH' &&
-  Number.isFinite(detectionConfidence) &&
-  detectionConfidence >= 0.70 &&
   (!queryPest ||
    normalizePestName(queryPest) === normalizePestName(detection?.pest))
 
  const isNonPest = status === 'NON_PEST'
 
- const solutionRisk = canShowSpeciesGuidance ? 'HIGH' : 'UNKNOWN'
+ const solutionRisk = canShowSpeciesGuidance
+  ? riskEstimate.risk
+  : 'UNKNOWN'
 
  const canShowGuidance = !isNonPest
 
@@ -397,8 +402,8 @@ function Solutions() {
 
     const savedHistory = highRiskHistory.find(
      (item) =>
-      item?.pest_id === nextPest.pest_id &&
-      Number(item?.confidence) >= 0.70,
+      item?.pest_verified === true &&
+      item?.pest_id === nextPest.pest_id
     )
 
     if (savedHistory) {
@@ -534,18 +539,19 @@ function Solutions() {
  const confidence = detectionConfidence
 
  const confidenceLabel = Number.isFinite(confidence)
-
   ? `${(confidence * 100).toFixed(1)}%`
+  : 'N/A'
 
-  : 'Not available'
-
- const pestName = canShowSpeciesGuidance && pest?.pest_id
+ const pestName = requestedPest
   ? getDisplayPestName(requestedPest, pestDirectory)
-  : 'Uncertain identification'
+  : 'No pest class available'
 
- const riskLabel = canShowSpeciesGuidance
-  ? detection?.risk || pest?.risk || 'UNKNOWN'
-  : detection?.risk || 'UNKNOWN'
+ const riskLabel = riskEstimate.risk
+
+ const identificationLabel =
+  canShowSpeciesGuidance
+   ? 'Catalog-supported identification'
+   : 'Unverified model prediction'
 
  const handleClearHistory = async () => {
 
@@ -628,7 +634,7 @@ function Solutions() {
 
      <p className="solutions-intro">
 
-      This page follows the latest live AI detection. Species-specific guidance is shown only for a sufficiently confident identification matched to a verified pest record.
+      This page follows the latest live AI prediction. Model scores are not calibrated proof of identity; pest-specific treatment guidance requires independent verification.
 
      </p>
 
@@ -712,18 +718,28 @@ function Solutions() {
 
         <h2>{pestName}</h2>
 
+        <p className="identification-note">{identificationLabel}</p>
 
        </div>
 
        <div className="risk-block">
 
-        <span>Risk</span>
+        <span>General class risk</span>
 
         <strong className={`risk-${String(riskLabel).toLowerCase()}`}>
 
          {riskLabel}
 
         </strong>
+        <small>Not a site-specific infestation assessment.</small>
+        {riskEstimate.sourceUrl ? (
+         <a href={riskEstimate.sourceUrl} target="_blank" rel="noreferrer">
+          Source: {riskEstimate.source}
+         </a>
+        ) : (
+         <small>Source: {riskEstimate.source || 'Unavailable'}</small>
+        )}
+        {riskEstimate.rationale && <small>{riskEstimate.rationale}</small>}
 
        </div>
 
@@ -731,7 +747,7 @@ function Solutions() {
 
       <div className="confidence-row">
 
-       <span>AI confidence</span>
+       <span>Model score (not calibrated confidence)</span>
 
        <strong>{confidenceLabel}</strong>
 
@@ -756,6 +772,14 @@ function Solutions() {
        </div>
 
       </div>
+
+      {(pest?.description || pest?.symptoms) && (
+       <aside className="solution-catalog-reference">
+        <strong>Catalogue reference only — this does not confirm the model prediction.</strong>
+        {pest.description && <p>{pest.description}</p>}
+        {pest.symptoms && <p><b>Symptoms to check:</b> {pest.symptoms}</p>}
+       </aside>
+      )}
 
       {isNonPest ? (
 
@@ -983,35 +1007,33 @@ function Solutions() {
 
         const historyKey = item.pest || item.pest_id || ''
 
-        const historyConfidence = Number(item.confidence)
+        const historyConfidence =
+         item.confidence === null ||
+         item.confidence === undefined ||
+         item.confidence === ''
+          ? Number.NaN
+          : Number(item.confidence)
+
+        const historyName = getDisplayPestName(historyKey, pestDirectory)
 
         const historyPestRecord =
          pestDirectory[normalizePestName(historyKey)]
 
         const verifiedHistoryPest =
-         Number.isFinite(historyConfidence) &&
-         historyConfidence >= 0.70 &&
+         item.pest_verified === true &&
          Boolean(item.pest_id) &&
-         item.pest_verified === true
+         item.pest_id === historyPestRecord?.pestId
 
-        const mappedName = getCommonPestName(historyKey, pestDirectory)
-
-        const historyName = verifiedHistoryPest
-         ? mappedName ||
-           item.common_name ||
-           getDisplayPestName(historyKey, pestDirectory)
-         : 'Uncertain identification'
-
-        const historyScientificName =
-         verifiedHistoryPest && item.pest && item.pest !== historyName
-          ? item.pest
-          : ''
+        const historyRisk = getPestRiskEstimate(
+         historyKey,
+         pestDirectory,
+        )
 
         const historyConfidenceLabel = Number.isFinite(historyConfidence)
 
          ? `${(historyConfidence * 100).toFixed(1)}%`
 
-         : 'Not available'
+         : 'N/A'
 
         const detectedLabel = item.detected_at
 
@@ -1083,7 +1105,7 @@ function Solutions() {
 
              >
 
-              {verifiedHistoryPest ? 'HIGH-RISK ALERT' : 'UNCERTAIN IDENTIFICATION'}
+              {verifiedHistoryPest ? 'CATALOG-SUPPORTED IDENTIFICATION' : 'UNVERIFIED MODEL PREDICTION'}
 
              </p>
 
@@ -1105,57 +1127,10 @@ function Solutions() {
 
              </h3>
 
-             {historyScientificName && (
-
-              <p
-
-               style={{
-
-                margin: '7px 0 0',
-
-                fontSize: '0.82rem',
-
-                opacity: 0.68,
-
-                fontStyle: 'italic',
-
-               }}
-
-              >
-
-               {historyScientificName}
-
-              </p>
-
-             )}
-
             </div>
+            <span className={`history-risk risk-${historyRisk.risk.toLowerCase()}`}>
 
-            <span
-
-             style={{
-
-              flexShrink: 0,
-
-              padding: '6px 10px',
-
-              borderRadius: '999px',
-
-              background: '#f5d9ce',
-
-              color: '#a64f35',
-
-              fontSize: '0.7rem',
-
-              fontWeight: 700,
-
-              letterSpacing: '0.12em',
-
-             }}
-
-            >
-
-             {verifiedHistoryPest ? 'HIGH' : 'UNVERIFIED'}
+             {historyRisk.risk}
 
             </span>
 
@@ -1179,7 +1154,7 @@ function Solutions() {
 
             <div>
 
-             <span className="card-eyebrow">Confidence</span>
+             <span className="card-eyebrow">Model score</span>
 
              <strong style={{ display: 'block', marginTop: '5px' }}>
 
@@ -1286,16 +1261,16 @@ function Solutions() {
             }
            />
            <SolutionSections
-            solution={{
+            solution={verifiedHistoryPest ? {
              about: item.solution_description,
              recommended_action: item.recommended_action,
              prevention: item.prevention,
              precautions: item.precautions,
-            }}
-            pest={historyPestRecord || {
+            } : null}
+            pest={verifiedHistoryPest ? historyPestRecord || {
              description: item.pest_description,
              symptoms: item.pest_symptoms,
-            }}
+            } : null}
             crop={getCropName(historyCropSelections[item.id])}
             uncertain={!verifiedHistoryPest}
            />

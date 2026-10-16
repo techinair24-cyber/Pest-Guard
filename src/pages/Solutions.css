@@ -241,6 +241,84 @@
 
 .risk-block .risk-high { color: #b36c4e; }
 .risk-block .risk-medium { color: #b28a4d; }
+.risk-block .risk-low { color: #53765b; }
+.risk-block .risk-unknown { color: #77827c; }
+
+.risk-block small,
+.risk-block a {
+  display: block;
+  margin-top: 7px;
+  color: var(--solutions-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.risk-block a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.identification-note {
+  margin: 10px 0 0;
+  color: var(--solutions-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.solution-catalog-reference {
+  margin: 22px 0;
+  padding: 16px 18px;
+  border: 1px solid var(--solutions-line);
+  border-radius: 12px;
+  background: #f7f8f2;
+  color: var(--solutions-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.solution-catalog-reference > strong {
+  display: block;
+  color: var(--solutions-forest);
+  font-size: 12px;
+}
+
+.solution-catalog-reference p {
+  margin: 8px 0 0;
+}
+
+.solution-catalog-reference b {
+  color: var(--solutions-forest);
+}
+
+.history-risk {
+  display: inline-block;
+  flex-shrink: 0;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.history-risk.risk-high {
+  background: #f5d9ce;
+  color: #a64f35;
+}
+
+.history-risk.risk-medium {
+  background: #f5ecd4;
+  color: #8b6a2d;
+}
+
+.history-risk.risk-low {
+  background: #e5efdf;
+  color: #527b5e;
+}
+
+.history-risk.risk-unknown {
+  background: #ecefeb;
+  color: #77827c;
+}
 
 .confidence-row {
   display: flex;

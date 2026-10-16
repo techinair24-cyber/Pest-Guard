@@ -4,6 +4,7 @@ import test from 'node:test'
 
 import {
   buildPestDirectory,
+  getDisplayPestName,
   getPestRiskEstimate,
   PEST_CLASS_RISK_ESTIMATES,
 } from './pestNames.js'
@@ -31,6 +32,20 @@ test('desert locust has a documented general risk estimate', () => {
   )
 })
 
+test('Katydid has the documented general monitoring risk estimate', () => {
+  assert.ok(classNames.includes('Katydid'))
+  const estimate = getPestRiskEstimate('Katydid')
+
+  assert.equal(estimate.canonicalName, 'Katydid')
+  assert.equal(estimate.risk, 'MEDIUM')
+  assert.equal(estimate.source, 'UC Statewide IPM Program')
+  assert.equal(
+    estimate.sourceUrl,
+    'https://ipm.ucanr.edu/agriculture/citrus/katydids/',
+  )
+  assert.match(estimate.rationale, /varies by species and crop/)
+})
+
 test('unsupported model classes remain unknown instead of inheriting similar pest risk', () => {
   for (const label of [
     'Grasshopper',
@@ -46,7 +61,10 @@ test('unsupported model classes remain unknown instead of inheriting similar pes
 })
 
 test('every active model output label has an explicit supported or unknown risk result', () => {
-  const supportedLabels = new Set(['Desert locust'])
+  const supportedRisks = new Map([
+    ['Desert locust', 'HIGH'],
+    ['Katydid', 'MEDIUM'],
+  ])
 
   assert.equal(classNames.length, 20)
 
@@ -54,10 +72,38 @@ test('every active model output label has an explicit supported or unknown risk 
     const estimate = getPestRiskEstimate(label)
     assert.equal(
       estimate.risk,
-      supportedLabels.has(label) ? 'HIGH' : 'UNKNOWN',
+      supportedRisks.get(label) || 'UNKNOWN',
       label,
     )
   }
+})
+
+test('every active model label has a readable display name without inventing taxonomy', () => {
+  const readableNames = new Map([
+    ['Field Crickt', 'Field Cricket'],
+    ['Fruite Fly', 'Fruit Fly'],
+    ['termite', 'Termite'],
+  ])
+
+  for (const label of classNames) {
+    const displayName = getDisplayPestName(label)
+    assert.ok(displayName, label)
+    assert.ok(!displayName.endsWith(`(${label})`), label)
+    assert.equal(displayName, readableNames.get(label) || label, label)
+  }
+})
+
+test('scientific names are displayed only when a matching catalog record provides one', () => {
+  const directory = buildPestDirectory([
+    {
+      pest_id: 'aphid',
+      name: 'Aphid',
+      scientific_name: 'Aphididae',
+    },
+  ])
+
+  assert.equal(getDisplayPestName('Aphid', directory), 'Aphid (Aphididae)')
+  assert.equal(getDisplayPestName('Cicada'), 'Cicada')
 })
 
 test('model scores do not participate in class risk lookup', () => {

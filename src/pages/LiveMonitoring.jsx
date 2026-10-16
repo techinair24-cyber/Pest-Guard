@@ -10,6 +10,7 @@ import {
   buildPestDirectory,
   getDisplayPestName,
   getPestRiskEstimate,
+  normalizePestName,
 } from '../utils/pestNames'
 import {
   getDetectionTime,
@@ -183,10 +184,16 @@ function LiveMonitoring() {
   const healthTone = connectionState === 'Online' ? 'online' : 'offline'
   const predictedPestName =
     typeof detection?.pest === 'string' ? detection.pest.trim() : ''
-  const riskEstimate = getPestRiskEstimate(
+  const riskDetails = getPestRiskEstimate(
     predictedPestName,
     pestDirectory,
-  ).risk
+  )
+  const riskEstimate = riskDetails.risk
+  const predictedPestDisplayName = predictedPestName
+    ? getDisplayPestName(predictedPestName, pestDirectory)
+    : ''
+  const matchingPestRecord =
+    pestDirectory[normalizePestName(predictedPestName)]
   const reportingDeviceId =
     detection?.device_id || device?.device_id || 'N/A'
 
@@ -565,15 +572,31 @@ function LiveMonitoring() {
             <div>
               <strong>
                 {predictedPestName
-                  ? predictedPestName
+                  ? predictedPestDisplayName
                   : 'No pest detected yet'}
               </strong>
             </div>
           </div>
 
+          {predictedPestName && (
+            <p className="latest-identification-status">
+              Unverified model prediction
+            </p>
+          )}
+
+          {matchingPestRecord?.description || matchingPestRecord?.symptoms ? (
+            <div className="latest-catalog-reference">
+              <strong>Catalogue reference (not identification confirmation)</strong>
+              {matchingPestRecord.description && <p>{matchingPestRecord.description}</p>}
+              {matchingPestRecord.symptoms && (
+                <p><b>Symptoms:</b> {matchingPestRecord.symptoms}</p>
+              )}
+            </div>
+          ) : null}
+
           <div className="detection-details">
             <div>
-              <span>Confidence / Model Score</span>
+              <span>Model score (not calibrated confidence)</span>
               <strong>{formatDetectionConfidence(detection?.confidence)}</strong>
             </div>
             <div className={`latest-risk latest-risk-${riskEstimate.toLowerCase()}`}>
@@ -581,7 +604,17 @@ function LiveMonitoring() {
                 <span>Risk Level</span>
                 <strong>{riskEstimate}</strong>
               </div>
-              <small>General class risk; not site-specific</small>
+              <small>
+                General estimate; not site-specific.
+                {riskDetails.sourceUrl ? (
+                  <> Source: <a href={riskDetails.sourceUrl} target="_blank" rel="noreferrer">{riskDetails.source}</a></>
+                ) : riskDetails.source ? (
+                  <> Source: {riskDetails.source}</>
+                ) : (
+                  ' Classification source unavailable.'
+                )}
+              </small>
+              {riskDetails.rationale && <small>{riskDetails.rationale}</small>}
               <div
                 className="latest-risk-track"
                 role="img"
