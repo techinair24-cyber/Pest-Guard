@@ -723,16 +723,14 @@ function LiveMonitoring() {
                   <div className="history-main">
                     <span className="history-time">{formatDate(getDetectionTime(item))}</span>
                     <strong>
-                      {item.status === 'UNKNOWN' && item.pest
-                        ? `Unverified: ${getDisplayPestName(item.pest, pestDirectory)}`
-                        : getDisplayPestName(item.pest, pestDirectory)}
+                      {getDisplayPestName(item.pest, pestDirectory)}
                     </strong>
                   </div>
 
                   <div className="history-meta">
                     <span>{item.status || 'UNKNOWN'}</span>
                     <strong>{formatConfidence(item.confidence)}</strong>
-                    <strong>{item.risk || '—'}</strong>
+                    <strong>{getPestRiskEstimate(item.pest, pestDirectory).risk}</strong>
                     <strong>{item.device_id || deviceId}</strong>
                   </div>
                 </div>
