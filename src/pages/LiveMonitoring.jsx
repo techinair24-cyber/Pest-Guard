@@ -107,6 +107,7 @@ function LiveMonitoring() {
   const [historyError, setHistoryError] = useState('')
   const [historyRetryCount, setHistoryRetryCount] = useState(0)
   const [historyClearedAt, setHistoryClearedAt] = useState(() => getStoredClearTime())
+  const [selectionNow, setSelectionNow] = useState(() => Date.now())
   const [popup, setPopup] = useState(null)
   const [detectionControlEnabled, setDetectionControlEnabled] = useState(false)
   const [detectionControlBusy, setDetectionControlBusy] = useState(false)
@@ -116,6 +117,36 @@ function LiveMonitoring() {
   const alertedKeysRef = useRef(getStoredAlertedKeys())
 
   const liveDetection = detection || history[0] || null
+
+  // Refresh the recent-prediction window so an old winner eventually expires.
+  useEffect(() => {
+    const timer = window.setInterval(() => setSelectionNow(Date.now()), 3000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  const recentDetectionCandidates = mergeDetections(
+    history,
+    detection ? [detection] : [],
+  ).filter((item) => {
+    const timestamp = parseServerTimestamp(getDetectionTime(item))
+    const sameDevice = !device?.device_id || !item.device_id || item.device_id === device.device_id
+    return Number.isFinite(timestamp) &&
+      timestamp <= selectionNow + 5000 &&
+      timestamp >= selectionNow - 30000 &&
+      sameDevice &&
+      typeof item.pest === 'string' && item.pest.trim() !== ''
+  })
+
+  // Display one winner from the last 30 seconds, while preserving all events in history.
+  const bestRecentDetection = recentDetectionCandidates.reduce((best, item) => {
+    const score = Number(item.confidence)
+    const bestScore = Number(best?.confidence)
+    if (!best) return item
+    if (!Number.isFinite(bestScore)) return Number.isFinite(score) ? item : best
+    return Number.isFinite(score) && score > bestScore ? item : best
+  }, null)
+
+  const displayDetection = bestRecentDetection
   const liveDevice = device || (liveDetection ? {
     device_id: liveDetection.device_id || 'FIELD-UNIT-01',
     status: 'OFFLINE',
@@ -126,7 +157,7 @@ function LiveMonitoring() {
   } : null)
 
   const connectionState = getConnectionState(liveDevice, loading)
-  const detectionStatus = liveDetection?.status || ''
+  const detectionStatus = displayDetection?.status || liveDetection?.status || ''
   const statusClass = detectionStatus === 'HARMFUL_PEST'
     ? 'harmful'
     : detectionStatus === 'NON_PEST'
@@ -183,7 +214,7 @@ function LiveMonitoring() {
   const deviceTimestamp = liveDevice?.last_seen || liveDevice?.lastSeen
   const healthTone = connectionState === 'Online' ? 'online' : 'offline'
   const predictedPestName =
-    typeof detection?.pest === 'string' ? detection.pest.trim() : ''
+    typeof displayDetection?.pest === 'string' ? displayDetection.pest.trim() : ''
   const riskDetails = getPestRiskEstimate(
     predictedPestName,
     pestDirectory,
@@ -195,7 +226,7 @@ function LiveMonitoring() {
   const matchingPestRecord =
     pestDirectory[normalizePestName(predictedPestName)]
   const reportingDeviceId =
-    detection?.device_id || device?.device_id || 'N/A'
+    displayDetection?.device_id || device?.device_id || 'N/A'
 
   useEffect(() => {
     let active = true
@@ -563,7 +594,8 @@ function LiveMonitoring() {
           <div className="monitoring-card-heading">
             <div>
               <p className="monitoring-card-eyebrow">AI classification</p>
-              <h2>Latest Detection</h2>
+              <h2>Best Recent Detection</h2>
+              <p className="monitoring-card-eyebrow">Highest model score in the last 30 seconds</p>
             </div>
           </div>
 
@@ -597,7 +629,7 @@ function LiveMonitoring() {
           <div className="detection-details">
             <div>
               <span>Model score (not calibrated confidence)</span>
-              <strong>{formatDetectionConfidence(detection?.confidence)}</strong>
+              <strong>{formatDetectionConfidence(displayDetection?.confidence)}</strong>
             </div>
             <div className={`latest-risk latest-risk-${riskEstimate.toLowerCase()}`}>
               <div className="latest-risk-heading">
