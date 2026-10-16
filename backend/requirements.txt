@@ -19,3 +19,4 @@ twilio
 tensorflow-hub
 setuptools<81
 psycopg2-binary
+psycopg[binary]
