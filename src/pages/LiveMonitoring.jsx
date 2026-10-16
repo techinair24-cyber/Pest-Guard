@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { getDetectionControl, setDetectionEnabled } from '../services/api'
 
 import { useLiveDetection } from '../hooks/useLiveDetection'
-import { ArrowIcon, LeafIcon, SparkIcon } from '../components/Icons'
+import { ArrowIcon, SparkIcon } from '../components/Icons'
 import { getDetectionHistory, getPests } from '../services/api'
 import { buildPestDirectory, getDisplayPestName } from '../utils/pestNames'
 import './LiveMonitoring.css'
@@ -143,40 +143,12 @@ function formatDate(value) {
     : '—'
 }
 
-function displayStatus(status) {
-  if (status === 'HARMFUL_PEST') return 'HARMFUL PEST'
-  if (status === 'NON_PEST') return 'NON-PEST'
-  if (status === 'UNKNOWN') return 'UNCERTAIN IDENTIFICATION'
-  return 'NO DETECTION'
-}
-
-function getDetectionMessage(status) {
-  if (status === 'HARMFUL_PEST') return 'Harmful pest activity detected in the field.'
-  if (status === 'NON_PEST') return 'No harmful pest detected.'
-  if (status === 'UNKNOWN') return 'No pest could be verified from this sound. Do not use this result for species-specific treatment.'
-  return 'Waiting for an event from the field unit.'
-}
-
 function getConnectionState(device, loading) {
   if (loading) return 'Connecting'
   if (!device) return 'Offline'
   const value = String(device.status || device.connection || '').toUpperCase()
   return value === 'CONNECTED' || value === 'ONLINE' ? 'Online' : 'Offline'
 }
-function getConfidenceTone(value) {
-  if (value === null || value === undefined || value === '') {
-    return 'empty'
-  }
-  const number = Number(value)
-  if (!Number.isFinite(number)) {
-    return 'empty'
-  }
-
-  if (number >= 0.7) return 'high'
-  if (number >= 0.4) return 'medium'
-  return 'low'
-}
-
 function LiveMonitoring() {
   const navigate = useNavigate()
   const { detection, device, loading, error } = useLiveDetection()
@@ -259,10 +231,6 @@ function LiveMonitoring() {
     }
   }
   const deviceTimestamp = liveDevice?.last_seen || liveDevice?.lastSeen
-  const confidenceValue = Number(liveDetection?.confidence)
-  const confidencePercent = Number.isFinite(confidenceValue)
-    ? confidenceValue * 100
-    : null
   const healthTone = connectionState === 'Online' ? 'online' : 'offline'
 
   useEffect(() => {
@@ -631,75 +599,18 @@ function LiveMonitoring() {
               <p className="monitoring-card-eyebrow">AI classification</p>
               <h2>Latest Detection</h2>
             </div>
-            <span className="detection-status-pill">{displayStatus(detectionStatus)}</span>
           </div>
 
-          {liveDetection ? (
-            <>
-              <div className="latest-detection-main">
-                <span className="detection-indicator" />
-                <div>
-                  <strong>
-                    {detectionStatus === 'UNKNOWN'
-                      ? liveDetection.pest
-                        ? `Unverified model class: ${getDisplayPestName(liveDetection.pest, pestDirectory)}`
-                        : 'Unidentified sound'
-                      : getDisplayPestName(liveDetection.pest, pestDirectory)}
-                  </strong>
-                  <p>{getDetectionMessage(detectionStatus)}</p>
-                </div>
-              </div>
-
-              <div className="confidence-visual">
-                <div className="confidence-header">
-                  <span>{detectionStatus === 'UNKNOWN' ? 'Model score' : 'AI Confidence'}</span>
-                  <strong>
-                    {confidencePercent === null
-                      ? '—'
-                      : `${detectionStatus === 'UNKNOWN' ? 'Score' : 'Confidence'} ${confidencePercent.toFixed(1)}%`}
-                  </strong>
-                </div>
-
-                {confidencePercent === null ? (
-                  <p className="confidence-empty">No confidence value available.</p>
-                ) : (
-                  <div className="confidence-bar-wrap">
-                    <div
-                      className={`confidence-bar-fill ${getConfidenceTone(liveDetection.confidence)}`}
-                      style={{ width: `${Math.min(Math.max(confidencePercent, 0), 100)}%` }}
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div className="detection-details">
-                <div>
-                  <span>{detectionStatus === 'UNKNOWN' ? 'Identification' : 'Pest'}</span>
-                  <strong>
-                    {detectionStatus === 'UNKNOWN'
-                      ? 'Not verified'
-                      : getDisplayPestName(liveDetection.pest, pestDirectory)}
-                  </strong>
-                </div>
-                <div><span>Status</span><strong>{displayStatus(detectionStatus)}</strong></div>
-                <div>
-                  <span>{detectionStatus === 'UNKNOWN' ? 'Model score' : 'Confidence'}</span>
-                  <strong>{formatConfidence(liveDetection.confidence)}</strong>
-                </div>
-                <div><span>Risk</span><strong>{liveDetection.risk || '—'}</strong></div>
-                <div><span>Date / time</span><strong>{formatDate(liveDetection.detected_at || liveDetection.timestamp)}</strong></div>
-                <div><span>Device ID</span><strong>{liveDetection.device_id || deviceId}</strong></div>
-                <div><span>Temperature</span><strong>{formatOnlineTemperature(displayTemperature)}</strong></div>
-                <div><span>Humidity</span><strong>{formatOnlineHumidity(displayHumidity)}</strong></div>
-              </div>
-            </>
-          ) : (
-            <div className="no-detection-state">
-              <div className="no-detection-icon"><LeafIcon size={23} /></div>
-              <strong>No Detection Yet</strong>
-              <p>Waiting for the field unit to send an AI detection.</p>
+          <div className="latest-detection-main">
+            <span className="detection-indicator" />
+            <div>
+              <strong>
+                {typeof detection?.pest === 'string' && detection.pest.trim()
+                  ? detection.pest.trim()
+                  : 'No pest detected yet'}
+              </strong>
             </div>
-          )}
+          </div>
         </article>
 
         <article className="monitoring-card device-health-card">
