@@ -314,7 +314,7 @@ class AISolutionRequest(BaseModel):
 
     common_name: str = Field(min_length=1, max_length=200)
 
-    risk: Literal["HIGH", "MEDIUM", "LOW"]
+    risk: Literal["HIGH", "MEDIUM", "LOW", "UNKNOWN"]
 
     confidence: float = Field(ge=0, le=1)
 
@@ -332,7 +332,7 @@ class AISolutionResponse(BaseModel):
 
     common_name: str
 
-    risk: Literal["HIGH", "MEDIUM", "LOW"]
+    risk: Literal["HIGH", "MEDIUM", "LOW", "UNKNOWN"]
 
     confidence: float
 
@@ -1166,7 +1166,7 @@ def _fallback_uncertain_solution(payload: AISolutionRequest) -> dict:
     return {
         "pest": "Unconfirmed insect",
         "common_name": "Uncertain identification",
-        "risk": payload.risk,
+        "risk": "UNKNOWN",
         "confidence": payload.confidence,
         "crop": payload.crop,
         "about": (

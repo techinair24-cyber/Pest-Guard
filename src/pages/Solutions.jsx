@@ -241,11 +241,7 @@ function Solutions() {
 
  const isNonPest = status === 'NON_PEST'
 
- const solutionRisk = canShowSpeciesGuidance
-  ? 'HIGH'
-  : risk === 'LOW' || detectionConfidence < 0.40
-   ? 'LOW'
-   : 'MEDIUM'
+ const solutionRisk = canShowSpeciesGuidance ? 'HIGH' : 'UNKNOWN'
 
  const canShowGuidance = !isNonPest
 
@@ -543,23 +539,13 @@ function Solutions() {
 
   : 'Not available'
 
- const statusLabel =
-
-  detection?.status === 'HARMFUL_PEST'
-
-   ? 'HARMFUL PEST'
-
-   : detection?.status === 'NON_PEST'
-
-    ? 'NON-PEST'
-
-    : 'UNCERTAIN IDENTIFICATION'
-
  const pestName = canShowSpeciesGuidance && pest?.pest_id
   ? getDisplayPestName(requestedPest, pestDirectory)
   : 'Uncertain identification'
 
- const riskLabel = detection?.risk || pest?.risk || statusLabel
+ const riskLabel = canShowSpeciesGuidance
+  ? detection?.risk || pest?.risk || 'UNKNOWN'
+  : detection?.risk || 'UNKNOWN'
 
  const handleClearHistory = async () => {
 

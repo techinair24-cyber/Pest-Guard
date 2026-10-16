@@ -151,6 +151,110 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         self.assertEqual(response["confidence"], 0.99)
         self.assertEqual(response["risk"], "UNKNOWN")
 
+    def test_every_model_class_stays_unverified_at_low_and_high_scores(self):
+        request = FakeRequest("application/json", payload={"audio": []})
+
+        for pest in main.class_names:
+            for confidence in (0.2, 0.99):
+                candidate_result = {
+                    "pest": pest,
+                    "confidence": confidence,
+                }
+                with self.subTest(pest=pest, confidence=confidence):
+                    with patch.object(
+                        main,
+                        "predict_pest",
+                        return_value=candidate_result,
+                    ):
+                        response = asyncio.run(main.ai_predict(request))
+
+                    self.assertEqual(response["status"], "UNKNOWN")
+                    self.assertEqual(response["pest"], pest)
+                    self.assertEqual(response["confidence"], confidence)
+                    self.assertEqual(response["risk"], "UNKNOWN")
+
+    def test_uncertain_solution_keeps_risk_unknown_even_for_high_score(self):
+        payload = main.AISolutionRequest(
+            pest="Cicada",
+            common_name="Unconfirmed insect",
+            risk="HIGH",
+            confidence=0.99,
+        )
+
+        response = main._fallback_uncertain_solution(payload)
+
+        self.assertEqual(response["risk"], "UNKNOWN")
+        self.assertIn(
+            "Do not choose or apply a pest-specific pesticide",
+            response["pesticide_recommendation"],
+        )
+
+    def test_unknown_risk_does_not_allow_specific_solution_with_a_record(self):
+        payload = main.AISolutionRequest(
+            pest="Cicada",
+            common_name="Unconfirmed insect",
+            risk="UNKNOWN",
+            confidence=0.99,
+        )
+        verified_record = Mock(
+            pest_id="cicada",
+            name="Cicada",
+            scientific_name="Cicadidae",
+            description="",
+            symptoms="",
+        )
+
+        with patch.object(
+            main,
+            "_find_verified_pest_record",
+            return_value=verified_record,
+        ):
+            response = asyncio.run(
+                main.generate_ai_solution(payload, Mock())
+            )
+
+        self.assertEqual(response["risk"], "UNKNOWN")
+        self.assertEqual(response["pest"], "Unconfirmed insect")
+        self.assertIn(
+            "Do not choose or apply a pest-specific pesticide",
+            response["pesticide_recommendation"],
+        )
+        self.assertEqual(
+            main.AISolutionResponse(**response).risk,
+            "UNKNOWN",
+        )
+
+    def test_supported_classes_without_catalog_records_get_general_guidance(self):
+        for pest in (
+            "Grasshopper",
+            "Migratory locust",
+            "termite",
+            "Cicada",
+        ):
+            payload = main.AISolutionRequest(
+                pest=pest,
+                common_name="Unconfirmed insect",
+                risk="HIGH",
+                confidence=0.99,
+            )
+
+            with self.subTest(pest=pest):
+                with patch.object(
+                    main,
+                    "_find_verified_pest_record",
+                    return_value=None,
+                ):
+                    response = asyncio.run(
+                        main.generate_ai_solution(payload, Mock())
+                    )
+
+                self.assertEqual(response["risk"], "UNKNOWN")
+                self.assertEqual(response["pest"], "Unconfirmed insect")
+                self.assertIn(
+                    "Do not choose or apply a pest-specific pesticide",
+                    response["pesticide_recommendation"],
+                )
+
     def test_unvalidated_device_score_is_not_stored_as_a_pest(self):
         database = Mock()
         database.query.return_value.filter.return_value.first.return_value = None
