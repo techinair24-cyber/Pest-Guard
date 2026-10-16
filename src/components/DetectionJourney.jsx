@@ -73,17 +73,28 @@ function DetectionJourney({ detection }) {
     }
   }, [detection])
 
+  const isUncertain = detection?.status === 'UNKNOWN'
+  const isNonPest = detection?.status === 'NON_PEST'
+  const isConfirmedPest = detection?.status === 'HARMFUL_PEST' && detection?.pest
   const steps = [
     { key: 'capture', label: 'Sound Captured', note: 'Field sound detected' },
     { key: 'processing', label: 'Signal Processing', note: 'Waveform refined' },
     { key: 'analysis', label: 'AI Analyzing', note: 'Spectral pattern review' },
-    { key: 'identified', label: 'Pest Identified', note: 'Classification complete' },
+    {
+      key: 'identified',
+      label: isUncertain ? 'Identification uncertain' : isNonPest ? 'Non-pest sound' : 'Pest Identified',
+      note: isUncertain
+        ? 'No verified pest identified'
+        : isNonPest
+          ? 'No harmful pest identified'
+          : 'Classification complete',
+    },
   ]
 
   const hasDetection = Boolean(detection)
-  const pestName = detection?.pest || ''
+  const pestName = isConfirmedPest ? detection.pest : ''
   const confidence = formatPercent(detection?.confidence)
-  const pestAsset = hasDetection ? getPestImage(pestName) : null
+  const pestAsset = isConfirmedPest ? getPestImage(pestName) : null
 
   return (
     <section className="detection-journey" aria-live="polite">
@@ -158,14 +169,23 @@ function DetectionJourney({ detection }) {
                     {hasDetection && pestAsset ? (
                       <img className="stage-pest-image" src={pestAsset} alt={pestName} />
                     ) : (
-                      <div className="stage-neutral-panel" aria-label="Waiting for pest detection">
+                      <div
+                        className="stage-neutral-panel"
+                        aria-label={
+                          isUncertain
+                            ? 'No verified pest identified'
+                            : isNonPest
+                              ? 'No harmful pest identified'
+                              : 'Waiting for pest detection'
+                        }
+                      >
                         <span className="neutral-ring ring-one" />
                         <span className="neutral-ring ring-two" />
                         <span className="neutral-core" />
                       </div>
                     )}
-                    {hasDetection && <span className="stage-pest-ring" aria-hidden="true" />}
-                    {hasDetection && <span className="stage-confidence-badge">{confidence}</span>}
+                    {isConfirmedPest && <span className="stage-pest-ring" aria-hidden="true" />}
+                    {isConfirmedPest && <span className="stage-confidence-badge">{confidence}</span>}
                   </>
                 )}
               </div>
@@ -183,9 +203,17 @@ function DetectionJourney({ detection }) {
 
       {hasDetection ? (
         <div className="journey-result">
-          <span className="result-label">Detected pest</span>
-          <strong>{pestName}</strong>
-          <small>{confidence}</small>
+          <span className="result-label">
+            {isConfirmedPest ? 'Detected pest' : isUncertain ? 'Uncertain identification' : 'Sound result'}
+          </span>
+          <strong>
+            {isConfirmedPest
+              ? pestName
+              : detection.status === 'NON_PEST'
+                ? 'No harmful pest detected'
+                : 'No verified pest identified'}
+          </strong>
+          <small>{isUncertain ? `Model score ${confidence}` : confidence}</small>
         </div>
       ) : (
         <div className="journey-empty-state">

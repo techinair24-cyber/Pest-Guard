@@ -20,8 +20,7 @@ cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-cd ..
-python -m uvicorn backend.app.main:app --reload --port 8000
+python -m uvicorn main:app --reload --port 8000
 ```
 
 The backend initializes SQLite and seeds only the pest and solution reference catalogs. It does not create device or detection records at startup.
@@ -29,15 +28,22 @@ The backend initializes SQLite and seeds only the pest and solution reference ca
 ## API
 
 - `GET /api/health`
-- `GET /api/device/status`
-- `POST /api/device/register`
-- `GET /api/detection/latest`
+- `GET /api/devices`
+- `GET /api/devices/{device_id}`
+- `POST /api/devices/{device_id}/heartbeat`
+- `GET /api/devices/{device_id}/detection-control`
+- `POST /api/devices/{device_id}/detection-control`
+- `POST /api/ai/predict`
+- `POST /api/ai/solution`
 - `GET /api/detections`
-- `POST /api/detection`
+- `GET /api/detections/latest`
 - `POST /api/device/detection`
 - `GET /api/pests`
+- `GET /api/pests/{pest_id}`
 - `GET /api/solutions`
 - `GET /api/solutions/{pest_id}`
-- `WS /ws/detections`
+- `GET /api/solutions/history/high-risk`
+- `DELETE /api/solutions/history/high-risk`
+- `WS /api/ws/detections`
 
-A hardware-shaped event can be sent to `POST /api/device/detection` with `device_id`, `audio_prediction`, `vibration`, and an optional timestamp. Stored events are broadcast to connected browser clients. SMS delivery and trained CNN inference are integration boundaries in `backend/app/services/sms.py` and `backend/app/ai/inference.py`; credentials and model paths are intentionally not hardcoded.
+`POST /api/device/detection` accepts `device_id`, `status`, and optional pest, confidence, risk, temperature, and humidity fields. Device-reported `HARMFUL_PEST` results are stored as `UNKNOWN` until a validation-supported identification threshold is available. Stored events are broadcast to connected browser clients. CNN/YAMNet inference is served by `backend/main.py`; SMS alerts are optional.

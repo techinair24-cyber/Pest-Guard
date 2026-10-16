@@ -153,7 +153,7 @@ function displayStatus(status) {
 function getDetectionMessage(status) {
   if (status === 'HARMFUL_PEST') return 'Harmful pest activity detected in the field.'
   if (status === 'NON_PEST') return 'No harmful pest detected.'
-  if (status === 'UNKNOWN') return 'The displayed label is only the model’s top candidate. Identification is uncertain; do not use it for species-specific treatment.'
+  if (status === 'UNKNOWN') return 'No pest could be verified from this sound. Do not use this result for species-specific treatment.'
   return 'Waiting for an event from the field unit.'
 }
 
@@ -639,15 +639,23 @@ function LiveMonitoring() {
               <div className="latest-detection-main">
                 <span className="detection-indicator" />
                 <div>
-                  <strong>{getDisplayPestName(liveDetection.pest, pestDirectory)}</strong>
+                  <strong>
+                    {detectionStatus === 'UNKNOWN'
+                      ? 'Unidentified sound'
+                      : getDisplayPestName(liveDetection.pest, pestDirectory)}
+                  </strong>
                   <p>{getDetectionMessage(detectionStatus)}</p>
                 </div>
               </div>
 
               <div className="confidence-visual">
                 <div className="confidence-header">
-                  <span>AI Confidence</span>
-                  <strong>{confidencePercent === null ? 'Confidence —' : `${confidencePercent.toFixed(1)}%`}</strong>
+                  <span>{detectionStatus === 'UNKNOWN' ? 'Model score' : 'AI Confidence'}</span>
+                  <strong>
+                    {confidencePercent === null
+                      ? '—'
+                      : `${detectionStatus === 'UNKNOWN' ? 'Score' : 'Confidence'} ${confidencePercent.toFixed(1)}%`}
+                  </strong>
                 </div>
 
                 {confidencePercent === null ? (
@@ -664,15 +672,18 @@ function LiveMonitoring() {
 
               <div className="detection-details">
                 <div>
-                  <span>{detectionStatus === 'UNKNOWN' ? 'Top model candidate' : 'Pest'}</span>
+                  <span>{detectionStatus === 'UNKNOWN' ? 'Identification' : 'Pest'}</span>
                   <strong>
                     {detectionStatus === 'UNKNOWN'
-                      ? liveDetection.pest || 'Unidentified insect'
+                      ? 'Not verified'
                       : getDisplayPestName(liveDetection.pest, pestDirectory)}
                   </strong>
                 </div>
                 <div><span>Status</span><strong>{displayStatus(detectionStatus)}</strong></div>
-                <div><span>Confidence</span><strong>{formatConfidence(liveDetection.confidence)}</strong></div>
+                <div>
+                  <span>{detectionStatus === 'UNKNOWN' ? 'Model score' : 'Confidence'}</span>
+                  <strong>{formatConfidence(liveDetection.confidence)}</strong>
+                </div>
                 <div><span>Risk</span><strong>{liveDetection.risk || '—'}</strong></div>
                 <div><span>Date / time</span><strong>{formatDate(liveDetection.detected_at || liveDetection.timestamp)}</strong></div>
                 <div><span>Device ID</span><strong>{liveDetection.device_id || deviceId}</strong></div>

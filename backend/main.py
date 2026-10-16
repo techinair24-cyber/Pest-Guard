@@ -7,7 +7,6 @@ import logging
 import os
 
 import urllib.error
-
 import urllib.request
 
 import time
@@ -108,8 +107,79 @@ MEL_MATRIX = tf.signal.linear_to_mel_weight_matrix(
 
 )
 
+SAMPLE_RATE = 16000
+# One signed-int16 LSB at the PCM amplitude scale; less than this is not resolvable.
+PCM16_RMS_FLOOR = 1.0 / 32768.0
+
 PEST_IDENTIFICATION_CONFIDENCE = 0.70
-MEDIUM_PREDICTION_CONFIDENCE = 0.40
+
+
+if not isinstance(class_names, list) or not class_names:
+    raise RuntimeError("The model class-label list is empty or invalid.")
+
+if ai_model.output_shape[-1] != len(class_names):
+    raise RuntimeError("Model output does not match the class labels.")
+
+if not USE_YAMNET and ai_model.input_shape != (None, 155, 128, 1):
+    raise RuntimeError(
+        f"Unexpected CNN input shape: {ai_model.input_shape}"
+    )
+
+
+def decode_audio_samples(audio):
+    try:
+        samples = np.asarray(audio)
+    except (TypeError, ValueError) as error:
+        raise HTTPException(
+            status_code=400,
+            detail="Audio must be a one-dimensional numeric sample array.",
+        ) from error
+
+    if samples.ndim != 1 or not samples.size:
+        raise HTTPException(
+            status_code=400,
+            detail="Audio must be a non-empty one-dimensional sample array.",
+        )
+
+    if samples.size < SAMPLE_RATE:
+        raise HTTPException(
+            status_code=422,
+            detail="Audio must contain at least one second of samples.",
+        )
+
+    if np.issubdtype(samples.dtype, np.integer):
+        if np.any(samples < -32768) or np.any(samples > 32767):
+            raise HTTPException(
+                status_code=400,
+                detail="Integer audio samples must be signed 16-bit PCM.",
+            )
+        waveform = samples.astype(np.float32) / 32768.0
+    elif np.issubdtype(samples.dtype, np.floating):
+        waveform = samples.astype(np.float32)
+        if not np.all(np.isfinite(waveform)):
+            raise HTTPException(
+                status_code=400,
+                detail="Audio samples must contain only finite values.",
+            )
+        if np.any(np.abs(waveform) > 1.0):
+            raise HTTPException(
+                status_code=400,
+                detail="Floating-point audio samples must be in [-1, 1].",
+            )
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Audio samples must be signed 16-bit integers or floats in [-1, 1].",
+        )
+
+    signal_rms = float(np.std(waveform, dtype=np.float64))
+    if signal_rms <= PCM16_RMS_FLOOR:
+        raise HTTPException(
+            status_code=422,
+            detail="Audio signal is silent or below the 16-bit PCM quantization floor.",
+        )
+
+    return waveform
 
 
 def prepare_audio(audio):
@@ -169,11 +239,11 @@ def prepare_audio(audio):
     return mel[..., tf.newaxis]
 
 def predict_pest(audio):
-    if USE_YAMNET:
-        waveform = np.asarray(audio, dtype=np.float32).reshape(-1)
+    waveform = decode_audio_samples(audio)
 
+    if USE_YAMNET:
         # Match the YAMNet training pipeline: 5-second clips at 16 kHz.
-        sample_rate = 16000
+        sample_rate = SAMPLE_RATE
         clip_samples = sample_rate * 5
         predictions = []
 
@@ -217,16 +287,19 @@ def predict_pest(audio):
 
     else:
         # Preserve the existing production CNN pipeline.
-        features = prepare_audio(audio)
+        features = prepare_audio(waveform)
         prediction = ai_model.predict(
             tf.expand_dims(features, 0),
             verbose=0
         )[0]
 
-    if len(prediction) != len(class_names):
+    prediction = np.asarray(prediction, dtype=np.float32)
+    if prediction.shape != (len(class_names),):
         raise RuntimeError(
             "Model output does not match the class labels."
         )
+    if not np.all(np.isfinite(prediction)):
+        raise RuntimeError("Model output contains non-finite scores.")
 
     index = int(np.argmax(prediction))
 
@@ -992,13 +1065,7 @@ async def ai_predict(request: Request):
 
                 )
 
-            audio = np.frombuffer(
-
-                raw_audio,
-
-                dtype="<i2",
-
-            ).astype(np.float32)
+            audio = np.frombuffer(raw_audio, dtype="<i2")
 
         else:
 
@@ -1036,35 +1103,16 @@ async def ai_predict(request: Request):
 
         result = predict_pest(audio)
 
-        confidence = result["confidence"]
-
-        if confidence >= PEST_IDENTIFICATION_CONFIDENCE:
-
-            risk = "HIGH"
-
-            status = "HARMFUL_PEST"
-
-        elif confidence >= MEDIUM_PREDICTION_CONFIDENCE:
-
-            risk = "MEDIUM"
-
-            status = "UNKNOWN"
-
-        else:
-
-            risk = "LOW"
-
-            status = "UNKNOWN"
-
+        # This checkpoint has no validation-supported threshold for a positive ID.
         return {
 
-            "status": status,
+            "status": "UNKNOWN",
 
-            "pest": result["pest"],
+            "pest": None,
 
-            "confidence": confidence,
+            "confidence": result["confidence"],
 
-            "risk": risk,
+            "risk": "UNKNOWN",
 
         }
 
@@ -1433,25 +1481,19 @@ async def create_detection(
             )
 
     detection_status = payload.status
+    detection_pest = payload.pest
     detection_risk = payload.risk
-    if (
-        detection_status == "HARMFUL_PEST"
-        and (
-            payload.confidence is None
-            or not payload.confidence >= PEST_IDENTIFICATION_CONFIDENCE
-        )
-    ):
+    if detection_status == "HARMFUL_PEST":
+        # No validation data supports trusting a device-reported class score.
         detection_status = "UNKNOWN"
-
-    if detection_status != "HARMFUL_PEST" and detection_risk == "HIGH":
-        detection_risk = (
-            "MEDIUM"
-            if (
-                payload.confidence is not None
-                and payload.confidence >= MEDIUM_PREDICTION_CONFIDENCE
-            )
-            else "LOW"
-        )
+        detection_pest = None
+        detection_risk = "UNKNOWN"
+    elif detection_status == "UNKNOWN":
+        detection_pest = None
+        detection_risk = "UNKNOWN"
+    else:
+        detection_pest = None
+        detection_risk = "LOW"
 
     detected_time = payload.detected_at or datetime.now(timezone.utc).replace(
         tzinfo=None
@@ -1463,7 +1505,7 @@ async def create_detection(
 
         status=detection_status,
 
-        pest=payload.pest,
+        pest=detection_pest,
 
         confidence=payload.confidence,
 

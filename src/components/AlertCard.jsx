@@ -10,8 +10,10 @@ function AlertCard({ detection }) {
   return (
     <article className={harmful ? 'alert-card' : 'alert-card alert-card-neutral'}>
       <div className="alert-card-heading"><div><p className="eyebrow">Detection result</p><h2>{title}</h2></div><StatusBadge tone={harmful ? 'high' : 'neutral'}>{detection.risk}</StatusBadge></div>
-      <div className="alert-pest-name">{detection.pest || detection.status.replace('_', ' ')}</div>
-      <div className="alert-card-details"><span>Confidence <strong>{confidence}</strong></span><span>Status <strong>{detection.status.replace('_', ' ')}</strong></span></div>
+      <div className="alert-pest-name">
+        {detection.pest || (detection.status === 'UNKNOWN' ? 'Unidentified sound' : detection.status.replace('_', ' '))}
+      </div>
+      <div className="alert-card-details"><span>{detection.status === 'UNKNOWN' ? 'Model score' : 'Confidence'} <strong>{confidence}</strong></span><span>Status <strong>{detection.status.replace('_', ' ')}</strong></span></div>
       {harmful && <Link className="primary-button" to={`/solutions?pest=${encodeURIComponent(detection.pest || '')}`}>View Solution <ArrowIcon /></Link>}
     </article>
   )
