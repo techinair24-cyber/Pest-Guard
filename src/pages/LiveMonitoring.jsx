@@ -487,7 +487,7 @@ function LiveMonitoring() {
     setHistory((current) => mergeDetections([detection], current))
   }, [detection, historyClearedAt])
 
-  const filters = ['ALL', 'HARMFUL_PEST', 'NON_PEST', 'UNKNOWN']
+  const filters = ['ALL', 'HARMFUL_PEST', 'NON_PEST']
 
   const historyWithLiveDetection = mergeDetections(history, detection ? [detection] : [])
     .filter((item) => isAfterHistoryClear(item, historyClearedAt))
@@ -594,8 +594,7 @@ function LiveMonitoring() {
           <div className="monitoring-card-heading">
             <div>
               <p className="monitoring-card-eyebrow">AI classification</p>
-              <h2>Best Recent Detection</h2>
-              <p className="monitoring-card-eyebrow">Highest model score in the last 30 seconds</p>
+              <h2>Recent Detection</h2>
             </div>
           </div>
 
@@ -699,11 +698,11 @@ function LiveMonitoring() {
               <strong>{formatDate(deviceTimestamp)}</strong>
             </div>
             <div className="device-health-row">
-              <span>Temperature (Online)</span>
+              <span>Temperature</span>
               <strong>{formatOnlineTemperature(displayTemperature)}</strong>
             </div>
             <div className="device-health-row">
-              <span>Humidity (Online)</span>
+              <span>Humidity</span>
               <strong>{formatOnlineHumidity(displayHumidity)}</strong>
             </div>
           </div>
@@ -753,7 +752,7 @@ function LiveMonitoring() {
                   setHistoryLimit(8)
                 }}
               >
-                {filter === 'ALL' ? 'All' : filter === 'HARMFUL_PEST' ? 'Harmful Pest' : filter === 'NON_PEST' ? 'Non-Pest' : 'Unknown'}
+                {filter === 'ALL' ? 'All' : filter === 'HARMFUL_PEST' ? 'Harmful Pest' : 'Non-Pest'}
               </button>
             ))}
           </div>
@@ -793,7 +792,9 @@ function LiveMonitoring() {
                   </div>
 
                   <div className="history-meta">
-                    <span>{item.status || 'UNKNOWN'}</span>
+                    {String(item.status || '').toUpperCase() !== 'UNKNOWN' && (
+                      <span>{item.status}</span>
+                    )}
                     <strong>{formatConfidence(item.confidence)}</strong>
                     <strong>{getPestRiskEstimate(item.pest, pestDirectory).risk}</strong>
                     <strong>{item.device_id || deviceId}</strong>

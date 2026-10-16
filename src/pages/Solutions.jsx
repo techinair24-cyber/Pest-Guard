@@ -68,28 +68,12 @@ async function requestPestSolution(payload) {
  return data
 }
 
-const CROP_OPTIONS = [
- ['rice', 'Rice'],
- ['maize', 'Maize'],
- ['vegetables', 'Vegetables'],
- ['fruit', 'Fruit crops'],
-]
-
-function getCropName(selection) {
- if (selection?.type === 'other') return selection.name.trim()
- return CROP_OPTIONS.find(([value]) => value === selection?.type)?.[1] || ''
-}
-
-function getPesticideRecommendation(crop, uncertain) {
+function getPesticideRecommendation(uncertain) {
  if (uncertain) {
   return 'The pest identification is uncertain. Do not choose or apply a pest-specific pesticide. Confirm the pest and crop with a local agricultural officer first.'
  }
 
- if (!crop) {
-  return 'Select your crop before seeking crop-specific pesticide advice. Pest Guard has no verified locally registered product or crop-specific label dose for this pest. Ask a local agricultural officer to confirm both.'
- }
-
- return `Pest Guard has no verified locally registered product or crop-specific label dose for this pest on ${crop}. Do not guess a product or dose. Ask a local agricultural officer to confirm a registered product and its label rate.`
+ return 'Pest Guard has no verified locally registered product or crop-specific label dose for this pest. Do not guess a product or dose. Ask a local agricultural officer to confirm a registered product and its label rate.'
 }
 
 function toSteps(value) {
@@ -99,36 +83,7 @@ function toSteps(value) {
   .filter(Boolean)
 }
 
-function CropSelector({ id, selection, onChange }) {
- return (
-  <div className="crop-selection">
-   <label htmlFor={id}>Select your crop</label>
-   <select
-    id={id}
-    value={selection?.type || ''}
-    onChange={(event) => onChange({ type: event.target.value, name: '' })}
-   >
-    <option value="">Choose a crop</option>
-    {CROP_OPTIONS.map(([value, label]) => (
-     <option key={value} value={value}>{label}</option>
-    ))}
-    <option value="other">Other crop</option>
-   </select>
-   {selection?.type === 'other' && (
-    <input
-     type="text"
-     value={selection.name || ''}
-     onChange={(event) => onChange({ ...selection, name: event.target.value })}
-     placeholder="Enter crop name"
-     aria-label="Enter crop name"
-     maxLength={100}
-    />
-   )}
-  </div>
- )
-}
-
-function SolutionSections({ solution, pest, crop, uncertain }) {
+function SolutionSections({ solution, pest, uncertain }) {
  const damageSteps = uncertain
   ? toSteps(solution?.about || solution?.description || 'The pest identification is uncertain.')
   : [
@@ -142,7 +97,7 @@ function SolutionSections({ solution, pest, crop, uncertain }) {
   ...toSteps(solution?.recommended_action),
  ]
  const pesticideSteps = toSteps(
-  getPesticideRecommendation(crop, uncertain),
+  getPesticideRecommendation(uncertain),
  )
  const safeApplicationSteps = [
   uncertain
@@ -192,9 +147,6 @@ function Solutions() {
 
  const [solution, setSolution] = useState(null)
  const [pest, setPest] = useState(null)
- const [cropSelection, setCropSelection] = useState({ type: '', name: '' })
- const [historyCropSelections, setHistoryCropSelections] = useState({})
-
  const [pestDirectory, setPestDirectory] = useState({})
 
  const [loadingSolution, setLoadingSolution] = useState(false)
@@ -218,8 +170,6 @@ function Solutions() {
  const queryPest = new URLSearchParams(location.search).get('pest')?.trim()
 
  const requestedPest = queryPest || detection?.pest || ''
- const selectedCrop = getCropName(cropSelection)
-
  const status = String(detection?.status || '').toUpperCase()
 
  const detectionConfidence =
@@ -598,8 +548,6 @@ function Solutions() {
    }
 
    setHighRiskHistory([])
-   setHistoryCropSelections({})
-
    setConfirmClearHistory(false)
 
   } catch (clearError) {
@@ -794,15 +742,9 @@ function Solutions() {
       ) : canShowGuidance && solution ? (
 
        <>
-        <CropSelector
-         id="live-crop-selection"
-         selection={cropSelection}
-         onChange={setCropSelection}
-        />
         <SolutionSections
          solution={solution}
          pest={pest}
-         crop={selectedCrop}
          uncertain={!canShowSpeciesGuidance}
         />
        </>
@@ -1250,16 +1192,6 @@ function Solutions() {
 
           >
 
-           <CropSelector
-            id={`history-crop-${item.id}`}
-            selection={historyCropSelections[item.id] || { type: '', name: '' }}
-            onChange={(selection) =>
-             setHistoryCropSelections((current) => ({
-              ...current,
-              [item.id]: selection,
-             }))
-            }
-           />
            <SolutionSections
             solution={verifiedHistoryPest ? {
              about: item.solution_description,
@@ -1271,7 +1203,6 @@ function Solutions() {
              description: item.pest_description,
              symptoms: item.pest_symptoms,
             } : null}
-            crop={getCropName(historyCropSelections[item.id])}
             uncertain={!verifiedHistoryPest}
            />
 
