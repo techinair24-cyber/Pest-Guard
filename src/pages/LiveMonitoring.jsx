@@ -6,7 +6,11 @@ import { getDetectionControl, setDetectionEnabled } from '../services/api'
 import { useLiveDetection } from '../hooks/useLiveDetection'
 import { ArrowIcon, SparkIcon } from '../components/Icons'
 import { getDetectionHistory, getPests } from '../services/api'
-import { buildPestDirectory, getDisplayPestName } from '../utils/pestNames'
+import {
+  buildPestDirectory,
+  getDisplayPestName,
+  normalizePestName,
+} from '../utils/pestNames'
 import './LiveMonitoring.css'
 
 const HISTORY_CLEAR_KEY = 'pest_guard_history_cleared_at'
@@ -232,6 +236,16 @@ function LiveMonitoring() {
   }
   const deviceTimestamp = liveDevice?.last_seen || liveDevice?.lastSeen
   const healthTone = connectionState === 'Online' ? 'online' : 'offline'
+  const predictedPestName =
+    typeof detection?.pest === 'string' ? detection.pest.trim() : ''
+  const predictedPestRisk = predictedPestName
+    ? String(
+        pestDirectory[normalizePestName(predictedPestName)]?.risk || '',
+      ).toUpperCase()
+    : ''
+  const riskEstimate = ['LOW', 'MEDIUM', 'HIGH'].includes(predictedPestRisk)
+    ? predictedPestRisk
+    : 'UNKNOWN'
 
   useEffect(() => {
     let active = true
@@ -605,10 +619,29 @@ function LiveMonitoring() {
             <span className="detection-indicator" />
             <div>
               <strong>
-                {typeof detection?.pest === 'string' && detection.pest.trim()
-                  ? detection.pest.trim()
+                {predictedPestName
+                  ? predictedPestName
                   : 'No pest detected yet'}
               </strong>
+            </div>
+          </div>
+
+          <div className="detection-details">
+            <div>
+              <span>Model Score</span>
+              <strong>{formatConfidence(detection?.confidence)}</strong>
+            </div>
+            <div>
+              <span>Risk Level (predicted class estimate)</span>
+              <strong>{riskEstimate}</strong>
+            </div>
+            <div>
+              <span>Date / Time</span>
+              <strong>{formatDate(detection?.detected_at || detection?.timestamp)}</strong>
+            </div>
+            <div>
+              <span>Device ID</span>
+              <strong>{detection?.device_id || '—'}</strong>
             </div>
           </div>
         </article>
