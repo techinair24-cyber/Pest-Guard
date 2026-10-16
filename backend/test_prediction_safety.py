@@ -75,6 +75,26 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         features = predict.call_args.args[0].numpy()
         self.assertEqual(features.shape, (1, 155, 128, 1))
 
+    def test_prediction_inference_is_dispatched_off_the_async_event_loop(self):
+        audio = [1, -1]
+        request = FakeRequest(
+            "application/json",
+            payload={"audio": audio},
+        )
+        result = {"pest": "Cicada", "confidence": 0.8}
+
+        with patch.object(
+            main.asyncio,
+            "to_thread",
+            new_callable=AsyncMock,
+            return_value=result,
+        ) as to_thread:
+            response = asyncio.run(main.ai_predict(request))
+
+        to_thread.assert_awaited_once_with(main.predict_pest, audio)
+        self.assertEqual(response["pest"], "Cicada")
+        self.assertEqual(response["status"], "UNKNOWN")
+
     def test_valid_json_pcm_preserves_prediction_response_contract(self):
         audio = np.tile(
             np.array([-800, 800], dtype=np.int16),

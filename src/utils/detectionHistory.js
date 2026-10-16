@@ -2,6 +2,37 @@ export function getDetectionTime(item) {
   return item?.detected_at || item?.timestamp || item?.created_at || null
 }
 
+export function isNewerDetection(candidate, current) {
+  if (!candidate) {
+    return false
+  }
+
+  if (!current) {
+    return true
+  }
+
+  const candidateTime = parseServerTimestamp(getDetectionTime(candidate))
+  const currentTime = parseServerTimestamp(getDetectionTime(current))
+
+  if (Number.isFinite(candidateTime) && Number.isFinite(currentTime)) {
+    if (candidateTime !== currentTime) {
+      return candidateTime > currentTime
+    }
+  } else if (Number.isFinite(candidateTime)) {
+    return true
+  } else if (Number.isFinite(currentTime)) {
+    return false
+  }
+
+  const candidateId = Number(candidate.id)
+  const currentId = Number(current.id)
+  if (Number.isFinite(candidateId) && Number.isFinite(currentId)) {
+    return candidateId > currentId
+  }
+
+  return false
+}
+
 export function parseServerTimestamp(value) {
   if (!value) {
     return NaN

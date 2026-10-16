@@ -6,6 +6,7 @@ import {
 } from '../services/api'
 
 import { connectDetectionSocket } from '../services/websocket'
+import { isNewerDetection } from '../utils/detectionHistory'
 
 const DEVICE_ID =
   import.meta.env.VITE_DEVICE_ID || 'FIELD-UNIT-01'
@@ -155,7 +156,9 @@ export function useLiveDetection() {
 
       setLiveStatus((current) => ({
         ...current,
-        detection: response || null,
+        detection: isNewerDetection(response, current.detection)
+          ? response
+          : current.detection,
       }))
     } catch (detectionError) {
       if (!mountedRef.current) {
@@ -212,7 +215,9 @@ export function useLiveDetection() {
 
         setLiveStatus((current) => ({
           ...current,
-          detection: incomingDetection,
+          detection: isNewerDetection(incomingDetection, current.detection)
+            ? incomingDetection
+            : current.detection,
         }))
 
         setError(null)

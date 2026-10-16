@@ -1101,7 +1101,7 @@ async def ai_predict(request: Request):
 
             audio = payload["audio"]
 
-        result = predict_pest(audio)
+        result = await asyncio.to_thread(predict_pest, audio)
 
         # Preserve the top trained class for display, but do not treat its
         # uncalibrated score as a verified identification.

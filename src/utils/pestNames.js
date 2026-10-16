@@ -77,14 +77,6 @@ export const PEST_CLASS_RISK_ESTIMATES = Object.freeze({
     rationale:
       'FAO documents rapid population growth and the potential for a 1 km² swarm to consume food comparable to 35,000 people in one day.',
   }),
-  migratorylocust: Object.freeze({
-    canonicalName: 'Migratory locust',
-    risk: 'HIGH',
-    source: 'FAO Desert Locust Information Service',
-    sourceUrl: 'https://www.fao.org/locusts/en/',
-    rationale:
-      'FAO identifies African and Oriental migratory locusts as important locust species; this is a general outbreak-potential estimate, not a local infestation assessment.',
-  }),
 })
 
 export function normalizePestName(value) {

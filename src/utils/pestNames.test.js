@@ -15,16 +15,15 @@ const classNames = JSON.parse(
   ),
 )
 
-test('supported locust model classes have documented general risk estimates', () => {
-  for (const label of ['Desert locust', 'Migratory locust']) {
-    assert.ok(classNames.includes(label))
-    const estimate = getPestRiskEstimate(label)
+test('desert locust has a documented general risk estimate', () => {
+  const label = 'Desert locust'
+  assert.ok(classNames.includes(label))
+  const estimate = getPestRiskEstimate(label)
 
-    assert.equal(estimate.risk, 'HIGH')
-    assert.ok(estimate.source)
-    assert.ok(estimate.sourceUrl.startsWith('https://'))
-    assert.ok(estimate.rationale)
-  }
+  assert.equal(estimate.risk, 'HIGH')
+  assert.ok(estimate.source)
+  assert.ok(estimate.sourceUrl.startsWith('https://'))
+  assert.ok(estimate.rationale)
 
   assert.equal(
     PEST_CLASS_RISK_ESTIMATES.desertlocust.canonicalName,
@@ -38,11 +37,27 @@ test('unsupported model classes remain unknown instead of inheriting similar pes
     'Cicada',
     'termite',
     'Fruite Fly',
+    'Migratory locust',
   ]) {
     assert.ok(classNames.includes(label))
     assert.equal(getPestRiskEstimate(label).risk, 'UNKNOWN')
   }
   assert.equal(getPestRiskEstimate('Desert cricket').risk, 'UNKNOWN')
+})
+
+test('every active model output label has an explicit supported or unknown risk result', () => {
+  const supportedLabels = new Set(['Desert locust'])
+
+  assert.equal(classNames.length, 20)
+
+  for (const label of classNames) {
+    const estimate = getPestRiskEstimate(label)
+    assert.equal(
+      estimate.risk,
+      supportedLabels.has(label) ? 'HIGH' : 'UNKNOWN',
+      label,
+    )
+  }
 })
 
 test('model scores do not participate in class risk lookup', () => {

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  isNewerDetection,
   isAfterHistoryClear,
   mergeDetections,
 } from './detectionHistory.js'
@@ -60,4 +61,27 @@ test('history merges a saved event and its live WebSocket copy only once', () =>
     merged.map((item) => item.id),
     [7, 6],
   )
+})
+
+test('an older delayed REST response cannot replace a newer live detection', () => {
+  const liveDetection = {
+    id: 12,
+    detected_at: '2025-01-01T12:01:00Z',
+  }
+
+  assert.equal(
+    isNewerDetection(
+      { id: 11, detected_at: '2025-01-01T12:00:00Z' },
+      liveDetection,
+    ),
+    false,
+  )
+  assert.equal(
+    isNewerDetection(
+      { id: 13, detected_at: '2025-01-01T12:02:00Z' },
+      liveDetection,
+    ),
+    true,
+  )
+  assert.equal(isNewerDetection(null, liveDetection), false)
 })
