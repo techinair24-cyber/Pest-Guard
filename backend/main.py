@@ -1103,12 +1103,13 @@ async def ai_predict(request: Request):
 
         result = predict_pest(audio)
 
-        # This checkpoint has no validation-supported threshold for a positive ID.
+        # Preserve the top trained class for display, but do not treat its
+        # uncalibrated score as a verified identification.
         return {
 
             "status": "UNKNOWN",
 
-            "pest": None,
+            "pest": result["pest"] if result["pest"] in class_names else None,
 
             "confidence": result["confidence"],
 
@@ -1481,15 +1482,13 @@ async def create_detection(
             )
 
     detection_status = payload.status
-    detection_pest = payload.pest
+    detection_pest = payload.pest if payload.pest in class_names else None
     detection_risk = payload.risk
     if detection_status == "HARMFUL_PEST":
-        # No validation data supports trusting a device-reported class score.
+        # Keep a trained class only as an unverified suggestion.
         detection_status = "UNKNOWN"
-        detection_pest = None
         detection_risk = "UNKNOWN"
     elif detection_status == "UNKNOWN":
-        detection_pest = None
         detection_risk = "UNKNOWN"
     else:
         detection_pest = None

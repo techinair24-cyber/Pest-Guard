@@ -641,7 +641,9 @@ function LiveMonitoring() {
                 <div>
                   <strong>
                     {detectionStatus === 'UNKNOWN'
-                      ? 'Unidentified sound'
+                      ? liveDetection.pest
+                        ? `Unverified model class: ${getDisplayPestName(liveDetection.pest, pestDirectory)}`
+                        : 'Unidentified sound'
                       : getDisplayPestName(liveDetection.pest, pestDirectory)}
                   </strong>
                   <p>{getDetectionMessage(detectionStatus)}</p>
@@ -810,7 +812,11 @@ function LiveMonitoring() {
                 <div key={item.id ?? `${item.device_id}-${item.detected_at}`} className="history-row">
                   <div className="history-main">
                     <span className="history-time">{formatDate(getDetectionTime(item))}</span>
-                    <strong>{getDisplayPestName(item.pest, pestDirectory)}</strong>
+                    <strong>
+                      {item.status === 'UNKNOWN' && item.pest
+                        ? `Unverified: ${getDisplayPestName(item.pest, pestDirectory)}`
+                        : getDisplayPestName(item.pest, pestDirectory)}
+                    </strong>
                   </div>
 
                   <div className="history-meta">

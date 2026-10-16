@@ -89,11 +89,26 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             {"status", "pest", "confidence", "risk"},
         )
         self.assertEqual(response["status"], "UNKNOWN")
-        self.assertIsNone(response["pest"])
+        self.assertIn(response["pest"], main.class_names)
         self.assertGreaterEqual(response["confidence"], 0)
         self.assertLessEqual(response["confidence"], 1)
 
-    def test_low_level_background_noise_is_not_reported_as_a_pest(self):
+    def test_model_class_index_maps_to_cicada_label(self):
+        audio = np.tile(
+            np.array([-800, 800], dtype=np.int16),
+            40000,
+        )
+        scores = np.zeros(len(main.class_names), dtype=np.float32)
+        scores[0] = 0.983
+
+        with patch.object(main.ai_model, "predict", return_value=[scores]):
+            result = main.predict_pest(audio)
+
+        self.assertEqual(main.class_names[0], "Cicada")
+        self.assertEqual(result["pest"], "Cicada")
+        self.assertAlmostEqual(result["confidence"], 0.983, places=5)
+
+    def test_low_level_background_noise_stays_unverified(self):
         audio = np.random.default_rng(1).integers(
             -4, 5, size=80000, dtype=np.int16
         )
@@ -105,7 +120,8 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         response = asyncio.run(main.ai_predict(request))
 
         self.assertEqual(response["status"], "UNKNOWN")
-        self.assertIsNone(response["pest"])
+        self.assertEqual(response["risk"], "UNKNOWN")
+        self.assertIn(response["pest"], main.class_names)
 
     def test_malformed_pcm_and_json_audio_are_rejected(self):
         malformed_pcm = FakeRequest("application/octet-stream", b"\x00")
@@ -120,7 +136,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
                     asyncio.run(main.ai_predict(request))
                 self.assertEqual(raised.exception.status_code, 400)
 
-    def test_high_model_score_is_returned_as_uncertain_without_a_pest(self):
+    def test_high_model_score_keeps_class_as_unverified_suggestion(self):
         request = FakeRequest("application/json", payload={"audio": []})
         candidate_result = {
             "pest": "Cicada",
@@ -131,7 +147,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             response = asyncio.run(main.ai_predict(request))
 
         self.assertEqual(response["status"], "UNKNOWN")
-        self.assertIsNone(response["pest"])
+        self.assertEqual(response["pest"], "Cicada")
         self.assertEqual(response["confidence"], 0.99)
         self.assertEqual(response["risk"], "UNKNOWN")
 
@@ -144,14 +160,47 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             pest="Cicada",
             confidence=0.99,
             risk="HIGH",
+            temperature=26.2,
+            humidity=65.0,
         )
 
-        with patch.object(main.manager, "broadcast", new_callable=AsyncMock):
+        with patch.object(
+            main.manager, "broadcast", new_callable=AsyncMock
+        ) as broadcast:
+            detection = asyncio.run(main.create_detection(payload, database))
+
+        self.assertEqual(detection.status, "UNKNOWN")
+        self.assertEqual(detection.pest, "Cicada")
+        self.assertEqual(detection.risk, "UNKNOWN")
+        event = broadcast.await_args.args[0]
+        self.assertEqual(event["status"], "UNKNOWN")
+        self.assertEqual(event["pest"], "Cicada")
+        self.assertEqual(event["risk"], "UNKNOWN")
+        self.assertEqual(event["temperature"], 26.2)
+        self.assertEqual(event["humidity"], 65.0)
+
+    def test_untrained_device_label_is_not_forwarded(self):
+        database = Mock()
+        database.query.return_value.filter.return_value.first.return_value = None
+        payload = main.DetectionCreate(
+            device_id="FIELD-UNIT-01",
+            status="UNKNOWN",
+            pest="Not a trained class",
+            confidence=0.99,
+            risk="HIGH",
+        )
+
+        with patch.object(
+            main.manager, "broadcast", new_callable=AsyncMock
+        ) as broadcast:
             detection = asyncio.run(main.create_detection(payload, database))
 
         self.assertEqual(detection.status, "UNKNOWN")
         self.assertIsNone(detection.pest)
         self.assertEqual(detection.risk, "UNKNOWN")
+        event = broadcast.await_args.args[0]
+        self.assertIsNone(event["pest"])
+        self.assertEqual(event["status"], "UNKNOWN")
 
     def test_non_pest_detection_cannot_trigger_high_risk_alerts(self):
         database = Mock()
