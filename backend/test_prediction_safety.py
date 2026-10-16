@@ -4,6 +4,9 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import numpy as np
 from fastapi import HTTPException
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 import main
 
@@ -323,6 +326,51 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         self.assertEqual(detection.status, "NON_PEST")
         self.assertIsNone(detection.pest)
         self.assertEqual(detection.risk, "LOW")
+
+
+class DetectionHistoryPersistenceTests(unittest.TestCase):
+    def setUp(self):
+        self.engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        main.Base.metadata.create_all(bind=self.engine)
+        self.db = sessionmaker(bind=self.engine)()
+
+    def tearDown(self):
+        self.db.close()
+        self.engine.dispose()
+
+    def test_one_device_event_is_committed_and_returned_once_by_history(self):
+        payload = main.DetectionCreate(
+            device_id="TEST-FIELD-UNIT",
+            status="UNKNOWN",
+            pest="Cicada",
+            confidence=0.8,
+            risk="UNKNOWN",
+        )
+
+        with (
+            patch.object(
+                main.manager, "broadcast", new_callable=AsyncMock
+            ) as broadcast,
+            patch.object(main, "send_high_risk_sms"),
+        ):
+            saved = asyncio.run(main.create_detection(payload, self.db))
+
+        history = main.get_detection_history(
+            device_id=None,
+            status=None,
+            limit=50,
+            db=self.db,
+        )
+
+        self.assertEqual(self.db.query(main.Detection).count(), 1)
+        self.assertEqual(len(history["detections"]), 1)
+        self.assertEqual(history["detections"][0]["id"], saved.id)
+        self.assertEqual(history["detections"][0]["pest"], "Cicada")
+        self.assertEqual(broadcast.await_count, 1)
 
 
 if __name__ == "__main__":

@@ -9,8 +9,14 @@ import { getDetectionHistory, getPests } from '../services/api'
 import {
   buildPestDirectory,
   getDisplayPestName,
-  normalizePestName,
+  getPestRiskEstimate,
 } from '../utils/pestNames'
+import {
+  getDetectionTime,
+  isAfterHistoryClear,
+  mergeDetections,
+  parseServerTimestamp,
+} from '../utils/detectionHistory'
 import './LiveMonitoring.css'
 
 const HISTORY_CLEAR_KEY = 'pest_guard_history_cleared_at'
@@ -43,78 +49,6 @@ function getStoredAlertedKeys() {
   } catch {
     return new Set()
   }
-}
-
-function getDetectionTime(item) {
-  return item?.detected_at || item?.timestamp || item?.created_at || null
-}
-
-function parseServerTimestamp(value) {
-  if (!value) {
-    return NaN
-  }
-
-  const text = String(value).trim()
-
-  if (!text) {
-    return NaN
-  }
-
-  const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(text)
-  const normalized = hasTimezone ? text : `${text}Z`
-  const timestamp = new Date(normalized).getTime()
-
-  return Number.isFinite(timestamp) ? timestamp : NaN
-}
-
-function isAfterHistoryClear(item, clearedAt) {
-  if (!clearedAt) {
-    return true
-  }
-
-  const clearedAtMs = parseServerTimestamp(clearedAt)
-  const detectionTimeMs = parseServerTimestamp(getDetectionTime(item))
-
-  if (!Number.isFinite(clearedAtMs)) {
-    return true
-  }
-
-  return Number.isFinite(detectionTimeMs) && detectionTimeMs > clearedAtMs
-}
-
-function sameDetection(first, second) {
-  if (first?.id != null && second?.id != null) {
-    return String(first.id) === String(second.id)
-  }
-
-  const firstTime = parseServerTimestamp(getDetectionTime(first))
-  const secondTime = parseServerTimestamp(getDetectionTime(second))
-
-  return Number.isFinite(firstTime) && firstTime === secondTime
-}
-
-function sortNewestFirst(detections) {
-  return detections.sort((first, second) => {
-    const firstTime = parseServerTimestamp(getDetectionTime(first))
-    const secondTime = parseServerTimestamp(getDetectionTime(second))
-
-    if (!Number.isFinite(firstTime) && !Number.isFinite(secondTime)) return 0
-    if (!Number.isFinite(firstTime)) return 1
-    if (!Number.isFinite(secondTime)) return -1
-    return secondTime - firstTime
-  })
-}
-
-function mergeDetections(...groups) {
-  const merged = []
-
-  groups.flat().forEach((detection) => {
-    if (!merged.some((existing) => sameDetection(existing, detection))) {
-      merged.push(detection)
-    }
-  })
-
-  return sortNewestFirst(merged)
 }
 
 function HealthIcon({ size = 18 }) {
@@ -169,6 +103,8 @@ function LiveMonitoring() {
   const [historyFilter, setHistoryFilter] = useState('ALL')
   const [historyLimit, setHistoryLimit] = useState(8)
   const [historyLoading, setHistoryLoading] = useState(true)
+  const [historyError, setHistoryError] = useState('')
+  const [historyRetryCount, setHistoryRetryCount] = useState(0)
   const [historyClearedAt, setHistoryClearedAt] = useState(() => getStoredClearTime())
   const [popup, setPopup] = useState(null)
   const [detectionControlEnabled, setDetectionControlEnabled] = useState(false)
@@ -247,14 +183,10 @@ function LiveMonitoring() {
   const healthTone = connectionState === 'Online' ? 'online' : 'offline'
   const predictedPestName =
     typeof detection?.pest === 'string' ? detection.pest.trim() : ''
-  const predictedPestRisk = predictedPestName
-    ? String(
-        pestDirectory[normalizePestName(predictedPestName)]?.risk || '',
-      ).toUpperCase()
-    : ''
-  const riskEstimate = ['LOW', 'MEDIUM', 'HIGH'].includes(predictedPestRisk)
-    ? predictedPestRisk
-    : 'UNKNOWN'
+  const riskEstimate = getPestRiskEstimate(
+    predictedPestName,
+    pestDirectory,
+  ).risk
   const reportingDeviceId =
     detection?.device_id || device?.device_id || 'N/A'
 
@@ -431,6 +363,7 @@ function LiveMonitoring() {
           return
         }
 
+        setHistoryError('')
         const detections = Array.isArray(response?.detections) ? response.detections : []
 
         const visibleDetections = historyClearedAt
@@ -452,6 +385,7 @@ function LiveMonitoring() {
         }
 
         console.error('Unable to load detection history:', historyFetchError)
+        setHistoryError('Detection history is temporarily unavailable. Please retry.')
       } finally {
         if (active) {
           setHistoryLoading(false)
@@ -464,7 +398,7 @@ function LiveMonitoring() {
     return () => {
       active = false
     }
-  }, [historyFilter, historyLimit, historyClearedAt])
+  }, [historyFilter, historyLimit, historyClearedAt, historyRetryCount])
 
   useEffect(() => {
     if (!detection || detection.status !== 'HARMFUL_PEST') {
@@ -647,7 +581,7 @@ function LiveMonitoring() {
                 <span>Risk Level</span>
                 <strong>{riskEstimate}</strong>
               </div>
-              <small>Predicted class risk estimate</small>
+              <small>General class risk; not site-specific</small>
               <div
                 className="latest-risk-track"
                 role="img"
@@ -731,6 +665,7 @@ function LiveMonitoring() {
                   }
                   setHistoryClearedAt(clearedAt)
                   setHistory([])
+                  setHistoryError('')
                   setHistoryLimit(8)
                   setHistoryLoading(false)
                 }}
@@ -760,7 +695,21 @@ function LiveMonitoring() {
 
           {historyLoading && <p className="inline-loading">Loading detection history...</p>}
 
-          {!historyLoading && filteredHistory.length === 0 && (
+          {!historyLoading && historyError && filteredHistory.length === 0 && (
+            <div className="empty-history" role="alert">
+              <strong>Unable to Load History</strong>
+              <p>{historyError}</p>
+              <button
+                type="button"
+                className="history-filter"
+                onClick={() => setHistoryRetryCount((count) => count + 1)}
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          {!historyLoading && !historyError && filteredHistory.length === 0 && (
             <div className="empty-history">
               <strong>No Detection History</strong>
               <p>The field unit has not recorded any detection events yet.</p>

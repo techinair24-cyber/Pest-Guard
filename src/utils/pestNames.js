@@ -68,6 +68,25 @@ export const FALLBACK_COMMON_PEST_NAMES = {
   Yoyettarepetens: 'Repetens Cicada',
 }
 
+export const PEST_CLASS_RISK_ESTIMATES = Object.freeze({
+  desertlocust: Object.freeze({
+    canonicalName: 'Desert locust',
+    risk: 'HIGH',
+    source: 'FAO Desert Locust Information Service',
+    sourceUrl: 'https://www.fao.org/locusts/en/',
+    rationale:
+      'FAO documents rapid population growth and the potential for a 1 km² swarm to consume food comparable to 35,000 people in one day.',
+  }),
+  migratorylocust: Object.freeze({
+    canonicalName: 'Migratory locust',
+    risk: 'HIGH',
+    source: 'FAO Desert Locust Information Service',
+    sourceUrl: 'https://www.fao.org/locusts/en/',
+    rationale:
+      'FAO identifies African and Oriental migratory locusts as important locust species; this is a general outbreak-potential estimate, not a local infestation assessment.',
+  }),
+})
+
 export function normalizePestName(value) {
   return String(value || '')
     .trim()
@@ -104,6 +123,21 @@ export function buildPestDirectory(items) {
   })
 
   return directory
+}
+
+export function getPestRiskEstimate(pest, directory = {}) {
+  const key = normalizePestName(pest)
+  if (!key) return { risk: 'UNKNOWN', source: null }
+
+  const classEstimate = PEST_CLASS_RISK_ESTIMATES[key]
+  if (classEstimate) return classEstimate
+
+  const catalogRisk = String(directory[key]?.risk || '').toUpperCase()
+  if (['LOW', 'MEDIUM', 'HIGH'].includes(catalogRisk)) {
+    return { risk: catalogRisk, source: 'catalog' }
+  }
+
+  return { risk: 'UNKNOWN', source: null }
 }
 
 function getFallbackCommonName(...values) {
