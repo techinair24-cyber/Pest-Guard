@@ -139,6 +139,15 @@ function formatConfidence(value) {
   return `${(number * 100).toFixed(1)}%`
 }
 
+function formatDetectionConfidence(value) {
+  if (value === null || value === undefined || value === '') {
+    return 'N/A'
+  }
+
+  const number = Number(value)
+  return Number.isFinite(number) ? `${(number * 100).toFixed(1)}%` : 'N/A'
+}
+
 function formatDate(value) {
   const timestamp = parseServerTimestamp(value)
 
@@ -246,6 +255,8 @@ function LiveMonitoring() {
   const riskEstimate = ['LOW', 'MEDIUM', 'HIGH'].includes(predictedPestRisk)
     ? predictedPestRisk
     : 'UNKNOWN'
+  const reportingDeviceId =
+    detection?.device_id || device?.device_id || 'N/A'
 
   useEffect(() => {
     let active = true
@@ -628,20 +639,26 @@ function LiveMonitoring() {
 
           <div className="detection-details">
             <div>
-              <span>Model Score</span>
-              <strong>{formatConfidence(detection?.confidence)}</strong>
+              <span>Confidence / Model Score</span>
+              <strong>{formatDetectionConfidence(detection?.confidence)}</strong>
             </div>
-            <div>
-              <span>Risk Level (predicted class estimate)</span>
-              <strong>{riskEstimate}</strong>
+            <div className={`latest-risk latest-risk-${riskEstimate.toLowerCase()}`}>
+              <div className="latest-risk-heading">
+                <span>Risk Level</span>
+                <strong>{riskEstimate}</strong>
+              </div>
+              <small>Predicted class risk estimate</small>
+              <div
+                className="latest-risk-track"
+                role="img"
+                aria-label={`Predicted class risk estimate: ${riskEstimate}`}
+              >
+                <span className="latest-risk-fill" />
+              </div>
             </div>
-            <div>
-              <span>Date / Time</span>
-              <strong>{formatDate(detection?.detected_at || detection?.timestamp)}</strong>
-            </div>
-            <div>
+            <div className="latest-device-id">
               <span>Device ID</span>
-              <strong>{detection?.device_id || '—'}</strong>
+              <strong>{reportingDeviceId}</strong>
             </div>
           </div>
         </article>
