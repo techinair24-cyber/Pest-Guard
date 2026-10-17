@@ -65,40 +65,72 @@ from schemas import (
 
 logger = logging.getLogger(__name__)
 
-USE_YAMNET = os.getenv("PEST_MODEL", "cnn").strip().lower() == "yamnet"
-
-if USE_YAMNET:
-    tf.config.threading.set_intra_op_parallelism_threads(1)
-    tf.config.threading.set_inter_op_parallelism_threads(1)
-
-# -------------------------------------------------------------------
-
-# AI MODEL
-
-# -------------------------------------------------------------------
+PEST_MODEL = os.getenv("PEST_MODEL", "cnn").strip().lower()
+USE_YAMNET = PEST_MODEL == "yamnet"
 
 AI_DIR = Path(__file__).resolve().parent / "ai_model"
-
-# Original CNN remains the default.
 
 if USE_YAMNET:
     import tensorflow_hub as hub
 
     YAMNET_DIR = AI_DIR / "pest_yamnet_updated_candidate"
+
     ai_model = tf.keras.models.load_model(
         YAMNET_DIR / "best_candidate.keras",
         compile=False,
     )
-    with open(YAMNET_DIR / "class_names.json", "r", encoding="utf-8") as f:
+
+    with open(
+        YAMNET_DIR / "class_names.json",
+        "r",
+        encoding="utf-8",
+    ) as f:
         class_names = json.load(f)
 
     yamnet = hub.load("https://tfhub.dev/google/yamnet/1")
+
+elif PEST_MODEL == "new_dataset_candidate":
+    CANDIDATE_DIR = AI_DIR / "pest_new_dataset_candidate"
+
+    ai_model = tf.keras.models.load_model(
+        CANDIDATE_DIR / "best_candidate.keras",
+        compile=False,
+    )
+
+    with open(
+        CANDIDATE_DIR / "class_names.json",
+        "r",
+        encoding="utf-8",
+    ) as f:
+        class_names = json.load(f)
+
+    with open(
+        CANDIDATE_DIR / "common_names.json",
+        "r",
+        encoding="utf-8",
+    ) as f:
+        common_names = json.load(f)
+
+    if len(common_names) != len(class_names):
+        raise RuntimeError(
+            "Candidate common names do not match model classes."
+        )
+
+    print(
+        f"Loaded NEW candidate model: {len(class_names)} species"
+    )
+
 else:
     ai_model = tf.keras.models.load_model(
         AI_DIR / "best_cnn_v3.keras",
         compile=False,
     )
-    with open(AI_DIR / "class_names.json", "r", encoding="utf-8") as f:
+
+    with open(
+        AI_DIR / "class_names.json",
+        "r",
+        encoding="utf-8",
+    ) as f:
         class_names = json.load(f)
 
 MEL_MATRIX = tf.signal.linear_to_mel_weight_matrix(
@@ -1030,45 +1062,25 @@ def set_detection_control(device_id: str, payload: dict):
 
 
 @app.post("/api/ai/predict")
-
 async def ai_predict(request: Request):
-
     try:
-
         content_type = request.headers.get("content-type", "")
 
         # Compact ESP32 transport: signed 16-bit little-endian PCM samples.
-
-        # 80,000 samples = 160 KB, much smaller than the JSON payload.
-
         if content_type.startswith("application/octet-stream"):
-
             raw_audio = await request.body()
-
             if not raw_audio:
-
                 raise HTTPException(
-
                     status_code=400,
-
                     detail="Audio data is required",
-
                 )
-
             if len(raw_audio) % 2 != 0:
-
                 raise HTTPException(
-
                     status_code=400,
-
                     detail="Invalid PCM audio length",
-
                 )
-
             audio = np.frombuffer(raw_audio, dtype="<i2")
-
         else:
-
             try:
                 payload = await request.json()
             except (json.JSONDecodeError, UnicodeDecodeError) as error:
@@ -1088,52 +1100,58 @@ async def ai_predict(request: Request):
                     status_code=400,
                     detail="JSON request body must be an object.",
                 )
-
             if "audio" not in payload:
-
                 raise HTTPException(
-
                     status_code=400,
-
                     detail="Audio data is required",
-
                 )
-
             audio = payload["audio"]
 
         result = await asyncio.to_thread(predict_pest, audio)
+        predicted_pest = (
+            result["pest"] if result["pest"] in class_names else None
+        )
+        common_name = None
+        if (
+            PEST_MODEL == "new_dataset_candidate"
+            and predicted_pest is not None
+        ):
+            common_name = common_names[class_names.index(predicted_pest)]
 
-        # Preserve the top trained class for display, but do not treat its
-        # uncalibrated score as a verified identification.
-        return {
-
+        # The top-scoring class is only a candidate, not a verified identity.
+        # Risk remains UNKNOWN until a reviewed species-to-risk mapping exists.
+        prediction_data = {
             "status": "UNKNOWN",
-
-            "pest": result["pest"] if result["pest"] in class_names else None,
-
+            "identification_status": "UNCONFIRMED",
+            "identification_label": (
+                "Possible match" if predicted_pest else "Unidentified sound"
+            ),
+            "pest": predicted_pest,
+            "common_name": common_name,
             "confidence": result["confidence"],
-
             "risk": "UNKNOWN",
-
+            "message": "Unverified model prediction",
+            "source": "AI_MODEL_PREDICTION",
+            "detected_at": datetime.now(timezone.utc).isoformat(),
         }
 
+        # Push the candidate to the open Live Monitoring page. This is not
+        # saved as a confirmed field detection in the database.
+        await manager.broadcast(prediction_data)
+        return prediction_data
+
     except HTTPException:
-
         raise
-
     except Exception as error:
         logger.exception(
             "AI prediction failed (model=%s)",
             "yamnet" if USE_YAMNET else "cnn",
         )
-
         raise HTTPException(
-
             status_code=500,
-
             detail=f"AI prediction failed: {str(error)}",
-
         )
+
 
 def _fallback_ai_solution(payload: AISolutionRequest) -> dict:
     return {
@@ -1235,9 +1253,87 @@ async def generate_ai_solution(
     payload: AISolutionRequest,
     db: Session = Depends(get_db),
 ):
-    # This request has no independent verification signal; confidence and a
-    # catalogue-name match are not sufficient to confirm the model prediction.
-    return _fallback_uncertain_solution(payload)
+    # Match the requested candidate against the database catalog.
+    # A match provides candidate-specific guidance, not proof of identity.
+    pest_record = _find_verified_pest_record(
+        db,
+        payload.pest,
+        payload.pest_id,
+    )
+
+    # If the candidate cannot be matched safely, keep generic guidance.
+    if not pest_record:
+        return _fallback_uncertain_solution(payload)
+
+    # Fetch the curated solution belonging to this exact pest ID.
+    solution_record = (
+        db.query(Solution)
+        .filter(Solution.pest_id == pest_record.pest_id)
+        .first()
+    )
+
+    description = (
+        pest_record.description
+        or "No catalog description is available."
+    )
+    symptoms = (
+        pest_record.symptoms
+        or "No catalog symptoms are available."
+    )
+
+    # Explain the catalog match without claiming the AI confirmed it.
+    about = (
+        f"Unverified AI candidate: {pest_record.name} "
+        f"({pest_record.scientific_name or pest_record.name}). "
+        f"This catalog match does not confirm the insect's identity. "
+        f"Catalog description: {description} "
+        f"Signs to check in the field: {symptoms}"
+    )
+
+    # Use this pest's saved recommendations when available.
+    if solution_record:
+        recommended_action = (
+            solution_record.recommended_action
+            or (
+                f"Inspect affected plants for these signs: {symptoms} "
+                "and confirm the insect before choosing pest-specific control."
+            )
+        )
+        prevention = (
+            solution_record.prevention
+            or "Monitor affected plants regularly and record changes in crop damage."
+        )
+    else:
+        recommended_action = (
+            f"Inspect affected plants for these signs: {symptoms} "
+            "and document any damage. Confirm the insect with a qualified "
+            "agricultural adviser before choosing pest-specific control."
+        )
+        prevention = (
+            "Monitor affected and nearby plants regularly. Record changes "
+            "in crop damage and seek crop-specific advice when needed."
+        )
+
+    return {
+        "pest": pest_record.scientific_name or pest_record.name,
+        "common_name": pest_record.name,
+        "risk": "UNKNOWN",
+        "confidence": payload.confidence,
+        "crop": payload.crop,
+        "about": about,
+        "recommended_action": recommended_action,
+        "pesticide_recommendation": _pesticide_recommendation(
+            payload.crop,
+            uncertain=True,
+        ),
+        "prevention": prevention,
+        "precautions": (
+            "Do not apply a pesticide based on this unverified audio result. "
+            "Confirm the pest and crop with a local agricultural officer. "
+            "If a product is recommended, follow its registered label, "
+            "protective-equipment requirements, and pre-harvest waiting period."
+        ),
+    }
 
 # -------------------------------------------------------------------
 

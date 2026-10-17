@@ -1,73 +1,57 @@
+// Common names for the NEW 47-class Pest Guard model.
+// Keys are normalized scientific names used by the CNN.
+export const MODEL_CLASS_COMMON_NAMES = Object.freeze({
+  achetadomesticus: 'House Cricket',
+  barbitistesyersini: "Yersin's Bush-cricket",
+  chorthippusalbomarginatus: 'Lesser Marsh Grasshopper',
+  chorthippusapricarius: 'Steppe Grasshopper',
+  chorthippusbiguttulus: 'Bow-winged Grasshopper',
+  chorthippusbrunneus: 'Common Field Grasshopper',
+  chorthippusmollis: 'Chorthippus mollis',
+  chorthippusvagans: 'Heath Grasshopper',
+  chrysochraondispar: 'Large Gold Grasshopper',
+  conocephalusdorsalis: 'Short-winged Conehead',
+  conocephalusfuscus: 'Long-winged Conehead',
+  decticusverrucivorus: 'Wart-biter',
+  ephippigerdiurnus: 'Saddle-backed Bush-cricket',
+  eupholidopteraschmidti: "Schmidt's Bush-cricket",
+  gampsocleisglabra: 'Gampsocleis glabra',
+  gomphocerippusrufus: 'Rufous Grasshopper',
+  gomphocerussibiricus: 'Siberian Grasshopper',
+  gryllusbimaculatus: 'Two-spotted Cricket',
+  grylluscampestris: 'Field Cricket',
+  leptophyespunctatissima: 'Speckled Bush-cricket',
+  melanogryllusdesertus: 'Melanogryllus desertus',
+  metriopterabrachyptera: 'Bog Bush-cricket',
+  myrmeleotettixmaculatus: 'Mottled Grasshopper',
+  nemobiussylvestris: 'Wood Cricket',
+  oecanthuspellucens: 'Pale Tree Cricket',
+  omocestuspetraeus: 'Steppe Grasshopper',
+  omocestusrufipes: 'Red-legged Grasshopper',
+  omocestusviridulus: 'Common Green Grasshopper',
+  phaneropterafalcata: 'Sickle-bearing Bush-cricket',
+  phaneropteranana: 'Phaneroptera nana',
+  pholidopteraaptera: 'Alpine Dark Bush-cricket',
+  pholidopteragriseoaptera: 'Dark Bush-cricket',
+  pholidopteralittoralis: 'Pholidoptera littoralis',
+  platycleisalbopunctata: 'Platycleis albopunctata',
+  platypleuracfcatenata: 'Platypleura cf. catenata',
+  platypleuraplumosa: 'Platypleura plumosa',
+  platypleurasp10: 'Platypleura sp. 10',
+  platypleurasp12cfhirtipennis:
+    'Platypleura sp. 12 cf. hirtipennis',
+  platypleurasp13: 'Platypleura sp. 13',
+  pseudochorthippusmontanus: 'Bog Grasshopper',
+  pseudochorthippusparallelus: 'Meadow Grasshopper',
+  roeselianaroeselii: "Roesel's Bush-cricket",
+  stenobothruslineatus: 'Stripe-winged Grasshopper',
+  stenobothrusstigmaticus: 'Lesser Mottled Grasshopper',
+  tettigoniacantans: 'Singing Bush-cricket',
+  tettigoniaviridissima: 'Great Green Bush-cricket',
+  tylopsislilifolia: 'Lily Bush-cricket',
+})
 
-export const FALLBACK_COMMON_PEST_NAMES = {
-  Achetadomesticus: 'House Cricket',
-  Aleetacurvicosta: 'Aleetacurvicosta',
-  Atrapsaltacollina: 'Collina Cicada',
-  Atrapsaltacorticina: 'Corticina Cicada',
-  Atrapsaltaencaustica: 'Encaustica Cicada',
-  Barbitistesyersini: 'Yersin’s Bush-cricket',
-  Bicoloranabicolor: 'Bicolored Bush-cricket',
-  Chorthippusalbomarginatus: 'Lesser Marsh Grasshopper',
-  Chorthippusapricarius: 'Steppe Grasshopper',
-  Chorthippusbiguttulus: 'Bow-winged Grasshopper',
-  Chorthippusbrunneus: 'Field Grasshopper',
-  Chorthippusmollis: 'Mottled Grasshopper',
-  Chorthippusvagans: 'Heath Grasshopper',
-  Chrysochraondispar: 'Large Marsh Grasshopper',
-  Cicadaorni: 'Common Cicada',
-  Clinopsaltaautumna: 'Autumn Cicada',
-  Conocephalusdorsalis: 'Short-winged Conehead',
-  Conocephalusfuscus: 'Long-winged Conehead',
-  Cyclochilaaustralasiae: 'Green Grocer Cicada',
-  Decticusverrucivorus: 'Wart-biter Bush-cricket',
-  Diceroproctaeugraphica: 'Diceroprocta Cicada',
-  Ephippigerdiurnus: 'Day Bush-cricket',
-  Eumodicogryllusbordigalensis: 'Bordigalensis Cricket',
-  Eupholidopteraschmidti: 'Schmidt’s Bush-cricket',
-  Galangalabeculata: 'Galangalabeculata',
-  Gampsocleisglabra: 'Gampsocleis Bush-cricket',
-  Gomphocerippusrufus: 'Rufous Grasshopper',
-  Gomphocerussibiricus: 'Siberian Grasshopper',
-  Gryllusbimaculatus: 'Two-spotted Cricket',
-  Grylluscampestris: 'Field Cricket',
-  Leptophyespunctatissima: 'Speckled Bush-cricket',
-  Melanogryllusdesertus: 'Desert Cricket',
-  Metriopterabrachyptera: 'Short-winged Bush-cricket',
-  Myrmeleotettixmaculatus: 'Mottled Grasshopper',
-  Nemobiussylvestris: 'Woodland Ground Cricket',
-  Neotibicenpruinosus: 'Scissor-grinder Cicada',
-  Oecanthuspellucens: 'European Tree Cricket',
-  Omocestuspetraeus: 'Steppe Grasshopper',
-  Omocestusrufipes: 'Red-legged Grasshopper',
-  Omocestusviridulus: 'Common Green Grasshopper',
-  Phaneropterafalcata: 'Speckled Bush-cricket',
-  Phaneropteranana: 'Phaneroptera nana',
-  Pholidopteraaptera: 'Dark Bush-cricket',
-  Pholidopteragriseoaptera: 'Dark Bush-cricket',
-  Pholidopteralittoralis: 'Littoral Bush-cricket',
-  Platycleisalbopunctata: 'White-spotted Bush-cricket',
-  Platypleuracfcatenata: 'Platypleura cf. catenata',
-  Platypleuraplumosa: 'Platypleura plumosa Cicada',
-  Platypleurasp10: 'Platypleura sp. 10',
-  Platypleurasp12cfhirtipennis: 'Platypleura sp. 12 cf. hirtipennis',
-  Platypleurasp13: 'Platypleura sp. 13',
-  Popplepsaltaaeroides: 'Aeroides Cicada',
-  Popplepsaltanotialis: 'Notialis Cicada',
-  Psaltodaplaga: 'Plaga Cicada',
-  Pseudochorthippusmontanus: 'Lesser Mountain Grasshopper',
-  Pseudochorthippusparallelus: 'Meadow Grasshopper',
-  Roeselianaroeselii: "Roesel's Bush-cricket",
-  Ruspolianitidula: 'Long-winged Conehead',
-  Stauroderusscalaris: 'Stauroderus Grasshopper',
-  Stenobothruslineatus: 'Stripe-winged Grasshopper',
-  Stenobothrusstigmaticus: 'Stenobothrus Grasshopper',
-  Tettigoniacantans: 'Roesel’s Katydid',
-  Tettigoniaviridissima: 'Great Green Bush-cricket',
-  Tylopsislilifolia: 'Lily Bush-cricket',
-  Yoyettacelis: 'Celis Cicada',
-  Yoyettarepetens: 'Repetens Cicada',
-}
-
+// Keep existing class risk estimates separate from name mapping.
 export const PEST_CLASS_RISK_ESTIMATES = Object.freeze({
   desertlocust: Object.freeze({
     canonicalName: 'Desert locust',
@@ -87,29 +71,6 @@ export const PEST_CLASS_RISK_ESTIMATES = Object.freeze({
   }),
 })
 
-const MODEL_CLASS_COMMON_NAMES = Object.freeze({
-  cicada: 'Cicada',
-  commonfieldgrasshopper: 'Common field grasshopper',
-  desertlocust: 'Desert locust',
-  dogdaycicada: 'Dog Day Cicada',
-  fieldcrickt: 'Field Cricket',
-  fruitefly: 'Fruit Fly',
-  grasshopper: 'Grasshopper',
-  greatgreenbushcricket: 'Great green bush-cricket',
-  housecricket: 'House Cricket',
-  katydid: 'Katydid',
-  migratorylocust: 'Migratory locust',
-  molecricket: 'Mole cricket',
-  rhinocerosbeetle: 'Rhinoceros beetle',
-  roeselsbushcricket: "Roesel's bush-cricket",
-  shorthornedgrasshopper: 'Short-horned grasshopper',
-  snowytreecricket: 'Snowy Tree Cricket',
-  swampcicada: 'Swamp Cicada',
-  treecricket: 'Tree Cricket',
-  twospottedcricket: 'Two-spotted cricket',
-  termite: 'Termite',
-})
-
 export function normalizePestName(value) {
   return String(value || '')
     .trim()
@@ -124,9 +85,14 @@ export function buildPestDirectory(items) {
 
   items.forEach((item) => {
     const name = String(item?.name || '').trim()
-    const scientificName = String(item?.scientific_name || '').trim()
+    const scientificName = String(
+      item?.scientific_name || '',
+    ).trim()
+
     const commonName =
-      name && normalizePestName(name) !== normalizePestName(scientificName)
+      name &&
+      normalizePestName(name) !==
+        normalizePestName(scientificName)
         ? name
         : ''
 
@@ -139,76 +105,101 @@ export function buildPestDirectory(items) {
       risk: item?.risk || '',
     }
 
-    ;[name, scientificName, entry.pestId].forEach((candidate) => {
-      const key = normalizePestName(candidate)
-      if (key) directory[key] = entry
-    })
+    ;[name, scientificName, entry.pestId].forEach(
+      (candidate) => {
+        const key = normalizePestName(candidate)
+        if (key) directory[key] = entry
+      },
+    )
   })
 
   return directory
 }
 
-export function getPestRiskEstimate(pest, directory = {}) {
+export function getPestRiskEstimate(
+  pest,
+  directory = {},
+) {
   const key = normalizePestName(pest)
-  if (!key) return { risk: 'UNKNOWN', source: null }
+
+  if (!key) {
+    return {
+      risk: 'UNKNOWN',
+      source: null,
+      rationale: '',
+    }
+  }
 
   const classEstimate = PEST_CLASS_RISK_ESTIMATES[key]
+
   if (classEstimate) return classEstimate
 
-  const catalogRisk = String(directory[key]?.risk || '').toUpperCase()
+  const catalogRisk = String(
+    directory[key]?.risk || '',
+  ).toUpperCase()
+
   if (['LOW', 'MEDIUM', 'HIGH'].includes(catalogRisk)) {
     return {
       risk: catalogRisk,
       source: 'Pest Guard pest catalogue',
-      rationale: 'Risk category recorded in the matching pest catalogue entry.',
+      rationale:
+        'Risk category recorded in the matching pest catalogue entry.',
     }
   }
 
-  return { risk: 'UNKNOWN', source: null, rationale: '' }
-}
-
-function getFallbackCommonName(...values) {
-  for (const value of values) {
-    const key = normalizePestName(value)
-    const match = Object.entries(FALLBACK_COMMON_PEST_NAMES).find(
-      ([scientificName]) => normalizePestName(scientificName) === key,
-    )
-    if (match) return match[1]
+  return {
+    risk: 'UNKNOWN',
+    source: null,
+    rationale: '',
   }
-
-  return ''
 }
 
-export function getCommonPestName(pest, directory = {}) {
+export function getCommonPestName(
+  pest,
+  directory = {},
+) {
   const rawName = String(pest || '').trim()
+
   if (!rawName) return 'Detected pest'
 
   const key = normalizePestName(rawName)
   const entry = directory[key]
 
   return (
-    entry?.commonName ||
-    getFallbackCommonName(rawName, entry?.scientificName) ||
     MODEL_CLASS_COMMON_NAMES[key] ||
+    entry?.commonName ||
     rawName
   )
 }
 
-export function getDisplayPestName(pest, directory = {}) {
+export function getDisplayPestName(
+  pest,
+  directory = {},
+) {
   const rawName = String(pest || '').trim()
+
   if (!rawName) return 'Unknown pest'
 
-  const entry = directory[normalizePestName(rawName)]
-  const commonName = getCommonPestName(rawName, directory)
+  const key = normalizePestName(rawName)
+  const entry = directory[key]
+  const commonName = getCommonPestName(
+    rawName,
+    directory,
+  )
+
   const scientificName = String(
-    entry?.scientificName || (getFallbackCommonName(rawName) ? rawName : ''),
+    entry?.scientificName ||
+      (MODEL_CLASS_COMMON_NAMES[key] ? rawName : ''),
   ).trim()
 
   if (!scientificName) {
     return commonName
   }
 
-  if (normalizePestName(commonName) === normalizePestName(scientificName)) {
+  if (
+    normalizePestName(commonName) ===
+    normalizePestName(scientificName)
+  ) {
     return commonName
   }
 

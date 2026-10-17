@@ -1,7 +1,10 @@
+
 import { API_BASE_URL } from './api'
 
 const defaultWsUrl =
-  API_BASE_URL.replace(/^https?/, 'wss') + '/ws/detections'
+  API_BASE_URL
+    .replace(/^https:/i, 'wss:')
+    .replace(/^http:/i, 'ws:') + '/ws/detections'
 
 export const WS_URL =
   import.meta.env.VITE_WS_URL || defaultWsUrl
@@ -42,11 +45,11 @@ export function connectDetectionSocket(
 
     const delay = Math.min(
       1000 * 2 ** (reconnectAttempt - 1),
-      30000
+      30000,
     )
 
     console.log(
-      `WebSocket reconnecting in ${delay / 1000}s...`
+      `WebSocket reconnecting in ${delay / 1000}s...`,
     )
 
     reconnectTimer = window.setTimeout(() => {
@@ -67,7 +70,7 @@ export function connectDetectionSocket(
     } catch (error) {
       console.error(
         'Unable to create detection WebSocket:',
-        error
+        error,
       )
 
       onStateChange?.('error')
@@ -80,7 +83,7 @@ export function connectDetectionSocket(
 
       console.log(
         'Pest Guard WebSocket connected:',
-        WS_URL
+        WS_URL,
       )
 
       onStateChange?.('connected')
@@ -91,7 +94,7 @@ export function connectDetectionSocket(
       try {
         console.log(
           'Pest Guard WebSocket raw message:',
-          event.data
+          event.data,
         )
 
         const data = JSON.parse(event.data)
@@ -99,27 +102,25 @@ export function connectDetectionSocket(
         if (!data || typeof data !== 'object') {
           console.warn(
             'Ignoring invalid detection message:',
-            data
+            data,
           )
           return
         }
 
-        // Ignore heartbeat response.
-        // "pong" is not a pest detection.
         if (data.type === 'pong') {
           return
         }
 
         console.log(
           'Pest Guard detection received:',
-          data
+          data,
         )
 
         onDetection?.(data)
       } catch (error) {
         console.error(
           'Invalid WebSocket message:',
-          error
+          error,
         )
       }
     }
@@ -127,7 +128,7 @@ export function connectDetectionSocket(
     socket.onerror = (error) => {
       console.error(
         'Pest Guard WebSocket error:',
-        error
+        error,
       )
 
       onStateChange?.('error')
@@ -143,7 +144,7 @@ export function connectDetectionSocket(
       }
 
       console.warn(
-        `Pest Guard WebSocket closed. Code: ${event.code}`
+        `Pest Guard WebSocket closed. Code: ${event.code}`,
       )
 
       onStateChange?.('closed')
