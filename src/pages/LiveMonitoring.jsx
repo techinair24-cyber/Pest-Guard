@@ -819,32 +819,41 @@ function LiveMonitoring() {
 
           {filteredHistory.length > 0 && (
             <div className="history-list">
-              {filteredHistory.map((item) => (
-                <div key={item.id ?? `${item.device_id}-${item.detected_at}`} className="history-row">
-                  <div className="history-main">
-                    <span className="history-time">{formatDate(getDetectionTime(item))}</span>
-                    <strong>
-                      {item.pest
-                        ? getDisplayPestName(item.pest, pestDirectory)
-                        : getDetectionDisplayStatus(item) === 'Inference error'
-                          ? 'Inference error'
-                          : getDetectionDisplayStatus(item) === 'Non-pest sound'
-                            ? 'Non-pest sound'
-                          : 'Unidentified sound'}
-                    </strong>
-                    <small>{getDetectionDisplayStatus(item)}</small>
-                  </div>
+              {filteredHistory.map((item) => {
+                const scientificName = String(item.pest || '').trim()
+                const commonName =
+                  String(item.common_name || '').trim() ||
+                  scientificName ||
+                  'Unidentified pest'
 
-                  <div className="history-meta">
-                    {String(item.status || '').toUpperCase() !== 'UNKNOWN' && (
-                      <span>{item.status}</span>
-                    )}
-                    <strong>{formatConfidence(item.confidence)}</strong>
-                    <strong>{getDetectionRiskEstimate(item, pestDirectory).risk}</strong>
-                    <strong>{item.device_id || deviceId}</strong>
+                return (
+                  <div key={item.id ?? `${item.device_id}-${item.detected_at}`} className="history-row">
+                    <div className="history-main">
+                      <span className="history-time">{formatDate(getDetectionTime(item))}</span>
+                      <strong>
+                        {scientificName
+                          ? commonName
+                          : getDetectionDisplayStatus(item) === 'Inference error'
+                            ? 'Inference error'
+                            : getDetectionDisplayStatus(item) === 'Non-pest sound'
+                              ? 'Non-pest sound'
+                              : 'Unidentified sound'}
+                      </strong>
+                      {scientificName && <small>{scientificName}</small>}
+                      <small>{getDetectionDisplayStatus(item)}</small>
+                    </div>
+
+                    <div className="history-meta">
+                      {String(item.status || '').toUpperCase() !== 'UNKNOWN' && (
+                        <span>{item.status}</span>
+                      )}
+                      <strong>{formatConfidence(item.confidence)}</strong>
+                      <strong>{getDetectionRiskEstimate(item, pestDirectory).risk}</strong>
+                      <strong>{item.device_id || deviceId}</strong>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
 
               {canLoadMore && (
                 <button type="button" className="history-load-more" onClick={() => setHistoryLimit((value) => value + 8)}>
