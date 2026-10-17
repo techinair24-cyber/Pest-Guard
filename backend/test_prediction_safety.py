@@ -198,18 +198,13 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             set(response),
         )
         self.assertEqual(response["status"], "UNKNOWN")
-        if response["confidence"] < main.PEST_IDENTIFICATION_CONFIDENCE:
-            self.assertIsNone(response["pest"])
-            self.assertEqual(
-                response["identification_label"], "Unidentified sound"
-            )
-            self.assertEqual(response["risk"], "UNKNOWN")
-            self.assertIsNone(response["risk_rationale"])
-        else:
-            self.assertIn(response["pest"], main.class_names)
-            self.assertEqual(
-                response["identification_label"], "Possible match"
-            )
+        self.assertIn(response["pest"], main.class_names)
+        self.assertEqual(
+            response["identification_label"], "Possible match"
+        )
+        self.assertEqual(
+            response["message"], "Unverified model prediction"
+        )
         self.assertGreaterEqual(response["confidence"], 0)
         self.assertLessEqual(response["confidence"], 1)
 
@@ -349,7 +344,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         ):
             main.predict_pest(audio)
 
-    def test_low_level_background_noise_stays_unverified(self):
+    def test_low_level_background_noise_keeps_top_class_unverified(self):
         audio = np.random.default_rng(1).integers(
             -4, 5, size=80000, dtype=np.int16
         )
@@ -361,24 +356,19 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         response = asyncio.run(main.ai_predict(request, db=self.database))
 
         self.assertEqual(response["status"], "UNKNOWN")
-        if response["confidence"] < main.PEST_IDENTIFICATION_CONFIDENCE:
-            self.assertIsNone(response["pest"])
-            self.assertEqual(response["risk"], "UNKNOWN")
-            self.assertEqual(
-                response["identification_label"], "Unidentified sound"
-            )
-        else:
-            self.assertIn(response["pest"], main.class_names)
-            self.assertEqual(
-                response["risk"],
-                main._resolve_species_metadata(response["pest"])["risk"],
-            )
+        self.assertIn(response["pest"], main.class_names)
+        self.assertEqual(
+            response["identification_label"], "Possible match"
+        )
+        self.assertEqual(
+            response["message"], "Unverified model prediction"
+        )
 
-    def test_prediction_at_confidence_threshold_is_kept_as_possible_match(self):
+    def test_low_score_prediction_is_kept_as_an_unverified_possible_match(self):
         request = FakeRequest("application/json", payload={"audio": []})
         candidate_result = {
-            "pest": main.class_names[0],
-            "confidence": main.PEST_IDENTIFICATION_CONFIDENCE,
+            "pest": main.class_names[17],
+            "confidence": 0.2,
         }
 
         with patch.object(main, "predict_pest", return_value=candidate_result):
@@ -386,8 +376,10 @@ class AudioPredictionSafetyTests(unittest.TestCase):
                 main.ai_predict(request, db=self.database)
             )
 
-        self.assertEqual(response["pest"], main.class_names[0])
+        self.assertEqual(response["pest"], main.class_names[17])
         self.assertEqual(response["identification_label"], "Possible match")
+        self.assertEqual(response["message"], "Unverified model prediction")
+        self.assertEqual(response["confidence"], 0.2)
 
     def test_malformed_pcm_and_json_audio_are_rejected(self):
         malformed_pcm = FakeRequest("application/octet-stream", b"\x00")
@@ -419,7 +411,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         self.assertEqual(response["confidence"], 0.99)
         self.assertEqual(response["risk"], main._resolve_species_metadata(main.class_names[0])["risk"])
 
-    def test_every_model_class_stays_unverified_at_low_and_high_scores(self):
+    def test_every_model_class_is_retained_as_unverified_at_low_and_high_scores(self):
         request = FakeRequest("application/json", payload={"audio": []})
 
         for pest in main.class_names:
@@ -439,30 +431,18 @@ class AudioPredictionSafetyTests(unittest.TestCase):
                         )
 
                     self.assertEqual(response["status"], "UNKNOWN")
-                    if confidence < main.PEST_IDENTIFICATION_CONFIDENCE:
-                        self.assertIsNone(response["pest"])
-                        self.assertEqual(
-                            response["identification_label"], "Unidentified sound"
-                        )
-                        self.assertEqual(response["risk"], "UNKNOWN")
-                        self.assertIsNone(response["risk_rationale"])
-                    else:
-                        self.assertEqual(response["pest"], pest)
-                        self.assertEqual(
-                            response["identification_label"], "Possible match"
-                        )
-                    self.assertEqual(response["confidence"], confidence)
-                    metadata = main.MODEL_SPECIES_METADATA.get(
-                        main._normalize_pest_label(pest)
+                    self.assertEqual(response["pest"], pest)
+                    self.assertEqual(
+                        response["identification_label"], "Possible match"
                     )
-                    if confidence < main.PEST_IDENTIFICATION_CONFIDENCE:
-                        self.assertEqual(response["risk"], "UNKNOWN")
-                        self.assertIsNone(response["risk_rationale"])
-                    else:
-                        self.assertEqual(
-                            response["risk"],
-                            metadata["risk"] if metadata else "UNKNOWN",
-                        )
+                    self.assertEqual(
+                        response["message"], "Unverified model prediction"
+                    )
+                    self.assertEqual(response["confidence"], confidence)
+                    metadata = main.MODEL_SPECIES_METADATA[
+                        main._normalize_pest_label(pest)
+                    ]
+                    self.assertEqual(response["risk"], metadata["risk"])
 
     def test_unrecognized_model_label_does_not_crash_prediction_endpoint(self):
         request = FakeRequest(

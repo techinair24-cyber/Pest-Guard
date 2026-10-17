@@ -1292,26 +1292,13 @@ async def ai_predict(
 
         result = await asyncio.to_thread(predict_pest, audio)
 
-        # Reject weak model outputs rather than displaying an arbitrary top class.
-        # This cutoff reduces weak suggestions; it does not guarantee correctness
-        # because the model score has not been calibrated as a true probability.
+        # Preserve the model's top trained class for display.
+        # The model score is not a verified probability.
         model_confidence = float(result["confidence"])
-        candidate_pest = (
+        predicted_pest = (
             result["pest"] if result["pest"] in class_names else None
         )
-        predicted_pest = (
-            candidate_pest
-            if (
-                candidate_pest is not None
-                and model_confidence >= PEST_IDENTIFICATION_CONFIDENCE
-            )
-            else None
-        )
-        prediction_message = (
-            "Unverified model prediction"
-            if predicted_pest
-            else "Low-confidence model prediction rejected"
-        )
+        prediction_message = "Unverified model prediction"
         species_metadata = _resolve_species_metadata(predicted_pest, db)
         common_name = (
             species_metadata["common_name"] if predicted_pest else None
