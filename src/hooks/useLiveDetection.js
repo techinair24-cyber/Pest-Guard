@@ -215,9 +215,7 @@ export function useLiveDetection() {
 
         setLiveStatus((current) => ({
           ...current,
-          detection: isNewerDetection(incomingDetection, current.detection)
-            ? incomingDetection
-            : current.detection,
+          detection: incomingDetection,
         }))
 
         setError(null)
