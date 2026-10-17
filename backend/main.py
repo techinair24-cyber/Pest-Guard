@@ -1062,25 +1062,48 @@ def set_detection_control(device_id: str, payload: dict):
 
 
 @app.post("/api/ai/predict")
-async def ai_predict(request: Request):
+
+async def ai_predict(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+
     try:
+
         content_type = request.headers.get("content-type", "")
 
         # Compact ESP32 transport: signed 16-bit little-endian PCM samples.
+
+        # 80,000 samples = 160 KB, much smaller than the JSON payload.
+
         if content_type.startswith("application/octet-stream"):
+
             raw_audio = await request.body()
+
             if not raw_audio:
+
                 raise HTTPException(
+
                     status_code=400,
+
                     detail="Audio data is required",
+
                 )
+
             if len(raw_audio) % 2 != 0:
+
                 raise HTTPException(
+
                     status_code=400,
+
                     detail="Invalid PCM audio length",
+
                 )
+
             audio = np.frombuffer(raw_audio, dtype="<i2")
+
         else:
+
             try:
                 payload = await request.json()
             except (json.JSONDecodeError, UnicodeDecodeError) as error:
@@ -1100,14 +1123,23 @@ async def ai_predict(request: Request):
                     status_code=400,
                     detail="JSON request body must be an object.",
                 )
+
             if "audio" not in payload:
+
                 raise HTTPException(
+
                     status_code=400,
+
                     detail="Audio data is required",
+
                 )
+
             audio = payload["audio"]
 
         result = await asyncio.to_thread(predict_pest, audio)
+
+        # Preserve the top trained class for display, but do not treat its
+        # uncalibrated score as a verified identification.
         predicted_pest = (
             result["pest"] if result["pest"] in class_names else None
         )
@@ -1119,39 +1151,77 @@ async def ai_predict(request: Request):
             common_name = common_names[class_names.index(predicted_pest)]
 
         # The top-scoring class is only a candidate, not a verified identity.
-        # Risk remains UNKNOWN until a reviewed species-to-risk mapping exists.
         prediction_data = {
+
             "status": "UNKNOWN",
+
             "identification_status": "UNCONFIRMED",
             "identification_label": (
                 "Possible match" if predicted_pest else "Unidentified sound"
             ),
+
             "pest": predicted_pest,
             "common_name": common_name,
+
             "confidence": result["confidence"],
+
             "risk": "UNKNOWN",
+
             "message": "Unverified model prediction",
             "source": "AI_MODEL_PREDICTION",
             "detected_at": datetime.now(timezone.utc).isoformat(),
+
         }
 
-        # Push the candidate to the open Live Monitoring page. This is not
-        # saved as a confirmed field detection in the database.
+        # Persist the AI result as an unconfirmed detection.
+        detected_time = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        detection = Detection(
+            device_id=os.getenv("PEST_DEVICE_ID", "FIELD-UNIT-01"),
+            status="UNKNOWN",
+            pest=predicted_pest,
+            confidence=float(result["confidence"]),
+            risk="UNKNOWN",
+            message="Unverified model prediction",
+            detected_at=detected_time,
+        )
+
+        db.add(detection)
+        db.commit()
+        db.refresh(detection)
+
+        # Send the saved record to the live website.
+        prediction_data.update({
+            "id": detection.id,
+            "device_id": detection.device_id,
+            "temperature": detection.temperature,
+            "humidity": detection.humidity,
+            "audio_file": detection.audio_file,
+            "detected_at": detection.detected_at.replace(
+                tzinfo=timezone.utc
+            ).isoformat(),
+        })
+
         await manager.broadcast(prediction_data)
         return prediction_data
 
     except HTTPException:
+
         raise
+
     except Exception as error:
         logger.exception(
             "AI prediction failed (model=%s)",
             "yamnet" if USE_YAMNET else "cnn",
         )
-        raise HTTPException(
-            status_code=500,
-            detail=f"AI prediction failed: {str(error)}",
-        )
 
+        raise HTTPException(
+
+            status_code=500,
+
+            detail=f"AI prediction failed: {str(error)}",
+
+        )
 
 def _fallback_ai_solution(payload: AISolutionRequest) -> dict:
     return {
