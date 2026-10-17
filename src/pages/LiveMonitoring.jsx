@@ -137,16 +137,9 @@ function LiveMonitoring() {
       typeof item.pest === 'string' && item.pest.trim() !== ''
   })
 
-  // Display one winner from the last 30 seconds, while preserving all events in history.
-  const bestRecentDetection = recentDetectionCandidates.reduce((best, item) => {
-    const score = Number(item.confidence)
-    const bestScore = Number(best?.confidence)
-    if (!best) return item
-    if (!Number.isFinite(bestScore)) return Number.isFinite(score) ? item : best
-    return Number.isFinite(score) && score > bestScore ? item : best
-  }, null)
-
-  const displayDetection = bestRecentDetection
+  // Always display the newest recent detection.
+  // Model confidence is uncalibrated, so don't use it to select older results.
+  const displayDetection = recentDetectionCandidates[0] || null
   const liveDevice = device || (liveDetection ? {
     device_id: liveDetection.device_id || 'FIELD-UNIT-01',
     status: 'OFFLINE',
