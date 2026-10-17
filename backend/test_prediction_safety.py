@@ -344,8 +344,33 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         response = asyncio.run(main.ai_predict(request, db=self.database))
 
         self.assertEqual(response["status"], "UNKNOWN")
-        self.assertIn(response["risk"], {"LOW", "MEDIUM", "HIGH", "UNKNOWN"})
-        self.assertIn(response["pest"], main.class_names)
+        if response["confidence"] < main.PEST_IDENTIFICATION_CONFIDENCE:
+            self.assertIsNone(response["pest"])
+            self.assertEqual(response["risk"], "UNKNOWN")
+            self.assertEqual(
+                response["identification_label"], "Unidentified sound"
+            )
+        else:
+            self.assertIn(response["pest"], main.class_names)
+            self.assertEqual(
+                response["risk"],
+                main._resolve_species_metadata(response["pest"])["risk"],
+            )
+
+    def test_prediction_at_confidence_threshold_is_kept_as_possible_match(self):
+        request = FakeRequest("application/json", payload={"audio": []})
+        candidate_result = {
+            "pest": main.class_names[0],
+            "confidence": main.PEST_IDENTIFICATION_CONFIDENCE,
+        }
+
+        with patch.object(main, "predict_pest", return_value=candidate_result):
+            response = asyncio.run(
+                main.ai_predict(request, db=self.database)
+            )
+
+        self.assertEqual(response["pest"], main.class_names[0])
+        self.assertEqual(response["identification_label"], "Possible match")
 
     def test_malformed_pcm_and_json_audio_are_rejected(self):
         malformed_pcm = FakeRequest("application/octet-stream", b"\x00")

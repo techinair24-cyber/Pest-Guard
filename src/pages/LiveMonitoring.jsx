@@ -599,7 +599,9 @@ function LiveMonitoring() {
               <strong>
                 {predictedPestName
                   ? predictedPestDisplayName
-                  : 'No pest detected yet'}
+                  : displayDetection
+                    ? 'Unidentified sound'
+                    : 'No pest detected yet'}
               </strong>
               {predictedPestName && predictedScientificName &&
                 normalizePestName(predictedScientificName) !==
