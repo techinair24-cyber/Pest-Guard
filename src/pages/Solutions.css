@@ -244,50 +244,11 @@
 .risk-block .risk-low { color: #53765b; }
 .risk-block .risk-unknown { color: #77827c; }
 
-.risk-block small,
-.risk-block a {
-  display: block;
-  margin-top: 7px;
-  color: var(--solutions-muted);
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-.risk-block a {
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
 .identification-note {
   margin: 10px 0 0;
   color: var(--solutions-muted);
   font-size: 12px;
   line-height: 1.5;
-}
-
-.solution-catalog-reference {
-  margin: 22px 0;
-  padding: 16px 18px;
-  border: 1px solid var(--solutions-line);
-  border-radius: 12px;
-  background: #f7f8f2;
-  color: var(--solutions-muted);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.solution-catalog-reference > strong {
-  display: block;
-  color: var(--solutions-forest);
-  font-size: 12px;
-}
-
-.solution-catalog-reference p {
-  margin: 8px 0 0;
-}
-
-.solution-catalog-reference b {
-  color: var(--solutions-forest);
 }
 
 .history-risk {

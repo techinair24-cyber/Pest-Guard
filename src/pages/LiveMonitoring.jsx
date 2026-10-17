@@ -616,20 +616,9 @@ function LiveMonitoring() {
 
           {displayDetection && (
             <p className="latest-identification-status">
-              Unverified model prediction · Detected {formatDate(getDetectionTime(displayDetection))}
+              AI Detection · Detected {formatDate(getDetectionTime(displayDetection))}
             </p>
           )}
-
-          {matchingPestRecord?.description || matchingPestRecord?.symptoms ? (
-            <div className="latest-catalog-reference">
-              <strong>Catalogue reference (not identification confirmation)</strong>
-              {matchingPestRecord.description && <p>{matchingPestRecord.description}</p>}
-              {matchingPestRecord.symptoms && (
-                <p><b>Symptoms:</b> {matchingPestRecord.symptoms}</p>
-              )}
-            </div>
-          ) : null}
-
           <div className="detection-details">
             <div>
               <span>Model score (not calibrated confidence)</span>
@@ -640,31 +629,6 @@ function LiveMonitoring() {
                 <span>Risk Level</span>
                 <strong>{riskEstimate}</strong>
               </div>
-              <small>
-                {riskEstimate === 'UNKNOWN' ? (
-                  'No evidence-backed risk tier is available; this is not evidence of low risk.'
-                ) : (
-                  <>
-                    General estimate; not site-specific.
-                    {riskDetails.sourceUrl ? (
-                      <> Source: <a href={riskDetails.sourceUrl} target="_blank" rel="noreferrer">{riskDetails.source}</a></>
-                    ) : riskDetails.source ? (
-                      <> Source: {riskDetails.source}</>
-                    ) : (
-                      ' Classification source unavailable.'
-                    )}
-                  </>
-                )}
-              </small>
-              {riskDetails.rationale && (
-                <small>{riskDetails.rationale}</small>
-              )}
-              {Array.isArray(displayDetection?.affected_crops) &&
-                displayDetection.affected_crops.length > 0 && (
-                  <small>
-                    Documented affected crops: {displayDetection.affected_crops.join(', ')}
-                  </small>
-                )}
               <div
                 className="latest-risk-track"
                 role="img"

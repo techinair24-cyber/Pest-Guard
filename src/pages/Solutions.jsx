@@ -506,11 +506,6 @@ function Solutions() {
 
  const riskLabel = riskEstimate.risk
 
- const identificationLabel =
-  canShowSpeciesGuidance
-   ? 'Catalog-supported identification'
-   : 'Unverified model prediction'
-
  const handleClearHistory = async () => {
 
   if (!confirmClearHistory) {
@@ -680,7 +675,7 @@ function Solutions() {
            : `Scientific name unavailable; model class: ${requestedPest}`}
          </p>
         )}
-        <p className="identification-note">{identificationLabel}</p>
+        <p className="identification-note">AI Detection</p>
 
        </div>
 
@@ -693,27 +688,6 @@ function Solutions() {
          {riskLabel}
 
         </strong>
-        <small>
-         {riskLabel === 'UNKNOWN'
-          ? 'No evidence-backed risk tier is available; this is not evidence of low risk.'
-          : 'General species-level agricultural risk; not a site-specific infestation assessment. Identification remains unverified.'}
-        </small>
-        {riskLabel !== 'UNKNOWN' && riskEstimate.sourceUrl ? (
-         <a href={riskEstimate.sourceUrl} target="_blank" rel="noreferrer">
-         Source: {riskEstimate.source}
-         </a>
-        ) : riskLabel !== 'UNKNOWN' ? (
-         <small>Source: {riskEstimate.source || 'Unavailable'}</small>
-        ) : null}
-        {riskEstimate.rationale && (
-         <small>{riskEstimate.rationale}</small>
-        )}
-        {Array.isArray(detection?.affected_crops) &&
-         detection.affected_crops.length > 0 && (
-          <small>
-           Documented affected crops: {detection.affected_crops.join(', ')}
-          </small>
-         )}
 
        </div>
 
@@ -746,14 +720,6 @@ function Solutions() {
        </div>
 
       </div>
-
-      {(pest?.description || pest?.symptoms) && (
-       <aside className="solution-catalog-reference">
-        <strong>Catalogue reference only — this does not confirm the model prediction.</strong>
-        {pest.description && <p>{pest.description}</p>}
-        {pest.symptoms && <p><b>Symptoms to check:</b> {pest.symptoms}</p>}
-       </aside>
-      )}
 
       {isNonPest ? (
 
@@ -1070,7 +1036,7 @@ function Solutions() {
 
              >
 
-              {verifiedHistoryPest ? 'CATALOG-SUPPORTED IDENTIFICATION' : 'UNVERIFIED MODEL PREDICTION'}
+              AI DETECTION
 
              </p>
 

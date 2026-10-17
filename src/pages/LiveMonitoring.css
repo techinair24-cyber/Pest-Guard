@@ -457,31 +457,6 @@
   font-weight: 700;
 }
 
-.latest-catalog-reference {
-  margin: 12px 0 20px;
-  padding: 14px 16px;
-  border: 1px solid var(--monitoring-line);
-  border-radius: 10px;
-  background: rgba(255, 253, 248, 0.7);
-  color: var(--monitoring-muted);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.latest-catalog-reference > strong {
-  display: block;
-  color: var(--monitoring-forest);
-  font-size: 11px;
-}
-
-.latest-catalog-reference p {
-  margin: 6px 0 0;
-}
-
-.latest-catalog-reference b {
-  color: var(--monitoring-forest);
-}
-
 .detection-details strong {
   overflow-wrap: anywhere;
 }
@@ -519,20 +494,6 @@
 
 .latest-risk-unknown .latest-risk-heading > strong {
   color: #77827c;
-}
-
-.latest-risk > small {
-  display: block;
-  margin-top: 4px;
-  color: var(--monitoring-muted);
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-.latest-risk > small a {
-  color: inherit;
-  text-decoration: underline;
-  text-underline-offset: 2px;
 }
 
 .latest-risk-track {
