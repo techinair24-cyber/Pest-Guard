@@ -555,7 +555,20 @@ def _serialize_detection(detection: Detection, db: Session | None) -> dict:
         "message": detection.message,
         "detected_at": detection.detected_at,
     }
-    if "unverified model prediction" in str(detection.message or "").casefold():
+    detection_message = str(detection.message or "")
+    normalized_message = detection_message.casefold()
+    if normalized_message.startswith("inference_error:"):
+        response.update(
+            {
+                "identification_status": "ERROR",
+                "identification_label": "Inference error",
+                "source": "DEVICE_INFERENCE_ERROR",
+            }
+        )
+    elif (
+        "unverified model prediction" in normalized_message
+        or "low-confidence model prediction rejected" in normalized_message
+    ):
         response.update(
             {
                 "identification_status": "UNCONFIRMED",
@@ -1956,20 +1969,15 @@ async def create_detection(
 )
 
 def get_latest_detection(
-
+    device_id: str | None = None,
     db: Session = Depends(get_db),
 
 ):
 
-    detection = (
-
-        db.query(Detection)
-
-        .order_by(desc(Detection.detected_at))
-
-        .first()
-
-    )
+    query = db.query(Detection)
+    if device_id:
+        query = query.filter(Detection.device_id == device_id)
+    detection = query.order_by(desc(Detection.detected_at)).first()
 
     if not detection:
 

@@ -14,6 +14,8 @@ import {
 } from '../utils/pestNames'
 import {
   getDetectionTime,
+  getDetectionDisplayStatus,
+  isLatestDetectionCandidate,
   isAfterHistoryClear,
   mergeDetections,
   parseServerTimestamp,
@@ -99,7 +101,14 @@ function getConnectionState(device, loading) {
 }
 function LiveMonitoring() {
   const navigate = useNavigate()
-  const { detection, device, loading, error } = useLiveDetection()
+  const {
+    detection,
+    device,
+    loading,
+    error,
+    detectionError,
+    detectionLoading,
+  } = useLiveDetection()
   const [history, setHistory] = useState([])
   const [historyFilter, setHistoryFilter] = useState('ALL')
   const [historyLimit, setHistoryLimit] = useState(8)
@@ -109,28 +118,16 @@ function LiveMonitoring() {
   const [historyClearedAt, setHistoryClearedAt] = useState(() => getStoredClearTime())
   const [popup, setPopup] = useState(null)
   const [detectionControlEnabled, setDetectionControlEnabled] = useState(false)
+  const [detectionControlKnown, setDetectionControlKnown] = useState(false)
   const [detectionControlBusy, setDetectionControlBusy] = useState(false)
   const [detectionControlError, setDetectionControlError] = useState('')
-  const [detectionControlMessage, setDetectionControlMessage] = useState('Detection is stopped.')
+  const [detectionControlMessage, setDetectionControlMessage] = useState(
+    'Checking the backend control command.',
+  )
   const [pestDirectory, setPestDirectory] = useState({})
   const alertedKeysRef = useRef(getStoredAlertedKeys())
 
   const liveDetection = detection || history[0] || null
-
-  const detectionCandidates = mergeDetections(
-    history,
-    detection ? [detection] : [],
-  ).filter((item) => {
-    const timestamp = parseServerTimestamp(getDetectionTime(item))
-    const sameDevice = !device?.device_id || !item.device_id || item.device_id === device.device_id
-    return Number.isFinite(timestamp) &&
-      timestamp <= Date.now() + 5000 &&
-      sameDevice &&
-      typeof item.pest === 'string' && item.pest.trim() !== ''
-  })
-
-  // Keep the latest valid candidate visible until a newer candidate arrives.
-  const displayDetection = detectionCandidates[0] || null
   const liveDevice = device || (liveDetection ? {
     device_id: liveDetection.device_id || 'FIELD-UNIT-01',
     status: 'OFFLINE',
@@ -139,9 +136,18 @@ function LiveMonitoring() {
     temperature: liveDetection.temperature ?? null,
     humidity: liveDetection.humidity ?? null,
   } : null)
+  const deviceId = liveDevice?.device_id || liveDetection?.device_id || 'FIELD-UNIT-01'
+  const detectionCandidates = mergeDetections(
+    history,
+    detection ? [detection] : [],
+  ).filter((item) => isLatestDetectionCandidate(item, deviceId))
+
+  // Keep the latest valid candidate visible until a newer candidate arrives.
+  const displayDetection = detectionCandidates[0] || null
+  const displayDetectionLabel = getDetectionDisplayStatus(displayDetection)
 
   const connectionState = getConnectionState(liveDevice, loading)
-  const detectionStatus = displayDetection?.status || liveDetection?.status || ''
+  const detectionStatus = displayDetection?.status || ''
   const statusClass = detectionStatus === 'HARMFUL_PEST'
     ? 'harmful'
     : detectionStatus === 'NON_PEST'
@@ -149,30 +155,40 @@ function LiveMonitoring() {
       : detectionStatus === 'UNKNOWN'
         ? 'unknown'
         : 'empty'
-  const deviceId = liveDevice?.device_id || liveDetection?.device_id || 'FIELD-UNIT-01'
-
-
   // PEST_GUARD_DETECTION_CONTROL_HANDLERS
   useEffect(() => {
     let active = true
 
-    getDetectionControl(deviceId)
-      .then((result) => {
-        if (!active) return
-        const enabled = Boolean(result?.enabled)
-        setDetectionControlEnabled(enabled)
-        setDetectionControlMessage(
-          enabled ? 'Detection is running.' : 'Detection is stopped.'
-        )
-        setDetectionControlError('')
-      })
-      .catch((controlError) => {
-        if (!active) return
-        setDetectionControlError(`Unable to read device control: ${controlError.message}`)
-      })
+    const refreshControlState = () => {
+      getDetectionControl(deviceId)
+        .then((result) => {
+          if (!active) return
+          if (typeof result?.enabled !== 'boolean') {
+            throw new Error('Backend returned an invalid control state.')
+          }
+          const enabled = result.enabled
+          setDetectionControlEnabled(enabled)
+          setDetectionControlKnown(true)
+          setDetectionControlMessage(
+            enabled
+              ? 'Backend command: Detect. The field unit has not acknowledged an active cycle.'
+              : 'Backend command: Stop. The field unit may finish an active cycle.',
+          )
+          setDetectionControlError('')
+        })
+        .catch((controlError) => {
+          if (!active) return
+          setDetectionControlKnown(false)
+          setDetectionControlError(`Unable to read backend control command: ${controlError.message}`)
+        })
+    }
+
+    refreshControlState()
+    const refreshTimer = window.setInterval(refreshControlState, 5000)
 
     return () => {
       active = false
+      window.clearInterval(refreshTimer)
     }
   }, [deviceId])
 
@@ -182,14 +198,19 @@ function LiveMonitoring() {
 
     try {
       const result = await setDetectionEnabled(deviceId, enabled)
-      const accepted = Boolean(result?.enabled)
+      if (typeof result?.enabled !== 'boolean' || result.enabled !== enabled) {
+        throw new Error('Backend did not confirm the requested control value.')
+      }
+      const accepted = result.enabled
       setDetectionControlEnabled(accepted)
+      setDetectionControlKnown(true)
       setDetectionControlMessage(
         accepted
-          ? 'Detect requested. The field unit will start at its next control check.'
-          : 'Stop requested. A detection cycle already in progress may finish.'
+          ? 'Backend command: Detect. The field unit has not acknowledged an active cycle.'
+          : 'Backend command: Stop. The field unit may finish an active cycle.'
       )
     } catch (controlError) {
+      setDetectionControlKnown(false)
       setDetectionControlError(`Control request failed: ${controlError.message}`)
     } finally {
       setDetectionControlBusy(false)
@@ -388,6 +409,7 @@ function LiveMonitoring() {
 
       try {
         const response = await getDetectionHistory({
+          deviceId,
           limit: historyLimit,
           status: historyFilter === 'ALL' ? undefined : historyFilter,
         })
@@ -431,7 +453,7 @@ function LiveMonitoring() {
     return () => {
       active = false
     }
-  }, [historyFilter, historyLimit, historyClearedAt, historyRetryCount])
+  }, [deviceId, historyFilter, historyLimit, historyClearedAt, historyRetryCount])
 
   useEffect(() => {
     if (!detection || detection.status !== 'HARMFUL_PEST') {
@@ -562,14 +584,26 @@ function LiveMonitoring() {
           )}
         </div>
         <div className="detection-control-actions">
-          <span className={`detection-control-state ${detectionControlEnabled ? 'is-running' : 'is-stopped'}`}>
-            {detectionControlEnabled ? 'RUNNING' : 'STOPPED'}
+          <span
+            className={`detection-control-state ${
+              !detectionControlKnown
+                ? 'is-unknown'
+                : detectionControlEnabled
+                  ? 'is-running'
+                  : 'is-stopped'
+            }`}
+          >
+            {!detectionControlKnown
+              ? 'CONTROL UNKNOWN'
+              : detectionControlEnabled
+                ? 'DETECT REQUESTED'
+                : 'STOP REQUESTED'}
           </span>
           <button
             type="button"
             className="detection-control-button detection-control-start"
             onClick={() => handleDetectionControl(true)}
-            disabled={detectionControlBusy || detectionControlEnabled}
+            disabled={detectionControlBusy || (detectionControlKnown && detectionControlEnabled)}
           >
             {detectionControlBusy ? 'Please wait…' : 'Detect'}
           </button>
@@ -577,7 +611,7 @@ function LiveMonitoring() {
             type="button"
             className="detection-control-button detection-control-stop"
             onClick={() => handleDetectionControl(false)}
-            disabled={detectionControlBusy || !detectionControlEnabled}
+            disabled={detectionControlBusy || (detectionControlKnown && !detectionControlEnabled)}
           >
             {detectionControlBusy ? 'Please wait…' : 'Stop'}
           </button>
@@ -600,8 +634,20 @@ function LiveMonitoring() {
                 {predictedPestName
                   ? predictedPestDisplayName
                   : displayDetection
-                    ? 'Unidentified sound'
-                    : 'No pest detected yet'}
+                    ? displayDetectionLabel === 'Inference error'
+                      ? displayDetectionLabel
+                      : displayDetectionLabel === 'Non-pest sound'
+                        ? displayDetectionLabel
+                        : 'Unidentified sound'
+                    : loading
+                      ? 'Connecting to field unit…'
+                      : connectionState !== 'Online'
+                        ? 'Device offline'
+                        : detectionError
+                          ? 'Detection data unavailable'
+                          : detectionLoading
+                            ? 'Checking for detections…'
+                            : 'No detection received'}
               </strong>
               {predictedPestName && predictedScientificName &&
                 normalizePestName(predictedScientificName) !==
@@ -618,7 +664,13 @@ function LiveMonitoring() {
 
           {displayDetection && (
             <p className="latest-identification-status">
-              AI Detection · Detected {formatDate(getDetectionTime(displayDetection))}
+              {getDetectionDisplayStatus(displayDetection)} · Detected{' '}
+              {formatDate(getDetectionTime(displayDetection))}
+            </p>
+          )}
+          {detectionError && displayDetection && (
+            <p className="latest-identification-status" role="status">
+              Latest refresh failed; showing the most recently received record.
             </p>
           )}
           <div className="detection-details">
@@ -629,12 +681,12 @@ function LiveMonitoring() {
             <div className={`latest-risk latest-risk-${riskEstimate.toLowerCase()}`}>
               <div className="latest-risk-heading">
                 <span>Risk Level</span>
-                <strong>{riskEstimate}</strong>
+                <strong>{displayDetection ? riskEstimate : '—'}</strong>
               </div>
               <div
                 className="latest-risk-track"
                 role="img"
-                aria-label={`Risk level: ${riskEstimate}`}
+                aria-label={`Risk level: ${displayDetection ? riskEstimate : 'unavailable'}`}
               >
                 <span className="latest-risk-fill" />
               </div>
@@ -772,8 +824,15 @@ function LiveMonitoring() {
                   <div className="history-main">
                     <span className="history-time">{formatDate(getDetectionTime(item))}</span>
                     <strong>
-                      {getDisplayPestName(item.pest, pestDirectory)}
+                      {item.pest
+                        ? getDisplayPestName(item.pest, pestDirectory)
+                        : getDetectionDisplayStatus(item) === 'Inference error'
+                          ? 'Inference error'
+                          : getDetectionDisplayStatus(item) === 'Non-pest sound'
+                            ? 'Non-pest sound'
+                          : 'Unidentified sound'}
                     </strong>
+                    <small>{getDetectionDisplayStatus(item)}</small>
                   </div>
 
                   <div className="history-meta">

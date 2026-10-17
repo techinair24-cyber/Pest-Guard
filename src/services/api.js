@@ -86,8 +86,15 @@ export const getDetectionControl = async (deviceId) => {
   return request(`/api/devices/${encodeURIComponent(deviceId)}/detection-control`)
 }
 
-export const getLatestDetection = async () => {
-  const data = await request('/api/detections/latest')
+export const getLatestDetection = async (deviceId) => {
+  const query = new URLSearchParams()
+  if (deviceId) {
+    query.set('device_id', deviceId)
+  }
+  const queryString = query.toString()
+  const data = await request(
+    `/api/detections/latest${queryString ? `?${queryString}` : ''}`,
+  )
   return data.detection || null
 }
 

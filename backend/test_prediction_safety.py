@@ -323,14 +323,31 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             40000,
         )
         scores = np.zeros(len(main.class_names), dtype=np.float32)
-        scores[0] = 0.983
+        selected_index = 17
+        expected_label = main.class_names[selected_index]
+        scores[selected_index] = 0.983
 
         with patch.object(main.ai_model, "predict", return_value=[scores]):
             result = main.predict_pest(audio)
 
-        self.assertEqual(main.class_names[0], main.class_names[0])
-        self.assertEqual(result["pest"], main.class_names[0])
+        self.assertEqual(result["pest"], expected_label)
         self.assertAlmostEqual(result["confidence"], 0.983, places=5)
+
+    def test_model_output_with_wrong_class_count_is_rejected(self):
+        audio = np.tile(
+            np.array([-800, 800], dtype=np.int16),
+            40000,
+        )
+        wrong_output = np.zeros(len(main.class_names) - 1, dtype=np.float32)
+
+        with (
+            patch.object(main.ai_model, "predict", return_value=[wrong_output]),
+            self.assertRaisesRegex(
+                RuntimeError,
+                "Model output does not match the class labels",
+            ),
+        ):
+            main.predict_pest(audio)
 
     def test_low_level_background_noise_stays_unverified(self):
         audio = np.random.default_rng(1).integers(
@@ -463,6 +480,78 @@ class AudioPredictionSafetyTests(unittest.TestCase):
 
         self.assertIsNone(response["pest"])
         self.assertEqual(response["risk"], "UNKNOWN")
+
+    def test_serialized_low_confidence_record_is_explicitly_unconfirmed(self):
+        detection = Mock(
+            id=4,
+            device_id="FIELD-UNIT-01",
+            status="UNKNOWN",
+            pest=None,
+            scientific_name=None,
+            common_name=None,
+            confidence=0.632,
+            risk="UNKNOWN",
+            risk_rationale=None,
+            affected_crops="[]",
+            metadata_source_name=None,
+            metadata_source_url=None,
+            temperature=None,
+            humidity=None,
+            audio_file=None,
+            message="Low-confidence model prediction rejected",
+            detected_at=None,
+        )
+
+        serialized = main._serialize_detection(detection, None)
+
+        self.assertEqual(serialized["identification_status"], "UNCONFIRMED")
+        self.assertEqual(serialized["identification_label"], "Unidentified sound")
+        self.assertEqual(serialized["source"], "AI_MODEL_PREDICTION")
+
+    def test_serialized_device_inference_error_is_not_a_detection(self):
+        detection = Mock(
+            id=5,
+            device_id="FIELD-UNIT-01",
+            status="UNKNOWN",
+            pest=None,
+            scientific_name=None,
+            common_name=None,
+            confidence=0.0,
+            risk="UNKNOWN",
+            risk_rationale=None,
+            affected_crops="[]",
+            metadata_source_name=None,
+            metadata_source_url=None,
+            temperature=None,
+            humidity=None,
+            audio_file=None,
+            message="INFERENCE_ERROR: AI API HTTP 500",
+            detected_at=None,
+        )
+
+        serialized = main._serialize_detection(detection, None)
+
+        self.assertEqual(serialized["identification_status"], "ERROR")
+        self.assertEqual(serialized["identification_label"], "Inference error")
+
+    def test_latest_detection_can_be_scoped_to_a_device(self):
+        query = Mock()
+        query.filter.return_value = query
+        query.order_by.return_value = query
+        query.first.return_value = None
+        database = Mock()
+        database.query.return_value = query
+
+        response = main.get_latest_detection(
+            device_id="FIELD-UNIT-02",
+            db=database,
+        )
+
+        self.assertIsNone(response["detection"])
+        query.filter.assert_called_once()
+        device_filter = query.filter.call_args.args[0]
+        self.assertEqual(device_filter.left, main.Detection.device_id)
+        self.assertEqual(device_filter.right.value, "FIELD-UNIT-02")
 
     def test_uncertain_solution_keeps_risk_unknown_even_for_high_score(self):
         payload = main.AISolutionRequest(

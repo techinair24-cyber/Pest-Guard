@@ -6,7 +6,7 @@ import {
 } from '../services/api'
 
 import { connectDetectionSocket } from '../services/websocket'
-import { isNewerDetection } from '../utils/detectionHistory'
+import { selectNewerDetection } from '../utils/detectionHistory'
 
 const DEVICE_ID =
   import.meta.env.VITE_DEVICE_ID || 'FIELD-UNIT-01'
@@ -75,6 +75,8 @@ export function useLiveDetection() {
   })
 
   const [error, setError] = useState(null)
+  const [detectionError, setDetectionError] = useState(null)
+  const [detectionLoading, setDetectionLoading] = useState(true)
 
   const updateDeviceStatus = async () => {
     try {
@@ -148,7 +150,7 @@ export function useLiveDetection() {
 
   const loadLatestDetection = async () => {
     try {
-      const response = await getLatestDetection()
+      const response = await getLatestDetection(DEVICE_ID)
 
       if (!mountedRef.current) {
         return
@@ -156,10 +158,9 @@ export function useLiveDetection() {
 
       setLiveStatus((current) => ({
         ...current,
-        detection: isNewerDetection(response, current.detection)
-          ? response
-          : current.detection,
+        detection: selectNewerDetection(current.detection, response),
       }))
+      setDetectionError(null)
     } catch (detectionError) {
       if (!mountedRef.current) {
         return
@@ -169,6 +170,11 @@ export function useLiveDetection() {
         'Unable to load latest detection:',
         detectionError,
       )
+      setDetectionError(detectionError)
+    } finally {
+      if (mountedRef.current) {
+        setDetectionLoading(false)
+      }
     }
   }
 
@@ -207,6 +213,12 @@ export function useLiveDetection() {
         if (!incomingDetection) {
           return
         }
+        if (
+          incomingDetection.device_id &&
+          incomingDetection.device_id !== DEVICE_ID
+        ) {
+          return
+        }
 
         console.log(
           'New Pest Guard detection:',
@@ -215,9 +227,14 @@ export function useLiveDetection() {
 
         setLiveStatus((current) => ({
           ...current,
-          detection: incomingDetection,
+          detection: selectNewerDetection(
+            current.detection,
+            incomingDetection,
+          ),
         }))
 
+        setDetectionError(null)
+        setDetectionLoading(false)
         setError(null)
 
         await updateDeviceStatus()
@@ -254,5 +271,7 @@ export function useLiveDetection() {
     device: liveStatus.device,
     loading,
     error,
+    detectionError,
+    detectionLoading,
   }
 }

@@ -33,6 +33,65 @@ export function isNewerDetection(candidate, current) {
   return false
 }
 
+export function selectNewerDetection(current, candidate) {
+  return isNewerDetection(candidate, current) ? candidate : current
+}
+
+export function isLatestDetectionCandidate(item, deviceId, now = Date.now()) {
+  const timestamp = parseServerTimestamp(getDetectionTime(item))
+  const sameDevice =
+    !deviceId || !item?.device_id || item.device_id === deviceId
+  const hasPestName =
+    typeof item?.pest === 'string' && item.pest.trim() !== ''
+  const status = String(item?.status || '').toUpperCase()
+  const identificationStatus = String(
+    item?.identification_status || '',
+  ).toUpperCase()
+  const commonName = String(item?.common_name || '').trim().toLowerCase()
+  const isDetectionEvent =
+    hasPestName ||
+    ['HARMFUL_PEST', 'NON_PEST', 'UNKNOWN'].includes(status) ||
+    identificationStatus === 'UNCONFIRMED' ||
+    identificationStatus === 'ERROR' ||
+    commonName === 'unidentified sound'
+
+  return (
+    Number.isFinite(timestamp) &&
+    timestamp <= now + 5000 &&
+    sameDevice &&
+    isDetectionEvent
+  )
+}
+
+export function getDetectionDisplayStatus(item) {
+  if (!item) {
+    return ''
+  }
+
+  const message = String(item.message || '')
+  const status = String(item.status || '').toUpperCase()
+  const identificationStatus = String(
+    item.identification_status || '',
+  ).toUpperCase()
+
+  if (
+    identificationStatus === 'ERROR' ||
+    message.toUpperCase().startsWith('INFERENCE_ERROR:')
+  ) {
+    return 'Inference error'
+  }
+  if (status === 'NON_PEST') {
+    return 'Non-pest sound'
+  }
+  if (identificationStatus === 'CONFIRMED') {
+    return 'Confirmed pest identification'
+  }
+  if (item.pest) {
+    return 'Possible match - not confirmed'
+  }
+  return 'Rejected or uncertain classification'
+}
+
 export function parseServerTimestamp(value) {
   if (!value) {
     return NaN

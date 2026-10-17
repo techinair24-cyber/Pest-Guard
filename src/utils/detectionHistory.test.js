@@ -2,9 +2,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  getDetectionDisplayStatus,
+  isLatestDetectionCandidate,
   isNewerDetection,
   isAfterHistoryClear,
   mergeDetections,
+  selectNewerDetection,
 } from './detectionHistory.js'
 
 test('clear cutoff hides old and equal-time detections but keeps newer events', () => {
@@ -84,4 +87,74 @@ test('an older delayed REST response cannot replace a newer live detection', () 
     true,
   )
   assert.equal(isNewerDetection(null, liveDetection), false)
+})
+
+test('a newer WebSocket detection replaces an older detection, but not vice versa', () => {
+  const older = {
+    id: 11,
+    detected_at: '2025-01-01T12:00:00Z',
+  }
+  const newer = {
+    id: 12,
+    detected_at: '2025-01-01T12:01:00Z',
+  }
+
+  assert.equal(selectNewerDetection(older, newer), newer)
+  assert.equal(selectNewerDetection(newer, older), newer)
+})
+
+test('latest detection selection includes unidentified results for the same device', () => {
+  const unknown = {
+    device_id: 'FIELD-UNIT-01',
+    status: 'UNKNOWN',
+    pest: null,
+    confidence: 0.632,
+    detected_at: '2025-01-01T12:00:00Z',
+  }
+
+  assert.equal(
+    isLatestDetectionCandidate(
+      unknown,
+      'FIELD-UNIT-01',
+      Date.parse('2025-01-01T12:00:05Z'),
+    ),
+    true,
+  )
+  assert.equal(
+    isLatestDetectionCandidate(
+      unknown,
+      'FIELD-UNIT-02',
+      Date.parse('2025-01-01T12:00:05Z'),
+    ),
+    false,
+  )
+})
+
+test('classification display distinguishes confirmed, uncertain, non-pest, and inference error', () => {
+  assert.equal(
+    getDetectionDisplayStatus({
+      pest: 'Acheta domesticus',
+      identification_status: 'CONFIRMED',
+    }),
+    'Confirmed pest identification',
+  )
+  assert.equal(
+    getDetectionDisplayStatus({
+      pest: 'Acheta domesticus',
+      identification_status: 'UNCONFIRMED',
+    }),
+    'Possible match - not confirmed',
+  )
+  assert.equal(
+    getDetectionDisplayStatus({ status: 'UNKNOWN', pest: null }),
+    'Rejected or uncertain classification',
+  )
+  assert.equal(
+    getDetectionDisplayStatus({ status: 'NON_PEST' }),
+    'Non-pest sound',
+  )
+  assert.equal(
+    getDetectionDisplayStatus({ message: 'INFERENCE_ERROR: AI API HTTP 500' }),
+    'Inference error',
+  )
 })

@@ -1054,6 +1054,11 @@
   background: #e2e8f0;
 }
 
+.detection-control-state.is-unknown {
+  color: #854d0e;
+  background: #fef3c7;
+}
+
 .detection-control-button {
   min-height: 44px;
   padding: 0.7rem 1.1rem;
