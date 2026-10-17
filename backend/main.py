@@ -455,13 +455,24 @@ def _resolve_species_metadata(
     )
     model_risk = str((metadata or {}).get("risk") or "").strip().upper()
     catalog_risk = str(getattr(pest_record, "risk", "") or "").strip().upper()
-    model_risk_is_valid = model_risk in {"LOW", "MEDIUM", "HIGH"}
+    # Related-taxon/ecology tiers are explicitly provisional. Prefer a valid
+    # matching catalogue risk over a proxy tier; direct model metadata remains
+    # highest priority when it is not marked as a proxy.
+    model_risk_is_proxy = bool((metadata or {}).get("risk_basis"))
+    model_risk_is_valid = (
+        model_risk in {"LOW", "MEDIUM", "HIGH"} and not model_risk_is_proxy
+    )
+    model_proxy_risk_is_valid = (
+        model_risk in {"LOW", "MEDIUM", "HIGH"} and model_risk_is_proxy
+    )
     catalog_risk_is_valid = catalog_risk in {"LOW", "MEDIUM", "HIGH"}
     risk = (
         model_risk
         if model_risk_is_valid
         else catalog_risk
         if catalog_risk_is_valid
+        else model_risk
+        if model_proxy_risk_is_valid
         else "UNKNOWN"
     )
     risk_uses_catalog = not model_risk_is_valid and catalog_risk_is_valid
@@ -1711,13 +1722,18 @@ async def create_detection(
 
     detection_status = payload.status
     detection_pest = payload.pest if payload.pest in class_names else None
-    detection_risk = payload.risk
     if detection_status == "HARMFUL_PEST":
-        # Keep a trained class only as an unverified suggestion.
+        # Retain a trained class only as an unconfirmed suggestion.
         detection_status = "UNKNOWN"
-        detection_risk = "UNKNOWN"
-    elif detection_status == "UNKNOWN":
-        detection_risk = "UNKNOWN"
+
+    if detection_status == "UNKNOWN":
+        # Keep the persisted risk consistent with the matching model metadata;
+        # ignore any risk sent by the device for an unconfirmed prediction.
+        detection_risk = (
+            _resolve_species_metadata(detection_pest)["risk"]
+            if detection_pest
+            else "UNKNOWN"
+        )
     else:
         detection_pest = None
         detection_risk = "LOW"

@@ -228,7 +228,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         detection = self.database.add.call_args.args[0]
         self.assertEqual(detection.status, "UNKNOWN")
         self.assertEqual(detection.pest, main.class_names[0])
-        self.assertEqual(detection.risk, "UNKNOWN")
+        self.assertEqual(detection.risk, main._resolve_species_metadata(main.class_names[0])["risk"])
         self.assertEqual(response["common_name"], detection.common_name)
         self.assertEqual(response["risk"], detection.risk)
         self.assertEqual(detection.message, "Unverified model prediction")
@@ -364,7 +364,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         self.assertEqual(response["status"], "UNKNOWN")
         self.assertEqual(response["pest"], main.class_names[0])
         self.assertEqual(response["confidence"], 0.99)
-        self.assertEqual(response["risk"], "UNKNOWN")
+        self.assertEqual(response["risk"], main._resolve_species_metadata(main.class_names[0])["risk"])
 
     def test_every_model_class_stays_unverified_at_low_and_high_scores(self):
         request = FakeRequest("application/json", payload={"audio": []})
@@ -576,11 +576,11 @@ class AudioPredictionSafetyTests(unittest.TestCase):
 
         self.assertEqual(detection.status, "UNKNOWN")
         self.assertEqual(detection.pest, main.class_names[0])
-        self.assertEqual(detection.risk, "UNKNOWN")
+        self.assertEqual(detection.risk, main._resolve_species_metadata(main.class_names[0])["risk"])
         event = broadcast.await_args.args[0]
         self.assertEqual(event["status"], "UNKNOWN")
         self.assertEqual(event["pest"], main.class_names[0])
-        self.assertEqual(event["risk"], "UNKNOWN")
+        self.assertEqual(event["risk"], main._resolve_species_metadata(main.class_names[0])["risk"])
         self.assertEqual(event["temperature"], 26.2)
         self.assertEqual(event["humidity"], 65.0)
 
@@ -669,7 +669,7 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
         self.assertEqual(history["detections"][0]["id"], saved.id)
         self.assertEqual(history["detections"][0]["pest"], main.class_names[0])
         self.assertEqual(history["detections"][0]["common_name"], main.common_names[0])
-        self.assertEqual(history["detections"][0]["risk"], "UNKNOWN")
+        self.assertEqual(history["detections"][0]["risk"], main._resolve_species_metadata(main.class_names[0])["risk"])
         self.assertEqual(broadcast.await_count, 1)
 
     def test_ai_metadata_matches_saved_row_latest_history_and_websocket(self):
