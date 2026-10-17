@@ -208,11 +208,17 @@ function LiveMonitoring() {
     matchingPestRecord?.scientificName ||
     ''
   const predictedPestDisplayName = predictedPestName
-    ? getDisplayPestName(
-        predictedPestName,
-        pestDirectory,
-        displayDetection,
-      )
+    ? String(
+        displayDetection?.common_name ||
+          matchingPestRecord?.commonName ||
+          (predictedScientificName
+            ? predictedPestName
+            : getDisplayPestName(
+                predictedPestName,
+                pestDirectory,
+                displayDetection,
+              )),
+      ).trim()
     : ''
   const reportingDeviceId =
     displayDetection?.device_id || device?.device_id || 'N/A'
@@ -595,13 +601,16 @@ function LiveMonitoring() {
                   ? predictedPestDisplayName
                   : 'No pest detected yet'}
               </strong>
-              {predictedPestName && (
-                <small className="latest-identification-detail">
-                  {predictedScientificName
-                    ? `Scientific name: ${predictedScientificName}`
-                    : `Scientific name unavailable; model class: ${predictedPestName}`}
-                </small>
-              )}
+              {predictedPestName && predictedScientificName &&
+                normalizePestName(predictedScientificName) !==
+                  normalizePestName(predictedPestDisplayName) && (
+                  <small
+                    className="latest-identification-detail"
+                    style={{ display: 'block', marginTop: '0.3rem' }}
+                  >
+                    Scientific name: <em>{predictedScientificName}</em>
+                  </small>
+                )}
             </div>
           </div>
 
