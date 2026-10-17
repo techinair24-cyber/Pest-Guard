@@ -8,7 +8,7 @@ sqlalchemy
 pydantic
 pydantic-settings
 python-multipart
-numpy
+numpy==1.26.4
 scikit-learn
 tensorflow==2.20.0
 librosa
