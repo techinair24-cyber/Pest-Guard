@@ -1150,6 +1150,18 @@ async def ai_predict(
         ):
             common_name = common_names[class_names.index(predicted_pest)]
 
+        # Get the saved risk category for the predicted pest.
+        pest_record = (
+            _find_verified_pest_record(db, predicted_pest)
+            if predicted_pest
+            else None
+        )
+        catalog_risk = str(
+            getattr(pest_record, "risk", "") or ""
+        ).strip().upper()
+        if catalog_risk not in {"LOW", "MEDIUM", "HIGH"}:
+            catalog_risk = "UNKNOWN"
+
         # The top-scoring class is only a candidate, not a verified identity.
         prediction_data = {
 
@@ -1165,7 +1177,7 @@ async def ai_predict(
 
             "confidence": result["confidence"],
 
-            "risk": "UNKNOWN",
+            "risk": catalog_risk,
 
             "message": "Unverified model prediction",
             "source": "AI_MODEL_PREDICTION",
@@ -1181,7 +1193,7 @@ async def ai_predict(
             status="UNKNOWN",
             pest=predicted_pest,
             confidence=float(result["confidence"]),
-            risk="UNKNOWN",
+            risk=catalog_risk,
             message="Unverified model prediction",
             detected_at=detected_time,
         )

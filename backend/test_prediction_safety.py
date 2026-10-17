@@ -25,6 +25,12 @@ class FakeRequest:
 
 
 class AudioPredictionSafetyTests(unittest.TestCase):
+    def setUp(self):
+        self.database = Mock()
+        self.database.refresh.side_effect = (
+            lambda detection: setattr(detection, "id", 1)
+        )
+
     def test_model_output_dimension_matches_class_labels(self):
         self.assertEqual(main.ai_model.output_shape[-1], len(main.class_names))
 
@@ -89,7 +95,9 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             new_callable=AsyncMock,
             return_value=result,
         ) as to_thread:
-            response = asyncio.run(main.ai_predict(request))
+            response = asyncio.run(
+                main.ai_predict(request, db=self.database)
+            )
 
         to_thread.assert_awaited_once_with(main.predict_pest, audio)
         self.assertEqual(response["pest"], "Cicada")
@@ -105,16 +113,101 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             payload={"audio": audio.tolist()},
         )
 
-        response = asyncio.run(main.ai_predict(request))
+        response = asyncio.run(main.ai_predict(request, db=self.database))
 
         self.assertEqual(
+            {
+                "status",
+                "identification_status",
+                "identification_label",
+                "pest",
+                "common_name",
+                "confidence",
+                "risk",
+                "message",
+                "source",
+                "id",
+                "device_id",
+                "temperature",
+                "humidity",
+                "audio_file",
+                "detected_at",
+            },
             set(response),
-            {"status", "pest", "confidence", "risk"},
         )
         self.assertEqual(response["status"], "UNKNOWN")
         self.assertIn(response["pest"], main.class_names)
         self.assertGreaterEqual(response["confidence"], 0)
         self.assertLessEqual(response["confidence"], 1)
+
+    def test_ai_prediction_is_persisted_before_broadcast(self):
+        request = FakeRequest(
+            "application/json",
+            payload={"audio": [0.1, -0.1]},
+        )
+        candidate_result = {"pest": "Cicada", "confidence": 0.8}
+
+        with (
+            patch.object(
+                main,
+                "predict_pest",
+                return_value=candidate_result,
+            ),
+            patch.object(
+                main.manager,
+                "broadcast",
+                new_callable=AsyncMock,
+            ) as broadcast,
+        ):
+            response = asyncio.run(
+                main.ai_predict(request, db=self.database)
+            )
+
+        detection = self.database.add.call_args.args[0]
+        self.assertEqual(detection.status, "UNKNOWN")
+        self.assertEqual(detection.pest, "Cicada")
+        self.assertEqual(detection.risk, "UNKNOWN")
+        self.assertEqual(detection.message, "Unverified model prediction")
+        self.database.commit.assert_called_once()
+        self.database.refresh.assert_called_once_with(detection)
+        broadcast.assert_awaited_once_with(response)
+        self.assertEqual(response["id"], detection.id)
+
+    def test_ai_prediction_uses_catalog_risk_without_verifying_identity(self):
+        request = FakeRequest(
+            "application/json",
+            payload={"audio": [0.1, -0.1]},
+        )
+        candidate_result = {"pest": "Cicada", "confidence": 0.8}
+        pest_record = Mock(risk=" high ")
+
+        with (
+            patch.object(
+                main,
+                "predict_pest",
+                return_value=candidate_result,
+            ),
+            patch.object(
+                main,
+                "_find_verified_pest_record",
+                return_value=pest_record,
+            ) as find_pest,
+            patch.object(
+                main.manager,
+                "broadcast",
+                new_callable=AsyncMock,
+            ) as broadcast,
+        ):
+            response = asyncio.run(
+                main.ai_predict(request, db=self.database)
+            )
+
+        detection = self.database.add.call_args.args[0]
+        find_pest.assert_called_once_with(self.database, "Cicada")
+        self.assertEqual(response["identification_status"], "UNCONFIRMED")
+        self.assertEqual(response["risk"], "HIGH")
+        self.assertEqual(detection.risk, "HIGH")
+        broadcast.assert_awaited_once_with(response)
 
     def test_model_class_index_maps_to_cicada_label(self):
         audio = np.tile(
@@ -140,7 +233,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             body=audio.tobytes(),
         )
 
-        response = asyncio.run(main.ai_predict(request))
+        response = asyncio.run(main.ai_predict(request, db=self.database))
 
         self.assertEqual(response["status"], "UNKNOWN")
         self.assertEqual(response["risk"], "UNKNOWN")
@@ -167,7 +260,9 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         }
 
         with patch.object(main, "predict_pest", return_value=candidate_result):
-            response = asyncio.run(main.ai_predict(request))
+            response = asyncio.run(
+                main.ai_predict(request, db=self.database)
+            )
 
         self.assertEqual(response["status"], "UNKNOWN")
         self.assertEqual(response["pest"], "Cicada")
@@ -189,7 +284,9 @@ class AudioPredictionSafetyTests(unittest.TestCase):
                         "predict_pest",
                         return_value=candidate_result,
                     ):
-                        response = asyncio.run(main.ai_predict(request))
+                        response = asyncio.run(
+                            main.ai_predict(request, db=self.database)
+                        )
 
                     self.assertEqual(response["status"], "UNKNOWN")
                     self.assertEqual(response["pest"], pest)
