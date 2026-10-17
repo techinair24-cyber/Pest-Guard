@@ -13,6 +13,7 @@ import riceLeafFolderImage from '../assets/pests/rice-leaf-folder.jpg'
 import ricePlanthopperImage from '../assets/pests/rice-planthopper.jpg'
 import riceStemBorerImage from '../assets/pests/rice-stem-borer.jpg'
 import pestsHeroImage from '../assets/pests/pests-hero.png'
+import grasshopperImage from '../assets/grasshopper.png'
 import riceGrainsSticker from '../assets/stickers/03-rice-grains.svg'
 
 const pestImages = {
@@ -23,6 +24,7 @@ const pestImages = {
   rice_leaf_folder: riceLeafFolderImage,
   rice_planthopper: ricePlanthopperImage,
   stem_borer: riceStemBorerImage,
+  grasshopper: grasshopperImage,
 }
 
 function getRiskClass(risk) {
@@ -37,6 +39,26 @@ function getRiskClass(risk) {
   }
 
   return 'risk-low'
+}
+
+function PestImage({ image, alt }) {
+  const [failed, setFailed] = useState(false)
+
+  if (!image || failed) {
+    return (
+      <div className="pest-image-missing">
+        <span>No image available</span>
+      </div>
+    )
+  }
+
+  return (
+    <img
+      src={image}
+      alt={alt}
+      onError={() => setFailed(true)}
+    />
+  )
 }
 
 function Pests() {
@@ -345,18 +367,10 @@ function Pests() {
 
                     {/* REAL PEST IMAGE */}
                     <div className="pest-visual">
-                      {image ? (
-                        <img
-                          src={image}
-                          alt={`${pest.name} agricultural pest`}
-                        />
-                      ) : (
-                        <div className="pest-image-missing">
-                          <span>
-                            No image available
-                          </span>
-                        </div>
-                      )}
+                      <PestImage
+                        image={image}
+                        alt={`${pest.name} agricultural pest`}
+                      />
 
                       <div className="pest-image-overlay" />
 
