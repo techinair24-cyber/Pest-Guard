@@ -198,7 +198,18 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             set(response),
         )
         self.assertEqual(response["status"], "UNKNOWN")
-        self.assertIn(response["pest"], main.class_names)
+        if response["confidence"] < main.PEST_IDENTIFICATION_CONFIDENCE:
+            self.assertIsNone(response["pest"])
+            self.assertEqual(
+                response["identification_label"], "Unidentified sound"
+            )
+            self.assertEqual(response["risk"], "UNKNOWN")
+            self.assertIsNone(response["risk_rationale"])
+        else:
+            self.assertIn(response["pest"], main.class_names)
+            self.assertEqual(
+                response["identification_label"], "Possible match"
+            )
         self.assertGreaterEqual(response["confidence"], 0)
         self.assertLessEqual(response["confidence"], 1)
 
@@ -386,15 +397,30 @@ class AudioPredictionSafetyTests(unittest.TestCase):
                         )
 
                     self.assertEqual(response["status"], "UNKNOWN")
-                    self.assertEqual(response["pest"], pest)
+                    if confidence < main.PEST_IDENTIFICATION_CONFIDENCE:
+                        self.assertIsNone(response["pest"])
+                        self.assertEqual(
+                            response["identification_label"], "Unidentified sound"
+                        )
+                        self.assertEqual(response["risk"], "UNKNOWN")
+                        self.assertIsNone(response["risk_rationale"])
+                    else:
+                        self.assertEqual(response["pest"], pest)
+                        self.assertEqual(
+                            response["identification_label"], "Possible match"
+                        )
                     self.assertEqual(response["confidence"], confidence)
                     metadata = main.MODEL_SPECIES_METADATA.get(
                         main._normalize_pest_label(pest)
                     )
-                    self.assertEqual(
-                        response["risk"],
-                        metadata["risk"] if metadata else "UNKNOWN",
-                    )
+                    if confidence < main.PEST_IDENTIFICATION_CONFIDENCE:
+                        self.assertEqual(response["risk"], "UNKNOWN")
+                        self.assertIsNone(response["risk_rationale"])
+                    else:
+                        self.assertEqual(
+                            response["risk"],
+                            metadata["risk"] if metadata else "UNKNOWN",
+                        )
 
     def test_unrecognized_model_label_does_not_crash_prediction_endpoint(self):
         request = FakeRequest(

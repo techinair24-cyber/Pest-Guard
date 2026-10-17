@@ -1279,10 +1279,25 @@ async def ai_predict(
 
         result = await asyncio.to_thread(predict_pest, audio)
 
-        # Preserve the top trained class for display, but do not treat its
-        # uncalibrated score as a verified identification.
-        predicted_pest = (
+        # Reject weak model outputs rather than displaying an arbitrary top class.
+        # This cutoff reduces weak suggestions; it does not guarantee correctness
+        # because the model score has not been calibrated as a true probability.
+        model_confidence = float(result["confidence"])
+        candidate_pest = (
             result["pest"] if result["pest"] in class_names else None
+        )
+        predicted_pest = (
+            candidate_pest
+            if (
+                candidate_pest is not None
+                and model_confidence >= PEST_IDENTIFICATION_CONFIDENCE
+            )
+            else None
+        )
+        prediction_message = (
+            "Unverified model prediction"
+            if predicted_pest
+            else "Low-confidence model prediction rejected"
         )
         species_metadata = _resolve_species_metadata(predicted_pest, db)
         common_name = (
@@ -1313,7 +1328,7 @@ async def ai_predict(
                 species_metadata["scientific_name"] if predicted_pest else None
             ),
 
-            "confidence": result["confidence"],
+            "confidence": model_confidence,
 
             "risk": resolved_risk,
             "risk_rationale": (
@@ -1329,7 +1344,7 @@ async def ai_predict(
                 species_metadata["metadata_source_url"] if predicted_pest else None
             ),
 
-            "message": "Unverified model prediction",
+            "message": prediction_message,
             "source": "AI_MODEL_PREDICTION",
             "detected_at": datetime.now(timezone.utc).isoformat(),
 
@@ -1346,7 +1361,7 @@ async def ai_predict(
                 species_metadata["scientific_name"] if predicted_pest else None
             ),
             common_name=common_name,
-            confidence=float(result["confidence"]),
+            confidence=model_confidence,
             risk=resolved_risk,
             risk_rationale=(
                 species_metadata["risk_rationale"] if predicted_pest else None
@@ -1360,7 +1375,7 @@ async def ai_predict(
             metadata_source_url=(
                 species_metadata["metadata_source_url"] if predicted_pest else None
             ),
-            message="Unverified model prediction",
+            message=prediction_message,
             detected_at=detected_time,
         )
 
