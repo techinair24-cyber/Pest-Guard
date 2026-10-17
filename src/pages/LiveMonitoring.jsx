@@ -85,6 +85,11 @@ function formatDetectionConfidence(value) {
   return Number.isFinite(number) ? `${(number * 100).toFixed(1)}%` : 'N/A'
 }
 
+function isUnconfirmedMatchStatus(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '') ===
+    'possiblematchnotconfirmed'
+}
+
 function formatDate(value) {
   const timestamp = parseServerTimestamp(value)
 
@@ -664,7 +669,9 @@ function LiveMonitoring() {
 
           {displayDetection && (
             <p className="latest-identification-status">
-              {getDetectionDisplayStatus(displayDetection)} · Detected{' '}
+              {!isUnconfirmedMatchStatus(displayDetectionLabel) &&
+                `${displayDetectionLabel} · `}
+              Detected{' '}
               {formatDate(getDetectionTime(displayDetection))}
             </p>
           )}
@@ -840,11 +847,14 @@ function LiveMonitoring() {
                               : 'Unidentified sound'}
                       </strong>
                       {scientificName && <small>{scientificName}</small>}
-                      <small>{getDetectionDisplayStatus(item)}</small>
+                      {!isUnconfirmedMatchStatus(getDetectionDisplayStatus(item)) && (
+                        <small>{getDetectionDisplayStatus(item)}</small>
+                      )}
                     </div>
 
                     <div className="history-meta">
-                      {String(item.status || '').toUpperCase() !== 'UNKNOWN' && (
+                      {String(item.status || '').toUpperCase() !== 'UNKNOWN' &&
+                        !isUnconfirmedMatchStatus(item.status) && (
                         <span>{item.status}</span>
                       )}
                       <strong>{formatConfidence(item.confidence)}</strong>
