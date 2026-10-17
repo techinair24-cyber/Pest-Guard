@@ -126,7 +126,12 @@ function LiveMonitoring() {
     return Number.isFinite(timestamp) &&
       timestamp <= Date.now() + 5000 &&
       sameDevice &&
-      typeof item.pest === 'string' && item.pest.trim() !== ''
+      (
+        (typeof item.pest === 'string' && item.pest.trim() !== '') ||
+        String(item.status || '').toUpperCase() === 'UNKNOWN' ||
+        String(item.identification_status || '').toUpperCase() === 'UNCONFIRMED' ||
+        String(item.common_name || '').trim().toLowerCase() === 'unidentified sound'
+      )
   })
 
   // Keep the latest valid candidate visible until a newer candidate arrives.
