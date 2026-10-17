@@ -40,10 +40,16 @@ class Detection(Base):
     )
 
     pest = Column(String(150), nullable=True)
+    scientific_name = Column(String(200), nullable=True)
+    common_name = Column(String(150), nullable=True)
 
     confidence = Column(Float, nullable=True)
 
     risk = Column(String(50), nullable=True)
+    risk_rationale = Column(Text, nullable=True)
+    affected_crops = Column(Text, nullable=True)
+    metadata_source_name = Column(String(200), nullable=True)
+    metadata_source_url = Column(String(1000), nullable=True)
 
     temperature = Column(Float, nullable=True)
     humidity = Column(Float, nullable=True)

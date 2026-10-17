@@ -496,11 +496,15 @@ function Solutions() {
   ? `${(confidence * 100).toFixed(1)}%`
   : 'N/A'
 
+ const resolvedScientificName =
+  detection?.scientific_name ||
+  pestDirectory[normalizePestName(requestedPest)]?.scientificName ||
+  ''
  const pestName = requestedPest
-  ? getDisplayPestName(requestedPest, pestDirectory)
+  ? getDisplayPestName(requestedPest, pestDirectory, detection)
   : 'No pest class available'
 
- const riskLabel = solutionRisk
+ const riskLabel = riskEstimate.risk
 
  const identificationLabel =
   canShowSpeciesGuidance
@@ -669,7 +673,13 @@ function Solutions() {
         <p className="card-eyebrow">Latest live detection</p>
 
         <h2>{pestName}</h2>
-
+        {requestedPest && (
+         <p className="scientific-name-detail">
+          {resolvedScientificName
+           ? `Scientific name: ${resolvedScientificName}`
+           : `Scientific name unavailable; model class: ${requestedPest}`}
+         </p>
+        )}
         <p className="identification-note">{identificationLabel}</p>
 
        </div>
@@ -683,11 +693,11 @@ function Solutions() {
          {riskLabel}
 
         </strong>
-        {riskLabel === 'UNKNOWN' ? (
-         <small>Identification is unverified; risk remains UNKNOWN.</small>
-        ) : (
-         <small>Not a site-specific infestation assessment.</small>
-        )}
+        <small>
+         {riskLabel === 'UNKNOWN'
+          ? 'No evidence-backed risk tier is available; this is not evidence of low risk.'
+          : 'General species-level agricultural risk; not a site-specific infestation assessment. Identification remains unverified.'}
+        </small>
         {riskLabel !== 'UNKNOWN' && riskEstimate.sourceUrl ? (
          <a href={riskEstimate.sourceUrl} target="_blank" rel="noreferrer">
          Source: {riskEstimate.source}
@@ -695,9 +705,15 @@ function Solutions() {
         ) : riskLabel !== 'UNKNOWN' ? (
          <small>Source: {riskEstimate.source || 'Unavailable'}</small>
         ) : null}
-        {riskLabel !== 'UNKNOWN' && riskEstimate.rationale && (
+        {riskEstimate.rationale && (
          <small>{riskEstimate.rationale}</small>
         )}
+        {Array.isArray(detection?.affected_crops) &&
+         detection.affected_crops.length > 0 && (
+          <small>
+           Documented affected crops: {detection.affected_crops.join(', ')}
+          </small>
+         )}
 
        </div>
 

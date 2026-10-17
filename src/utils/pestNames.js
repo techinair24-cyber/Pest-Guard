@@ -1,76 +1,3 @@
-// Common names for the NEW 47-class Pest Guard model.
-// Keys are normalized scientific names used by the CNN.
-export const MODEL_CLASS_COMMON_NAMES = Object.freeze({
-  achetadomesticus: 'House Cricket',
-  barbitistesyersini: "Yersin's Bush-cricket",
-  chorthippusalbomarginatus: 'Lesser Marsh Grasshopper',
-  chorthippusapricarius: 'Steppe Grasshopper',
-  chorthippusbiguttulus: 'Bow-winged Grasshopper',
-  chorthippusbrunneus: 'Common Field Grasshopper',
-  chorthippusmollis: 'Chorthippus mollis',
-  chorthippusvagans: 'Heath Grasshopper',
-  chrysochraondispar: 'Large Gold Grasshopper',
-  conocephalusdorsalis: 'Short-winged Conehead',
-  conocephalusfuscus: 'Long-winged Conehead',
-  decticusverrucivorus: 'Wart-biter',
-  ephippigerdiurnus: 'Saddle-backed Bush-cricket',
-  eupholidopteraschmidti: "Schmidt's Bush-cricket",
-  gampsocleisglabra: 'Gampsocleis glabra',
-  gomphocerippusrufus: 'Rufous Grasshopper',
-  gomphocerussibiricus: 'Siberian Grasshopper',
-  gryllusbimaculatus: 'Two-spotted Cricket',
-  grylluscampestris: 'Field Cricket',
-  leptophyespunctatissima: 'Speckled Bush-cricket',
-  melanogryllusdesertus: 'Melanogryllus desertus',
-  metriopterabrachyptera: 'Bog Bush-cricket',
-  myrmeleotettixmaculatus: 'Mottled Grasshopper',
-  nemobiussylvestris: 'Wood Cricket',
-  oecanthuspellucens: 'Pale Tree Cricket',
-  omocestuspetraeus: 'Steppe Grasshopper',
-  omocestusrufipes: 'Red-legged Grasshopper',
-  omocestusviridulus: 'Common Green Grasshopper',
-  phaneropterafalcata: 'Sickle-bearing Bush-cricket',
-  phaneropteranana: 'Phaneroptera nana',
-  pholidopteraaptera: 'Alpine Dark Bush-cricket',
-  pholidopteragriseoaptera: 'Dark Bush-cricket',
-  pholidopteralittoralis: 'Pholidoptera littoralis',
-  platycleisalbopunctata: 'Platycleis albopunctata',
-  platypleuracfcatenata: 'Platypleura cf. catenata',
-  platypleuraplumosa: 'Platypleura plumosa',
-  platypleurasp10: 'Platypleura sp. 10',
-  platypleurasp12cfhirtipennis:
-    'Platypleura sp. 12 cf. hirtipennis',
-  platypleurasp13: 'Platypleura sp. 13',
-  pseudochorthippusmontanus: 'Bog Grasshopper',
-  pseudochorthippusparallelus: 'Meadow Grasshopper',
-  roeselianaroeselii: "Roesel's Bush-cricket",
-  stenobothruslineatus: 'Stripe-winged Grasshopper',
-  stenobothrusstigmaticus: 'Lesser Mottled Grasshopper',
-  tettigoniacantans: 'Singing Bush-cricket',
-  tettigoniaviridissima: 'Great Green Bush-cricket',
-  tylopsislilifolia: 'Lily Bush-cricket',
-})
-
-// Keep existing class risk estimates separate from name mapping.
-export const PEST_CLASS_RISK_ESTIMATES = Object.freeze({
-  desertlocust: Object.freeze({
-    canonicalName: 'Desert locust',
-    risk: 'HIGH',
-    source: 'FAO Desert Locust Information Service',
-    sourceUrl: 'https://www.fao.org/locusts/en/',
-    rationale:
-      'FAO documents rapid population growth and the potential for a 1 km² swarm to consume food comparable to 35,000 people in one day.',
-  }),
-  katydid: Object.freeze({
-    canonicalName: 'Katydid',
-    risk: 'MEDIUM',
-    source: 'UC Statewide IPM Program',
-    sourceUrl: 'https://ipm.ucanr.edu/agriculture/citrus/katydids/',
-    rationale:
-      'Some katydid species can damage leaves and young fruit. Impact varies by species and crop.',
-  }),
-})
-
 export function normalizePestName(value) {
   return String(value || '')
     .trim()
@@ -130,10 +57,6 @@ export function getPestRiskEstimate(
     }
   }
 
-  const classEstimate = PEST_CLASS_RISK_ESTIMATES[key]
-
-  if (classEstimate) return classEstimate
-
   const catalogRisk = String(
     directory[key]?.risk || '',
   ).toUpperCase()
@@ -158,6 +81,24 @@ export function getDetectionRiskEstimate(
   detection,
   directory = {},
 ) {
+  const resolvedRisk = String(detection?.risk || '').toUpperCase()
+  if (['LOW', 'MEDIUM', 'HIGH'].includes(resolvedRisk)) {
+    return {
+      risk: resolvedRisk,
+      source: detection?.metadata_source_name || null,
+      sourceUrl: detection?.metadata_source_url || null,
+      rationale: detection?.risk_rationale || '',
+    }
+  }
+  if (resolvedRisk === 'UNKNOWN' && detection?.risk_rationale) {
+    return {
+      risk: 'UNKNOWN',
+      source: null,
+      sourceUrl: null,
+      rationale: detection.risk_rationale,
+    }
+  }
+
   const pestRecord = directory[normalizePestName(detection?.pest)]
   const independentlyVerified =
     detection?.pest_verified === true &&
@@ -178,6 +119,7 @@ export function getDetectionRiskEstimate(
 export function getCommonPestName(
   pest,
   directory = {},
+  metadata = {},
 ) {
   const rawName = String(pest || '').trim()
 
@@ -186,16 +128,15 @@ export function getCommonPestName(
   const key = normalizePestName(rawName)
   const entry = directory[key]
 
-  return (
-    MODEL_CLASS_COMMON_NAMES[key] ||
+  return String(metadata?.common_name || '').trim() ||
     entry?.commonName ||
     rawName
-  )
 }
 
 export function getDisplayPestName(
   pest,
   directory = {},
+  metadata = {},
 ) {
   const rawName = String(pest || '').trim()
 
@@ -203,14 +144,10 @@ export function getDisplayPestName(
 
   const key = normalizePestName(rawName)
   const entry = directory[key]
-  const commonName = getCommonPestName(
-    rawName,
-    directory,
-  )
+  const commonName = getCommonPestName(rawName, directory, metadata)
 
   const scientificName = String(
-    entry?.scientificName ||
-      (MODEL_CLASS_COMMON_NAMES[key] ? rawName : ''),
+    metadata?.scientific_name || entry?.scientificName || '',
   ).trim()
 
   if (!scientificName) {

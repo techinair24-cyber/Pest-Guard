@@ -201,11 +201,19 @@ function LiveMonitoring() {
     typeof displayDetection?.pest === 'string' ? displayDetection.pest.trim() : ''
   const riskDetails = getDetectionRiskEstimate(displayDetection, pestDirectory)
   const riskEstimate = riskDetails.risk
-  const predictedPestDisplayName = predictedPestName
-    ? getDisplayPestName(predictedPestName, pestDirectory)
-    : ''
   const matchingPestRecord =
     pestDirectory[normalizePestName(predictedPestName)]
+  const predictedScientificName =
+    displayDetection?.scientific_name ||
+    matchingPestRecord?.scientificName ||
+    ''
+  const predictedPestDisplayName = predictedPestName
+    ? getDisplayPestName(
+        predictedPestName,
+        pestDirectory,
+        displayDetection,
+      )
+    : ''
   const reportingDeviceId =
     displayDetection?.device_id || device?.device_id || 'N/A'
 
@@ -587,6 +595,13 @@ function LiveMonitoring() {
                   ? predictedPestDisplayName
                   : 'No pest detected yet'}
               </strong>
+              {predictedPestName && (
+                <small className="latest-identification-detail">
+                  {predictedScientificName
+                    ? `Scientific name: ${predictedScientificName}`
+                    : `Scientific name unavailable; model class: ${predictedPestName}`}
+                </small>
+              )}
             </div>
           </div>
 
@@ -618,7 +633,7 @@ function LiveMonitoring() {
               </div>
               <small>
                 {riskEstimate === 'UNKNOWN' ? (
-                  'Identification is unverified; risk remains UNKNOWN.'
+                  'No evidence-backed risk tier is available; this is not evidence of low risk.'
                 ) : (
                   <>
                     General estimate; not site-specific.
@@ -632,9 +647,15 @@ function LiveMonitoring() {
                   </>
                 )}
               </small>
-              {riskEstimate !== 'UNKNOWN' && riskDetails.rationale && (
+              {riskDetails.rationale && (
                 <small>{riskDetails.rationale}</small>
               )}
+              {Array.isArray(displayDetection?.affected_crops) &&
+                displayDetection.affected_crops.length > 0 && (
+                  <small>
+                    Documented affected crops: {displayDetection.affected_crops.join(', ')}
+                  </small>
+                )}
               <div
                 className="latest-risk-track"
                 role="img"

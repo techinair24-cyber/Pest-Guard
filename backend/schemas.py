@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DeviceBase(BaseModel):
@@ -52,8 +52,14 @@ class DetectionResponse(BaseModel):
     device_id: str
     status: str
     pest: Optional[str] = None
+    scientific_name: Optional[str] = None
+    common_name: Optional[str] = None
     confidence: Optional[float] = None
     risk: Optional[str] = None
+    risk_rationale: Optional[str] = None
+    affected_crops: list[str] = Field(default_factory=list)
+    metadata_source_name: Optional[str] = None
+    metadata_source_url: Optional[str] = None
     temperature: Optional[float] = None
     humidity: Optional[float] = None
     audio_file: Optional[str] = None

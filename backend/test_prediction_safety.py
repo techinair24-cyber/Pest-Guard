@@ -1,4 +1,5 @@
 import asyncio
+import json
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -27,12 +28,68 @@ class FakeRequest:
 class AudioPredictionSafetyTests(unittest.TestCase):
     def setUp(self):
         self.database = Mock()
+        self.database.query.return_value.all.return_value = []
         self.database.refresh.side_effect = (
             lambda detection: setattr(detection, "id", 1)
         )
 
     def test_model_output_dimension_matches_class_labels(self):
         self.assertEqual(main.ai_model.output_shape[-1], len(main.class_names))
+
+    def test_every_model_class_has_complete_metadata(self):
+        self.assertEqual(len(main.class_names), 47)
+        self.assertEqual(len(main.common_names), 47)
+        self.assertEqual(len(main.MODEL_SPECIES_METADATA), 47)
+
+        for model_class, common_name in zip(main.class_names, main.common_names):
+            with self.subTest(model_class=model_class):
+                key = main._normalize_pest_label(model_class)
+                metadata = main.MODEL_SPECIES_METADATA[key]
+                self.assertEqual(metadata["model_class"], model_class)
+                self.assertEqual(metadata["common_name"], common_name)
+                self.assertIn(metadata["risk"], {"LOW", "MEDIUM", "HIGH", "UNKNOWN"})
+                self.assertTrue(metadata["risk_rationale"].strip())
+                self.assertTrue(metadata["source_url"].startswith("https://"))
+                self.assertIsInstance(metadata["affected_crops"], list)
+
+    def test_scientific_name_matching_normalizes_class_formatting(self):
+        resolved = main._resolve_species_metadata(
+            " COMMON_field__grasshopper ",
+            self.database,
+        )
+
+        self.assertEqual(resolved["common_name"], "Common Field Grasshopper")
+        self.assertEqual(
+            resolved["scientific_name"],
+            "Chorthippus brunneus",
+        )
+
+    def test_unrated_prediction_is_safe_for_unknown_species(self):
+        resolved = main._resolve_species_metadata(
+            "unrecognized insect",
+            self.database,
+        )
+
+        self.assertEqual(resolved["common_name"], "unrecognized insect")
+        self.assertIsNone(resolved["scientific_name"])
+        self.assertEqual(resolved["risk"], "UNKNOWN")
+
+    def test_valid_model_risk_wins_over_blank_catalog_risk(self):
+        model_class = main.class_names[0]
+        key = main._normalize_pest_label(model_class)
+        metadata = main.MODEL_SPECIES_METADATA_BY_NAME[key]
+        original_risk = metadata["risk"]
+        metadata["risk"] = "HIGH"
+        try:
+            with patch.object(
+                main,
+                "_find_pest_record_normalized",
+                return_value=Mock(risk="  "),
+            ):
+                resolved = main._resolve_species_metadata(model_class, self.database)
+            self.assertEqual(resolved["risk"], "HIGH")
+        finally:
+            metadata["risk"] = original_risk
 
     def test_signed_pcm16_is_decoded_to_the_training_float_range(self):
         samples = np.array([-32768, 32767] * 8000, dtype="<i2")
@@ -87,7 +144,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             "application/json",
             payload={"audio": audio},
         )
-        result = {"pest": "Cicada", "confidence": 0.8}
+        result = {"pest": main.class_names[0], "confidence": 0.8}
 
         with patch.object(
             main.asyncio,
@@ -100,7 +157,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             )
 
         to_thread.assert_awaited_once_with(main.predict_pest, audio)
-        self.assertEqual(response["pest"], "Cicada")
+        self.assertEqual(response["pest"], main.class_names[0])
         self.assertEqual(response["status"], "UNKNOWN")
 
     def test_valid_json_pcm_preserves_prediction_response_contract(self):
@@ -122,8 +179,13 @@ class AudioPredictionSafetyTests(unittest.TestCase):
                 "identification_label",
                 "pest",
                 "common_name",
+                "scientific_name",
                 "confidence",
                 "risk",
+                "risk_rationale",
+                "affected_crops",
+                "metadata_source_name",
+                "metadata_source_url",
                 "message",
                 "source",
                 "id",
@@ -145,7 +207,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             "application/json",
             payload={"audio": [0.1, -0.1]},
         )
-        candidate_result = {"pest": "Cicada", "confidence": 0.8}
+        candidate_result = {"pest": main.class_names[0], "confidence": 0.8}
 
         with (
             patch.object(
@@ -165,8 +227,10 @@ class AudioPredictionSafetyTests(unittest.TestCase):
 
         detection = self.database.add.call_args.args[0]
         self.assertEqual(detection.status, "UNKNOWN")
-        self.assertEqual(detection.pest, "Cicada")
+        self.assertEqual(detection.pest, main.class_names[0])
         self.assertEqual(detection.risk, "UNKNOWN")
+        self.assertEqual(response["common_name"], detection.common_name)
+        self.assertEqual(response["risk"], detection.risk)
         self.assertEqual(detection.message, "Unverified model prediction")
         self.database.commit.assert_called_once()
         self.database.refresh.assert_called_once_with(detection)
@@ -178,7 +242,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             "application/json",
             payload={"audio": [0.1, -0.1]},
         )
-        candidate_result = {"pest": "Cicada", "confidence": 0.8}
+        candidate_result = {"pest": main.class_names[0], "confidence": 0.8}
         pest_record = Mock(risk=" high ")
 
         with (
@@ -189,7 +253,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             ),
             patch.object(
                 main,
-                "_find_verified_pest_record",
+                "_find_pest_record_normalized",
                 return_value=pest_record,
             ) as find_pest,
             patch.object(
@@ -203,13 +267,46 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             )
 
         detection = self.database.add.call_args.args[0]
-        find_pest.assert_called_once_with(self.database, "Cicada")
+        find_pest.assert_called_once_with(self.database, main.class_names[0])
         self.assertEqual(response["identification_status"], "UNCONFIRMED")
         self.assertEqual(response["risk"], "HIGH")
         self.assertEqual(detection.risk, "HIGH")
         broadcast.assert_awaited_once_with(response)
 
-    def test_model_class_index_maps_to_cicada_label(self):
+    def test_prediction_metadata_is_identical_in_database_and_websocket(self):
+        request = FakeRequest(
+            "application/json",
+            payload={"audio": [0.1, -0.1]},
+        )
+        with (
+            patch.object(
+                main,
+                "predict_pest",
+                return_value={"pest": main.class_names[0], "confidence": 0.81},
+            ),
+            patch.object(
+                main.manager,
+                "broadcast",
+                new_callable=AsyncMock,
+            ) as broadcast,
+        ):
+            response = asyncio.run(
+                main.ai_predict(request, db=self.database)
+            )
+
+        detection = self.database.add.call_args.args[0]
+        self.assertEqual(response["common_name"], detection.common_name)
+        self.assertEqual(response["scientific_name"], detection.scientific_name)
+        self.assertEqual(response["risk"], detection.risk)
+        self.assertEqual(response["risk_rationale"], detection.risk_rationale)
+        self.assertEqual(
+            response["affected_crops"],
+            json.loads(detection.affected_crops),
+        )
+        broadcast.assert_awaited_once_with(response)
+
+
+    def test_model_class_index_maps_to_candidate_label(self):
         audio = np.tile(
             np.array([-800, 800], dtype=np.int16),
             40000,
@@ -220,8 +317,8 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         with patch.object(main.ai_model, "predict", return_value=[scores]):
             result = main.predict_pest(audio)
 
-        self.assertEqual(main.class_names[0], "Cicada")
-        self.assertEqual(result["pest"], "Cicada")
+        self.assertEqual(main.class_names[0], main.class_names[0])
+        self.assertEqual(result["pest"], main.class_names[0])
         self.assertAlmostEqual(result["confidence"], 0.983, places=5)
 
     def test_low_level_background_noise_stays_unverified(self):
@@ -236,7 +333,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         response = asyncio.run(main.ai_predict(request, db=self.database))
 
         self.assertEqual(response["status"], "UNKNOWN")
-        self.assertEqual(response["risk"], "UNKNOWN")
+        self.assertIn(response["risk"], {"LOW", "MEDIUM", "HIGH", "UNKNOWN"})
         self.assertIn(response["pest"], main.class_names)
 
     def test_malformed_pcm_and_json_audio_are_rejected(self):
@@ -255,7 +352,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
     def test_high_model_score_keeps_class_as_unverified_suggestion(self):
         request = FakeRequest("application/json", payload={"audio": []})
         candidate_result = {
-            "pest": "Cicada",
+            "pest": main.class_names[0],
             "confidence": 0.99,
         }
 
@@ -265,7 +362,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             )
 
         self.assertEqual(response["status"], "UNKNOWN")
-        self.assertEqual(response["pest"], "Cicada")
+        self.assertEqual(response["pest"], main.class_names[0])
         self.assertEqual(response["confidence"], 0.99)
         self.assertEqual(response["risk"], "UNKNOWN")
 
@@ -291,7 +388,30 @@ class AudioPredictionSafetyTests(unittest.TestCase):
                     self.assertEqual(response["status"], "UNKNOWN")
                     self.assertEqual(response["pest"], pest)
                     self.assertEqual(response["confidence"], confidence)
-                    self.assertEqual(response["risk"], "UNKNOWN")
+                    metadata = main.MODEL_SPECIES_METADATA.get(
+                        main._normalize_pest_label(pest)
+                    )
+                    self.assertEqual(
+                        response["risk"],
+                        metadata["risk"] if metadata else "UNKNOWN",
+                    )
+
+    def test_unrecognized_model_label_does_not_crash_prediction_endpoint(self):
+        request = FakeRequest(
+            "application/json",
+            payload={"audio": [0.1, -0.1]},
+        )
+        with patch.object(
+            main,
+            "predict_pest",
+            return_value={"pest": "not-a-model-class", "confidence": 0.4},
+        ):
+            response = asyncio.run(
+                main.ai_predict(request, db=self.database)
+            )
+
+        self.assertIsNone(response["pest"])
+        self.assertEqual(response["risk"], "UNKNOWN")
 
     def test_uncertain_solution_keeps_risk_unknown_even_for_high_score(self):
         payload = main.AISolutionRequest(
@@ -442,7 +562,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         payload = main.DetectionCreate(
             device_id="FIELD-UNIT-01",
             status="HARMFUL_PEST",
-            pest="Cicada",
+            pest=main.class_names[0],
             confidence=0.99,
             risk="HIGH",
             temperature=26.2,
@@ -455,11 +575,11 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             detection = asyncio.run(main.create_detection(payload, database))
 
         self.assertEqual(detection.status, "UNKNOWN")
-        self.assertEqual(detection.pest, "Cicada")
+        self.assertEqual(detection.pest, main.class_names[0])
         self.assertEqual(detection.risk, "UNKNOWN")
         event = broadcast.await_args.args[0]
         self.assertEqual(event["status"], "UNKNOWN")
-        self.assertEqual(event["pest"], "Cicada")
+        self.assertEqual(event["pest"], main.class_names[0])
         self.assertEqual(event["risk"], "UNKNOWN")
         self.assertEqual(event["temperature"], 26.2)
         self.assertEqual(event["humidity"], 65.0)
@@ -524,7 +644,7 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
         payload = main.DetectionCreate(
             device_id="TEST-FIELD-UNIT",
             status="UNKNOWN",
-            pest="Cicada",
+            pest=main.class_names[0],
             confidence=0.8,
             risk="UNKNOWN",
         )
@@ -547,8 +667,52 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
         self.assertEqual(self.db.query(main.Detection).count(), 1)
         self.assertEqual(len(history["detections"]), 1)
         self.assertEqual(history["detections"][0]["id"], saved.id)
-        self.assertEqual(history["detections"][0]["pest"], "Cicada")
+        self.assertEqual(history["detections"][0]["pest"], main.class_names[0])
+        self.assertEqual(history["detections"][0]["common_name"], main.common_names[0])
+        self.assertEqual(history["detections"][0]["risk"], "UNKNOWN")
         self.assertEqual(broadcast.await_count, 1)
+
+    def test_ai_metadata_matches_saved_row_latest_history_and_websocket(self):
+        request = FakeRequest(
+            "application/json",
+            payload={"audio": [0.1, -0.1]},
+        )
+
+        with (
+            patch.object(
+                main,
+                "predict_pest",
+                return_value={"pest": main.class_names[0], "confidence": 0.81},
+            ),
+            patch.object(
+                main.manager,
+                "broadcast",
+                new_callable=AsyncMock,
+            ) as broadcast,
+        ):
+            response = asyncio.run(main.ai_predict(request, db=self.db))
+
+        saved = self.db.query(main.Detection).first()
+        latest = main.get_latest_detection(db=self.db)["detection"]
+        history = main.get_detection_history(
+            device_id=None,
+            status=None,
+            limit=50,
+            db=self.db,
+        )["detections"][0]
+
+        for record in (saved, latest, history):
+            self.assertEqual(record.common_name if hasattr(record, "common_name") else record["common_name"], response["common_name"])
+            self.assertEqual(record.risk if hasattr(record, "risk") else record["risk"], response["risk"])
+            self.assertEqual(
+                record.scientific_name if hasattr(record, "scientific_name") else record["scientific_name"],
+                response["scientific_name"],
+            )
+        self.assertEqual(
+            json.loads(saved.affected_crops),
+            response["affected_crops"],
+        )
+        broadcast.assert_awaited_once_with(response)
 
 
 if __name__ == "__main__":

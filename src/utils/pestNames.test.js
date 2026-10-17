@@ -4,159 +4,113 @@ import test from 'node:test'
 
 import {
   buildPestDirectory,
-  getDisplayPestName,
   getDetectionRiskEstimate,
+  getDisplayPestName,
   getPestRiskEstimate,
-  PEST_CLASS_RISK_ESTIMATES,
+  normalizePestName,
 } from './pestNames.js'
 
 const classNames = JSON.parse(
   await readFile(
-    new URL('../../backend/ai_model/class_names.json', import.meta.url),
+    new URL(
+      '../../backend/ai_model/pest_yamnet_updated_candidate/class_names.json',
+      import.meta.url,
+    ),
     'utf8',
   ),
 )
 
-test('desert locust has a documented general risk estimate', () => {
-  const label = 'Desert locust'
-  assert.ok(classNames.includes(label))
-  const estimate = getPestRiskEstimate(label)
+const metadata = JSON.parse(
+  await readFile(
+    new URL(
+      '../../backend/ai_model/pest_yamnet_updated_candidate/class_metadata.json',
+      import.meta.url,
+    ),
+    'utf8',
+  ),
+)
 
-  assert.equal(estimate.risk, 'HIGH')
-  assert.ok(estimate.source)
-  assert.ok(estimate.sourceUrl.startsWith('https://'))
-  assert.ok(estimate.rationale)
+const metadataByClass = new Map(
+  metadata.map((entry) => [
+    normalizePestName(entry.model_class),
+    entry,
+  ]),
+)
 
-  assert.equal(
-    PEST_CLASS_RISK_ESTIMATES.desertlocust.canonicalName,
-    'Desert locust',
-  )
-})
-
-test('Katydid has the documented general monitoring risk estimate', () => {
-  assert.ok(classNames.includes('Katydid'))
-  const estimate = getPestRiskEstimate('Katydid')
-
-  assert.equal(estimate.canonicalName, 'Katydid')
-  assert.equal(estimate.risk, 'MEDIUM')
-  assert.equal(estimate.source, 'UC Statewide IPM Program')
-  assert.equal(
-    estimate.sourceUrl,
-    'https://ipm.ucanr.edu/agriculture/citrus/katydids/',
-  )
-  assert.match(estimate.rationale, /varies by species and crop/)
-})
-
-test('unsupported model classes remain unknown instead of inheriting similar pest risk', () => {
-  for (const label of [
-    'Grasshopper',
-    'Cicada',
-    'termite',
-    'Fruite Fly',
-    'Migratory locust',
-  ]) {
-    assert.ok(classNames.includes(label))
-    assert.equal(getPestRiskEstimate(label).risk, 'UNKNOWN')
-  }
-  assert.equal(getPestRiskEstimate('Desert cricket').risk, 'UNKNOWN')
-})
-
-test('every active model output label has an explicit supported or unknown risk result', () => {
-  const supportedRisks = new Map([
-    ['Desert locust', 'HIGH'],
-    ['Katydid', 'MEDIUM'],
-  ])
-
+test('metadata covers every exact active YAMNet model class', () => {
   assert.equal(classNames.length, 20)
+  assert.equal(metadata.length, classNames.length)
 
   for (const label of classNames) {
-    const estimate = getPestRiskEstimate(label)
-    assert.equal(
-      estimate.risk,
-      supportedRisks.get(label) || 'UNKNOWN',
-      label,
+    assert.ok(metadataByClass.has(normalizePestName(label)), label)
+  }
+})
+
+test('every class has a readable common name and sourced risk assessment', () => {
+  for (const entry of metadata) {
+    assert.ok(entry.common_name.trim(), entry.model_class)
+    assert.ok(
+      ['LOW', 'MEDIUM', 'HIGH', 'UNKNOWN'].includes(entry.risk),
+      entry.model_class,
     )
+    assert.ok(entry.source_name.trim(), entry.model_class)
+    assert.ok(entry.source_url.startsWith('https://'), entry.model_class)
+    assert.ok(entry.risk_rationale.trim(), entry.model_class)
+    assert.ok(Array.isArray(entry.affected_crops), entry.model_class)
+
+    if (entry.risk !== 'UNKNOWN') {
+      assert.ok(entry.affected_crops.length > 0, entry.model_class)
+    }
   }
 })
 
-test('every active model label has a readable display name without inventing taxonomy', () => {
-  const readableNames = new Map([
-    ['Field Crickt', 'Field Cricket'],
-    ['Fruite Fly', 'Fruit Fly'],
-    ['termite', 'Termite'],
-  ])
+test('metadata matching ignores capitalization, spaces, and underscores', () => {
+  const entry = metadataByClass.get('commonfieldgrasshopper')
 
-  for (const label of classNames) {
-    const displayName = getDisplayPestName(label)
-    assert.ok(displayName, label)
-    assert.ok(!displayName.endsWith(`(${label})`), label)
-    assert.equal(displayName, readableNames.get(label) || label, label)
+  assert.equal(
+    getDisplayPestName(
+      'COMMON_field__grasshopper',
+      {},
+      entry,
+    ),
+    'Common field grasshopper (Chorthippus brunneus)',
+  )
+})
+
+test('API-resolved risk metadata is retained on unverified detections', () => {
+  const detection = {
+    pest: 'Desert locust',
+    identification_status: 'UNCONFIRMED',
+    risk: 'HIGH',
+    risk_rationale: 'FAO documents severe swarm impacts.',
+    metadata_source_name: 'FAO Locust Watch',
+    metadata_source_url: 'https://www.fao.org/locusts/en/',
   }
+
+  assert.deepEqual(getDetectionRiskEstimate(detection), {
+    risk: 'HIGH',
+    source: 'FAO Locust Watch',
+    sourceUrl: 'https://www.fao.org/locusts/en/',
+    rationale: 'FAO documents severe swarm impacts.',
+  })
 })
 
-test('scientific names are displayed only when a matching catalog record provides one', () => {
-  const directory = buildPestDirectory([
-    {
-      pest_id: 'aphid',
-      name: 'Aphid',
-      scientific_name: 'Aphididae',
-    },
-  ])
-
-  assert.equal(getDisplayPestName('Aphid', directory), 'Aphid (Aphididae)')
-  assert.equal(getDisplayPestName('Cicada'), 'Cicada')
-})
-
-test('model scores do not participate in class risk lookup', () => {
-  const estimates = [0.1, 0.99].map((confidence) => {
-    const detection = { pest: 'Desert locust', confidence }
-    return getPestRiskEstimate(detection.pest)
+test('unrated metadata preserves its explanation without claiming LOW risk', () => {
+  const estimate = getDetectionRiskEstimate({
+    pest: 'Grasshopper',
+    risk: 'UNKNOWN',
+    risk_rationale: 'The model label is too broad to assign a risk tier.',
   })
 
-  assert.deepEqual(
-    estimates.map((estimate) => estimate.risk),
-    ['HIGH', 'HIGH'],
-  )
+  assert.equal(estimate.risk, 'UNKNOWN')
+  assert.match(estimate.rationale, /too broad/)
 })
 
-test('catalog risk metadata is used only for a matching catalog record', () => {
+test('catalogue risk remains available for independently verified records', () => {
   const directory = buildPestDirectory([
     { pest_id: 'fall-armyworm', name: 'Fall Armyworm', risk: 'HIGH' },
   ])
 
-  assert.equal(
-    getPestRiskEstimate('Fall Armyworm', directory).risk,
-    'HIGH',
-  )
-  assert.equal(
-    getPestRiskEstimate('Armyworm', directory).risk,
-    'UNKNOWN',
-  )
-})
-
-test('detection risk stays unknown until its catalog identity is independently verified', () => {
-  const directory = buildPestDirectory([
-    { pest_id: 'fall-armyworm', name: 'Fall Armyworm', risk: 'HIGH' },
-  ])
-
-  assert.equal(
-    getDetectionRiskEstimate(
-      { pest: 'Fall Armyworm', pest_id: 'fall-armyworm' },
-      directory,
-    ).risk,
-    'UNKNOWN',
-  )
-  assert.equal(
-    getDetectionRiskEstimate(
-      {
-        pest: 'Fall Armyworm',
-        pest_id: 'other-pest',
-        pest_verified: true,
-      },
-      directory,
-    ).risk,
-    'UNKNOWN',
-  )
   assert.equal(
     getDetectionRiskEstimate(
       {
@@ -167,5 +121,17 @@ test('detection risk stays unknown until its catalog identity is independently v
       directory,
     ).risk,
     'HIGH',
+  )
+  assert.equal(
+    getPestRiskEstimate('Armyworm', directory).risk,
+    'UNKNOWN',
+  )
+})
+
+test('unknown species do not fail name or risk display', () => {
+  assert.equal(getDisplayPestName('Unrecognized insect'), 'Unrecognized insect')
+  assert.equal(
+    getDetectionRiskEstimate({ pest: 'Unrecognized insect' }).risk,
+    'UNKNOWN',
   )
 })

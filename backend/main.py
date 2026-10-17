@@ -29,7 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from pydantic import BaseModel, Field
 
-from sqlalchemy import desc
+from sqlalchemy import desc, inspect, text
 
 from sqlalchemy.orm import Session
 
@@ -65,73 +65,101 @@ from schemas import (
 
 logger = logging.getLogger(__name__)
 
-PEST_MODEL = os.getenv("PEST_MODEL", "cnn").strip().lower()
-USE_YAMNET = PEST_MODEL == "yamnet"
+
+def _normalize_pest_label(value: str | None) -> str:
+    return "".join(
+        character
+        for character in (value or "").casefold()
+        if character.isalnum()
+    )
+
+
+PEST_MODEL = os.getenv("PEST_MODEL", "new_dataset_candidate").strip().lower()
+if PEST_MODEL != "new_dataset_candidate":
+    raise RuntimeError(
+        "Only PEST_MODEL=new_dataset_candidate is supported; obsolete model paths have been removed."
+    )
 
 AI_DIR = Path(__file__).resolve().parent / "ai_model"
+CANDIDATE_DIR = AI_DIR / "pest_new_dataset_candidate"
+ai_model = tf.keras.models.load_model(
+    CANDIDATE_DIR / "best_candidate.keras",
+    compile=False,
+)
+with open(CANDIDATE_DIR / "class_names.json", "r", encoding="utf-8") as f:
+    class_names = json.load(f)
+with open(CANDIDATE_DIR / "common_names.json", "r", encoding="utf-8") as f:
+    common_names = json.load(f)
+if len(common_names) != len(class_names):
+    raise RuntimeError("Candidate common names do not match model classes.")
+if len(class_names) != 47:
+    raise RuntimeError(f"Expected 47 model classes, found {len(class_names)}.")
+print(f"Loaded NEW candidate model: {len(class_names)} species")
 
-if USE_YAMNET:
-    import tensorflow_hub as hub
+MODEL_SPECIES_METADATA = {}
+metadata_path = CANDIDATE_DIR / "class_metadata.json"
+with open(metadata_path, "r", encoding="utf-8") as f:
+    metadata_entries = json.load(f)
 
-    YAMNET_DIR = AI_DIR / "pest_yamnet_updated_candidate"
-
-    ai_model = tf.keras.models.load_model(
-        YAMNET_DIR / "best_candidate.keras",
-        compile=False,
-    )
-
-    with open(
-        YAMNET_DIR / "class_names.json",
-        "r",
-        encoding="utf-8",
-    ) as f:
-        class_names = json.load(f)
-
-    yamnet = hub.load("https://tfhub.dev/google/yamnet/1")
-
-elif PEST_MODEL == "new_dataset_candidate":
-    CANDIDATE_DIR = AI_DIR / "pest_new_dataset_candidate"
-
-    ai_model = tf.keras.models.load_model(
-        CANDIDATE_DIR / "best_candidate.keras",
-        compile=False,
-    )
-
-    with open(
-        CANDIDATE_DIR / "class_names.json",
-        "r",
-        encoding="utf-8",
-    ) as f:
-        class_names = json.load(f)
-
-    with open(
-        CANDIDATE_DIR / "common_names.json",
-        "r",
-        encoding="utf-8",
-    ) as f:
-        common_names = json.load(f)
-
-    if len(common_names) != len(class_names):
+expected_labels = {_normalize_pest_label(label) for label in class_names}
+for entry in metadata_entries:
+    model_class = entry.get("model_class")
+    if not isinstance(model_class, str) or not model_class.strip():
+        raise RuntimeError("Model metadata contains an invalid model_class.")
+    normalized_class = _normalize_pest_label(model_class)
+    if normalized_class not in expected_labels:
         raise RuntimeError(
-            "Candidate common names do not match model classes."
+            f"Model metadata contains an inactive class: {model_class}"
         )
+    if normalized_class in MODEL_SPECIES_METADATA:
+        raise RuntimeError(
+            f"Model metadata contains a duplicate class: {model_class}"
+        )
+    if entry.get("risk") not in {"LOW", "MEDIUM", "HIGH", "UNKNOWN"}:
+        raise RuntimeError(
+            f"Model metadata has an invalid risk for {model_class}."
+        )
+    if not str(entry.get("common_name") or "").strip():
+        raise RuntimeError(
+            f"Model metadata is missing a common-name fallback for {model_class}."
+        )
+    if not str(entry.get("source_name") or "").strip() or not str(
+        entry.get("source_url") or ""
+    ).startswith("https://"):
+        raise RuntimeError(
+            f"Model metadata is missing a source for {model_class}."
+        )
+    if not str(entry.get("risk_rationale") or "").strip():
+        raise RuntimeError(
+            f"Model metadata is missing a risk rationale for {model_class}."
+        )
+    if not isinstance(entry.get("affected_crops"), list):
+        raise RuntimeError(
+            f"Model metadata has invalid affected crops for {model_class}."
+        )
+    MODEL_SPECIES_METADATA[normalized_class] = entry
 
-    print(
-        f"Loaded NEW candidate model: {len(class_names)} species"
+missing_labels = expected_labels - set(MODEL_SPECIES_METADATA)
+if missing_labels:
+    raise RuntimeError(
+        "Model metadata is missing active classes: "
+        + ", ".join(sorted(missing_labels))
     )
 
-else:
-    ai_model = tf.keras.models.load_model(
-        AI_DIR / "best_cnn_v3.keras",
-        compile=False,
-    )
-
-    with open(
-        AI_DIR / "class_names.json",
-        "r",
-        encoding="utf-8",
-    ) as f:
-        class_names = json.load(f)
+MODEL_SPECIES_METADATA_BY_NAME = {}
+for metadata in MODEL_SPECIES_METADATA.values():
+    for name in (
+        metadata.get("model_class"),
+        metadata.get("scientific_name"),
+        metadata.get("common_name"),
+        *(metadata.get("aliases") or []),
+    ):
+        normalized_name = _normalize_pest_label(name)
+        if normalized_name:
+            MODEL_SPECIES_METADATA_BY_NAME.setdefault(
+                normalized_name,
+                metadata,
+            )
 
 MEL_MATRIX = tf.signal.linear_to_mel_weight_matrix(
 
@@ -152,7 +180,7 @@ if not isinstance(class_names, list) or not class_names:
 if ai_model.output_shape[-1] != len(class_names):
     raise RuntimeError("Model output does not match the class labels.")
 
-if not USE_YAMNET and ai_model.input_shape != (None, 155, 128, 1):
+if ai_model.input_shape != (None, 155, 128, 1):
     raise RuntimeError(
         f"Unexpected CNN input shape: {ai_model.input_shape}"
     )
@@ -272,58 +300,11 @@ def prepare_audio(audio):
 
 def predict_pest(audio):
     waveform = decode_audio_samples(audio)
-
-    if USE_YAMNET:
-        # Match the YAMNet training pipeline: 5-second clips at 16 kHz.
-        sample_rate = SAMPLE_RATE
-        clip_samples = sample_rate * 5
-        predictions = []
-
-        for start in range(0, len(waveform), clip_samples):
-            clip = waveform[start:start + clip_samples]
-
-            # Ignore a trailing fragment shorter than 1 second.
-            if len(clip) < sample_rate:
-                continue
-
-            if len(clip) < clip_samples:
-                clip = np.pad(clip, (0, clip_samples - len(clip)))
-
-            # Normalize each clip before extracting YAMNet embeddings.
-            peak = float(np.max(np.abs(clip)))
-            if peak > 0:
-                clip = clip / peak
-
-            _, embeddings, _ = yamnet(
-                tf.convert_to_tensor(clip, dtype=tf.float32)
-            )
-
-            features = tf.reduce_mean(
-                embeddings, axis=0
-            ).numpy().astype(np.float32)
-
-            scores = ai_model(
-                features[np.newaxis, :], training=False
-            ).numpy()[0]
-
-            predictions.append(scores)
-
-        if not predictions:
-            raise HTTPException(
-                status_code=400,
-                detail="Audio is too short for pest detection."
-            )
-
-        # Average predictions across the available audio clips.
-        prediction = np.mean(np.stack(predictions), axis=0)
-
-    else:
-        # Preserve the existing production CNN pipeline.
-        features = prepare_audio(waveform)
-        prediction = ai_model.predict(
-            tf.expand_dims(features, 0),
-            verbose=0
-        )[0]
+    features = prepare_audio(waveform)
+    prediction = ai_model.predict(
+        tf.expand_dims(features, 0),
+        verbose=0,
+    )[0]
 
     prediction = np.asarray(prediction, dtype=np.float32)
     if prediction.shape != (len(class_names),):
@@ -334,11 +315,11 @@ def predict_pest(audio):
         raise RuntimeError("Model output contains non-finite scores.")
 
     index = int(np.argmax(prediction))
-
     return {
         "pest": class_names[index],
-        "confidence": float(prediction[index])
+        "confidence": float(prediction[index]),
     }
+
 
 class AISolutionRequest(BaseModel):
 
@@ -418,14 +399,6 @@ def _safe_application_instructions() -> str:
     )
 
 
-def _normalize_pest_label(value: str | None) -> str:
-    return "".join(
-        character
-        for character in (value or "").casefold()
-        if character.isalnum()
-    )
-
-
 def _find_verified_pest_record(db: Session, pest_name: str, pest_id: str = ""):
     if not pest_name:
         return None
@@ -451,6 +424,137 @@ def _find_verified_pest_record(db: Session, pest_name: str, pest_id: str = ""):
         | (Pest.name == pest_name)
         | (Pest.scientific_name == pest_name)
     ).first()
+
+
+def _find_pest_record_normalized(db: Session, pest_name: str | None):
+    normalized_name = _normalize_pest_label(pest_name)
+    if not normalized_name:
+        return None
+
+    for pest in db.query(Pest).all():
+        if normalized_name in {
+            _normalize_pest_label(pest.pest_id),
+            _normalize_pest_label(pest.name),
+            _normalize_pest_label(pest.scientific_name),
+        }:
+            return pest
+
+    return None
+
+
+def _resolve_species_metadata(
+    pest_name: str | None,
+    db: Session | None = None,
+) -> dict:
+    normalized_name = _normalize_pest_label(pest_name)
+    metadata = MODEL_SPECIES_METADATA_BY_NAME.get(normalized_name)
+    pest_record = (
+        _find_pest_record_normalized(db, pest_name)
+        if db is not None and pest_name
+        else None
+    )
+    model_risk = str((metadata or {}).get("risk") or "").strip().upper()
+    catalog_risk = str(getattr(pest_record, "risk", "") or "").strip().upper()
+    model_risk_is_valid = model_risk in {"LOW", "MEDIUM", "HIGH"}
+    catalog_risk_is_valid = catalog_risk in {"LOW", "MEDIUM", "HIGH"}
+    risk = (
+        model_risk
+        if model_risk_is_valid
+        else catalog_risk
+        if catalog_risk_is_valid
+        else "UNKNOWN"
+    )
+    risk_uses_catalog = not model_risk_is_valid and catalog_risk_is_valid
+
+    common_name = (
+        str((metadata or {}).get("common_name") or "").strip()
+        or str(getattr(pest_record, "name", "") or "").strip()
+        or str(pest_name or "").strip()
+        or "Unidentified sound"
+    )
+    scientific_name = (
+        str((metadata or {}).get("scientific_name") or "").strip()
+        or str(getattr(pest_record, "scientific_name", "") or "").strip()
+        or None
+    )
+
+    return {
+        "scientific_name": scientific_name,
+        "common_name": common_name,
+        "risk": risk,
+        "risk_rationale": (
+            "Risk category recorded in the matching pest catalogue entry."
+            if risk_uses_catalog
+            else str((metadata or {}).get("risk_rationale") or "").strip()
+            or None
+        ),
+        "affected_crops": list((metadata or {}).get("affected_crops") or []),
+        "metadata_source_name": (
+            "Pest Guard pest catalogue"
+            if risk_uses_catalog
+            else str((metadata or {}).get("source_name") or "").strip()
+            or ("Pest Guard pest catalogue" if pest_record else None)
+        ),
+        "metadata_source_url": (
+            None
+            if risk_uses_catalog
+            else str((metadata or {}).get("source_url") or "").strip() or None
+        ),
+        "metadata_is_model_authoritative": model_risk_is_valid,
+    }
+
+
+def _serialize_detection(detection: Detection, db: Session | None) -> dict:
+    resolved = _resolve_species_metadata(detection.pest, db)
+    stored_risk = str(detection.risk or "").strip().upper()
+    stored_crops = []
+    if detection.affected_crops:
+        try:
+            stored_crops = json.loads(detection.affected_crops)
+        except json.JSONDecodeError:
+            stored_crops = []
+
+    risk = (
+        resolved["risk"]
+        if resolved["metadata_is_model_authoritative"]
+        else stored_risk
+        if stored_risk in {"LOW", "MEDIUM", "HIGH"}
+        else resolved["risk"]
+    )
+    response = {
+        "id": detection.id,
+        "device_id": detection.device_id,
+        "status": detection.status,
+        "pest": detection.pest,
+        "scientific_name": detection.scientific_name or resolved["scientific_name"],
+        "common_name": detection.common_name or resolved["common_name"],
+        "confidence": detection.confidence,
+        "risk": risk,
+        "risk_rationale": detection.risk_rationale or resolved["risk_rationale"],
+        "affected_crops": stored_crops or resolved["affected_crops"],
+        "metadata_source_name": (
+            detection.metadata_source_name or resolved["metadata_source_name"]
+        ),
+        "metadata_source_url": (
+            detection.metadata_source_url or resolved["metadata_source_url"]
+        ),
+        "temperature": detection.temperature,
+        "humidity": detection.humidity,
+        "audio_file": detection.audio_file,
+        "message": detection.message,
+        "detected_at": detection.detected_at,
+    }
+    if "unverified model prediction" in str(detection.message or "").casefold():
+        response.update(
+            {
+                "identification_status": "UNCONFIRMED",
+                "identification_label": (
+                    "Possible match" if detection.pest else "Unidentified sound"
+                ),
+                "source": "AI_MODEL_PREDICTION",
+            }
+        )
+    return response
 
 
 def _request_gemini_solution(payload: AISolutionRequest) -> dict:
@@ -663,6 +767,32 @@ def _request_gemini_solution(payload: AISolutionRequest) -> dict:
 # -------------------------------------------------------------------
 
 Base.metadata.create_all(bind=engine)
+
+def _migrate_detection_metadata_columns():
+    required_columns = {
+        "scientific_name": "VARCHAR(200)",
+        "common_name": "VARCHAR(150)",
+        "risk_rationale": "TEXT",
+        "affected_crops": "TEXT",
+        "metadata_source_name": "VARCHAR(200)",
+        "metadata_source_url": "VARCHAR(1000)",
+    }
+    with engine.begin() as connection:
+        existing_columns = {
+            column["name"]
+            for column in inspect(connection).get_columns("detections")
+        }
+        for column_name, column_type in required_columns.items():
+            if column_name not in existing_columns:
+                connection.execute(
+                    text(
+                        f"ALTER TABLE detections ADD COLUMN "
+                        f"{column_name} {column_type}"
+                    )
+                )
+
+
+_migrate_detection_metadata_columns()
 
 # -------------------------------------------------------------------
 
@@ -1143,24 +1273,18 @@ async def ai_predict(
         predicted_pest = (
             result["pest"] if result["pest"] in class_names else None
         )
-        common_name = None
+        species_metadata = _resolve_species_metadata(predicted_pest, db)
+        common_name = (
+            species_metadata["common_name"] if predicted_pest else None
+        )
         if (
             PEST_MODEL == "new_dataset_candidate"
             and predicted_pest is not None
         ):
             common_name = common_names[class_names.index(predicted_pest)]
-
-        # Get the saved risk category for the predicted pest.
-        pest_record = (
-            _find_verified_pest_record(db, predicted_pest)
-            if predicted_pest
-            else None
+        resolved_risk = (
+            species_metadata["risk"] if predicted_pest else "UNKNOWN"
         )
-        catalog_risk = str(
-            getattr(pest_record, "risk", "") or ""
-        ).strip().upper()
-        if catalog_risk not in {"LOW", "MEDIUM", "HIGH"}:
-            catalog_risk = "UNKNOWN"
 
         # The top-scoring class is only a candidate, not a verified identity.
         prediction_data = {
@@ -1174,10 +1298,25 @@ async def ai_predict(
 
             "pest": predicted_pest,
             "common_name": common_name,
+            "scientific_name": (
+                species_metadata["scientific_name"] if predicted_pest else None
+            ),
 
             "confidence": result["confidence"],
 
-            "risk": catalog_risk,
+            "risk": resolved_risk,
+            "risk_rationale": (
+                species_metadata["risk_rationale"] if predicted_pest else None
+            ),
+            "affected_crops": (
+                species_metadata["affected_crops"] if predicted_pest else []
+            ),
+            "metadata_source_name": (
+                species_metadata["metadata_source_name"] if predicted_pest else None
+            ),
+            "metadata_source_url": (
+                species_metadata["metadata_source_url"] if predicted_pest else None
+            ),
 
             "message": "Unverified model prediction",
             "source": "AI_MODEL_PREDICTION",
@@ -1192,8 +1331,24 @@ async def ai_predict(
             device_id=os.getenv("PEST_DEVICE_ID", "FIELD-UNIT-01"),
             status="UNKNOWN",
             pest=predicted_pest,
+            scientific_name=(
+                species_metadata["scientific_name"] if predicted_pest else None
+            ),
+            common_name=common_name,
             confidence=float(result["confidence"]),
-            risk=catalog_risk,
+            risk=resolved_risk,
+            risk_rationale=(
+                species_metadata["risk_rationale"] if predicted_pest else None
+            ),
+            affected_crops=json.dumps(
+                species_metadata["affected_crops"] if predicted_pest else []
+            ),
+            metadata_source_name=(
+                species_metadata["metadata_source_name"] if predicted_pest else None
+            ),
+            metadata_source_url=(
+                species_metadata["metadata_source_url"] if predicted_pest else None
+            ),
             message="Unverified model prediction",
             detected_at=detected_time,
         )
@@ -1203,16 +1358,15 @@ async def ai_predict(
         db.refresh(detection)
 
         # Send the saved record to the live website.
-        prediction_data.update({
-            "id": detection.id,
-            "device_id": detection.device_id,
-            "temperature": detection.temperature,
-            "humidity": detection.humidity,
-            "audio_file": detection.audio_file,
-            "detected_at": detection.detected_at.replace(
-                tzinfo=timezone.utc
-            ).isoformat(),
-        })
+        prediction_data.update(_serialize_detection(detection, None))
+        prediction_data["identification_status"] = "UNCONFIRMED"
+        prediction_data["identification_label"] = (
+            "Possible match" if predicted_pest else "Unidentified sound"
+        )
+        prediction_data["source"] = "AI_MODEL_PREDICTION"
+        prediction_data["detected_at"] = detection.detected_at.replace(
+            tzinfo=timezone.utc
+        ).isoformat()
 
         await manager.broadcast(prediction_data)
         return prediction_data
@@ -1224,7 +1378,7 @@ async def ai_predict(
     except Exception as error:
         logger.exception(
             "AI prediction failed (model=%s)",
-            "yamnet" if USE_YAMNET else "cnn",
+            PEST_MODEL,
         )
 
         raise HTTPException(
@@ -1335,6 +1489,15 @@ async def generate_ai_solution(
     payload: AISolutionRequest,
     db: Session = Depends(get_db),
 ):
+    # Sound-model output is an unverified candidate, not a confirmed identity.
+    # Do not use species-specific catalogue treatment when the risk is unknown
+    # or when the label is not part of this model's active 47-class vocabulary.
+    if (
+        payload.pest not in class_names
+        or str(payload.risk or '').strip().upper() == 'UNKNOWN'
+    ):
+        return _fallback_uncertain_solution(payload)
+
     # Match the requested candidate against the database catalog.
     # A match provides candidate-specific guidance, not proof of identity.
     pest_record = _find_verified_pest_record(
@@ -1741,39 +1904,9 @@ async def create_detection(
 
     db.refresh(detection)
 
-    detection_data = {
-
-        "id": detection.id,
-
-        "device_id": detection.device_id,
-
-        "status": detection.status,
-
-        "pest": detection.pest,
-
-        "confidence": detection.confidence,
-
-        "risk": detection.risk,
-
-        "temperature": detection.temperature,
-
-        "humidity": detection.humidity,
-
-        "audio_file": detection.audio_file,
-
-        "message": detection.message,
-
-        "detected_at": (
-
-            detection.detected_at.isoformat()
-
-            if detection.detected_at
-
-            else None
-
-        ),
-
-    }
+    detection_data = _serialize_detection(detection, None)
+    if detection.detected_at:
+        detection_data["detected_at"] = detection.detected_at.isoformat()
 
     # Send SMS only for HIGH-risk detections.
 
@@ -1815,35 +1948,7 @@ def get_latest_detection(
 
         }
 
-    return {
-
-        "detection": {
-
-            "id": detection.id,
-
-            "device_id": detection.device_id,
-
-            "status": detection.status,
-
-            "pest": detection.pest,
-
-            "confidence": detection.confidence,
-
-            "risk": detection.risk,
-
-            "temperature": detection.temperature,
-
-            "humidity": detection.humidity,
-
-            "audio_file": detection.audio_file,
-
-            "message": detection.message,
-
-            "detected_at": detection.detected_at,
-
-        }
-
-    }
+    return {"detection": _serialize_detection(detection, db)}
 
 @app.get(
 
@@ -1895,38 +2000,7 @@ def get_detection_history(
 
     return {
 
-        "detections": [
-
-            {
-
-                "id": item.id,
-
-                "device_id": item.device_id,
-
-                "status": item.status,
-
-                "pest": item.pest,
-
-                "confidence": item.confidence,
-
-                "risk": item.risk,
-
-                "temperature": item.temperature,
-
-                "humidity": item.humidity,
-
-                "audio_file": item.audio_file,
-
-                "message": item.message,
-
-                "detected_at": item.detected_at,
-
-            }
-
-            for item in detections
-
-        ]
-
+        "detections": [_serialize_detection(item, db) for item in detections],
     }
 
 # -------------------------------------------------------------------
