@@ -24,6 +24,7 @@ const pestImages = {
   rice_leaf_folder: riceLeafFolderImage,
   rice_planthopper: ricePlanthopperImage,
   stem_borer: riceStemBorerImage,
+  common_field_grasshopper: grasshopperImage,
   grasshopper: grasshopperImage,
 }
 
