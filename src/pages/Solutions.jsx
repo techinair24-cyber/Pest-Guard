@@ -4,8 +4,6 @@ import { Link, useLocation } from 'react-router-dom'
 
 import { ArrowIcon, LeafIcon, SignalIcon, SparkIcon } from '../components/Icons'
 
-import { formatTemperature, formatHumidity } from '../utils/formatters'
-
 import { useLiveDetection } from '../hooks/useLiveDetection'
 
 import {
@@ -701,26 +699,6 @@ function Solutions() {
 
       </div>
 
-      <div className="environmental-conditions">
-
-       <div className="env-item">
-
-        <span>Temperature</span>
-
-        <strong>{formatTemperature(detection?.temperature)}</strong>
-
-       </div>
-
-       <div className="env-item">
-
-        <span>Humidity</span>
-
-        <strong>{formatHumidity(detection?.humidity)}</strong>
-
-       </div>
-
-      </div>
-
       {isNonPest ? (
 
        <div className="solution-error">
@@ -1194,60 +1172,6 @@ function Solutions() {
             } : null}
             uncertain={!verifiedHistoryPest}
            />
-
-           {item.temperature != null || item.humidity != null ? (
-
-            <div
-
-             style={{
-
-              display: 'flex',
-
-              gap: '24px',
-
-              paddingTop: '16px',
-
-              borderTop: '1px solid rgba(20, 70, 57, 0.10)',
-
-             }}
-
-            >
-
-             {item.temperature != null && (
-
-              <div>
-
-               <span className="card-eyebrow">Temperature</span>
-
-               <strong style={{ display: 'block', marginTop: '5px' }}>
-
-                {formatTemperature(item.temperature)}
-
-               </strong>
-
-              </div>
-
-             )}
-
-             {item.humidity != null && (
-
-              <div>
-
-               <span className="card-eyebrow">Humidity</span>
-
-               <strong style={{ display: 'block', marginTop: '5px' }}>
-
-                {formatHumidity(item.humidity)}
-
-               </strong>
-
-              </div>
-
-             )}
-
-            </div>
-
-           ) : null}
 
           </div>
 
