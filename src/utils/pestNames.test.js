@@ -5,6 +5,7 @@ import test from 'node:test'
 import {
   buildPestDirectory,
   getDisplayPestName,
+  getDetectionRiskEstimate,
   getPestRiskEstimate,
   PEST_CLASS_RISK_ESTIMATES,
 } from './pestNames.js'
@@ -130,5 +131,41 @@ test('catalog risk metadata is used only for a matching catalog record', () => {
   assert.equal(
     getPestRiskEstimate('Armyworm', directory).risk,
     'UNKNOWN',
+  )
+})
+
+test('detection risk stays unknown until its catalog identity is independently verified', () => {
+  const directory = buildPestDirectory([
+    { pest_id: 'fall-armyworm', name: 'Fall Armyworm', risk: 'HIGH' },
+  ])
+
+  assert.equal(
+    getDetectionRiskEstimate(
+      { pest: 'Fall Armyworm', pest_id: 'fall-armyworm' },
+      directory,
+    ).risk,
+    'UNKNOWN',
+  )
+  assert.equal(
+    getDetectionRiskEstimate(
+      {
+        pest: 'Fall Armyworm',
+        pest_id: 'other-pest',
+        pest_verified: true,
+      },
+      directory,
+    ).risk,
+    'UNKNOWN',
+  )
+  assert.equal(
+    getDetectionRiskEstimate(
+      {
+        pest: 'Fall Armyworm',
+        pest_id: 'fall-armyworm',
+        pest_verified: true,
+      },
+      directory,
+    ).risk,
+    'HIGH',
   )
 })

@@ -154,6 +154,27 @@ export function getPestRiskEstimate(
   }
 }
 
+export function getDetectionRiskEstimate(
+  detection,
+  directory = {},
+) {
+  const pestRecord = directory[normalizePestName(detection?.pest)]
+  const independentlyVerified =
+    detection?.pest_verified === true &&
+    Boolean(detection?.pest_id) &&
+    detection.pest_id === pestRecord?.pestId
+
+  if (!independentlyVerified) {
+    return {
+      risk: 'UNKNOWN',
+      source: null,
+      rationale: '',
+    }
+  }
+
+  return getPestRiskEstimate(detection.pest, directory)
+}
+
 export function getCommonPestName(
   pest,
   directory = {},

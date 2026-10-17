@@ -9,7 +9,7 @@ import { getDetectionHistory, getPests } from '../services/api'
 import {
   buildPestDirectory,
   getDisplayPestName,
-  getPestRiskEstimate,
+  getDetectionRiskEstimate,
   normalizePestName,
 } from '../utils/pestNames'
 import {
@@ -107,7 +107,6 @@ function LiveMonitoring() {
   const [historyError, setHistoryError] = useState('')
   const [historyRetryCount, setHistoryRetryCount] = useState(0)
   const [historyClearedAt, setHistoryClearedAt] = useState(() => getStoredClearTime())
-  const [selectionNow, setSelectionNow] = useState(() => Date.now())
   const [popup, setPopup] = useState(null)
   const [detectionControlEnabled, setDetectionControlEnabled] = useState(false)
   const [detectionControlBusy, setDetectionControlBusy] = useState(false)
@@ -118,28 +117,20 @@ function LiveMonitoring() {
 
   const liveDetection = detection || history[0] || null
 
-  // Refresh the recent-prediction window so an old winner eventually expires.
-  useEffect(() => {
-    const timer = window.setInterval(() => setSelectionNow(Date.now()), 3000)
-    return () => window.clearInterval(timer)
-  }, [])
-
-  const recentDetectionCandidates = mergeDetections(
+  const detectionCandidates = mergeDetections(
     history,
     detection ? [detection] : [],
   ).filter((item) => {
     const timestamp = parseServerTimestamp(getDetectionTime(item))
     const sameDevice = !device?.device_id || !item.device_id || item.device_id === device.device_id
     return Number.isFinite(timestamp) &&
-      timestamp <= selectionNow + 5000 &&
-      timestamp >= selectionNow - 30000 &&
+      timestamp <= Date.now() + 5000 &&
       sameDevice &&
       typeof item.pest === 'string' && item.pest.trim() !== ''
   })
 
-  // Always display the newest recent detection.
-  // Model confidence is uncalibrated, so don't use it to select older results.
-  const displayDetection = recentDetectionCandidates[0] || null
+  // Keep the latest valid candidate visible until a newer candidate arrives.
+  const displayDetection = detectionCandidates[0] || null
   const liveDevice = device || (liveDetection ? {
     device_id: liveDetection.device_id || 'FIELD-UNIT-01',
     status: 'OFFLINE',
@@ -208,10 +199,7 @@ function LiveMonitoring() {
   const healthTone = connectionState === 'Online' ? 'online' : 'offline'
   const predictedPestName =
     typeof displayDetection?.pest === 'string' ? displayDetection.pest.trim() : ''
-  const riskDetails = getPestRiskEstimate(
-    predictedPestName,
-    pestDirectory,
-  )
+  const riskDetails = getDetectionRiskEstimate(displayDetection, pestDirectory)
   const riskEstimate = riskDetails.risk
   const predictedPestDisplayName = predictedPestName
     ? getDisplayPestName(predictedPestName, pestDirectory)
@@ -587,7 +575,7 @@ function LiveMonitoring() {
           <div className="monitoring-card-heading">
             <div>
               <p className="monitoring-card-eyebrow">AI classification</p>
-              <h2>Recent Detection</h2>
+              <h2>Latest Detection</h2>
             </div>
           </div>
 
@@ -602,9 +590,9 @@ function LiveMonitoring() {
             </div>
           </div>
 
-          {predictedPestName && (
+          {displayDetection && (
             <p className="latest-identification-status">
-              Unverified model prediction
+              Unverified model prediction · Detected {formatDate(getDetectionTime(displayDetection))}
             </p>
           )}
 
@@ -629,20 +617,28 @@ function LiveMonitoring() {
                 <strong>{riskEstimate}</strong>
               </div>
               <small>
-                General estimate; not site-specific.
-                {riskDetails.sourceUrl ? (
-                  <> Source: <a href={riskDetails.sourceUrl} target="_blank" rel="noreferrer">{riskDetails.source}</a></>
-                ) : riskDetails.source ? (
-                  <> Source: {riskDetails.source}</>
+                {riskEstimate === 'UNKNOWN' ? (
+                  'Identification is unverified; risk remains UNKNOWN.'
                 ) : (
-                  ' Classification source unavailable.'
+                  <>
+                    General estimate; not site-specific.
+                    {riskDetails.sourceUrl ? (
+                      <> Source: <a href={riskDetails.sourceUrl} target="_blank" rel="noreferrer">{riskDetails.source}</a></>
+                    ) : riskDetails.source ? (
+                      <> Source: {riskDetails.source}</>
+                    ) : (
+                      ' Classification source unavailable.'
+                    )}
+                  </>
                 )}
               </small>
-              {riskDetails.rationale && <small>{riskDetails.rationale}</small>}
+              {riskEstimate !== 'UNKNOWN' && riskDetails.rationale && (
+                <small>{riskDetails.rationale}</small>
+              )}
               <div
                 className="latest-risk-track"
                 role="img"
-                aria-label={`Predicted class risk estimate: ${riskEstimate}`}
+                aria-label={`Risk level: ${riskEstimate}`}
               >
                 <span className="latest-risk-fill" />
               </div>
@@ -789,7 +785,7 @@ function LiveMonitoring() {
                       <span>{item.status}</span>
                     )}
                     <strong>{formatConfidence(item.confidence)}</strong>
-                    <strong>{getPestRiskEstimate(item.pest, pestDirectory).risk}</strong>
+                    <strong>{getDetectionRiskEstimate(item, pestDirectory).risk}</strong>
                     <strong>{item.device_id || deviceId}</strong>
                   </div>
                 </div>

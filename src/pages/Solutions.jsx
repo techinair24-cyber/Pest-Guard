@@ -23,7 +23,7 @@ import {
 import {
  buildPestDirectory,
  getDisplayPestName,
- getPestRiskEstimate,
+ getDetectionRiskEstimate,
  normalizePestName,
 } from '../utils/pestNames'
 
@@ -179,7 +179,7 @@ function Solutions() {
    ? Number.NaN
    : Number(detection.confidence)
 
- const riskEstimate = getPestRiskEstimate(requestedPest, pestDirectory)
+ const riskEstimate = getDetectionRiskEstimate(detection, pestDirectory)
 
  const hasVerifiedCatalogMatch =
   detection?.pest_verified === true &&
@@ -329,15 +329,19 @@ function Solutions() {
      }
 
      const uncertainSolution = await requestPestSolution({
-      pest: requestedPest || 'Unknown insect',
-      common_name: 'Unconfirmed insect',
-      risk: solutionRisk,
+      pest:
+       nextPest?.scientific_name ||
+       nextPest?.name ||
+       requestedPest ||
+       'Unknown insect',
+      common_name: nextPest?.name || 'Unconfirmed insect',
+      risk: 'UNKNOWN',
       confidence: Number.isFinite(detectionConfidence)
        ? detectionConfidence
        : 0,
-      pest_id: '',
-      pest_description: '',
-      pest_symptoms: '',
+      pest_id: nextPest?.pest_id || '',
+      pest_description: nextPest?.description || '',
+      pest_symptoms: nextPest?.symptoms || '',
      })
 
      if (!active) return
@@ -410,7 +414,7 @@ function Solutions() {
 
       common_name: commonName,
 
-      risk: 'HIGH',
+      risk: solutionRisk,
 
       confidence: detectionConfidence,
 
@@ -496,7 +500,7 @@ function Solutions() {
   ? getDisplayPestName(requestedPest, pestDirectory)
   : 'No pest class available'
 
- const riskLabel = riskEstimate.risk
+ const riskLabel = solutionRisk
 
  const identificationLabel =
   canShowSpeciesGuidance
@@ -672,22 +676,28 @@ function Solutions() {
 
        <div className="risk-block">
 
-        <span>General class risk</span>
+        <span>Risk Level</span>
 
         <strong className={`risk-${String(riskLabel).toLowerCase()}`}>
 
          {riskLabel}
 
         </strong>
-        <small>Not a site-specific infestation assessment.</small>
-        {riskEstimate.sourceUrl ? (
-         <a href={riskEstimate.sourceUrl} target="_blank" rel="noreferrer">
-          Source: {riskEstimate.source}
-         </a>
+        {riskLabel === 'UNKNOWN' ? (
+         <small>Identification is unverified; risk remains UNKNOWN.</small>
         ) : (
-         <small>Source: {riskEstimate.source || 'Unavailable'}</small>
+         <small>Not a site-specific infestation assessment.</small>
         )}
-        {riskEstimate.rationale && <small>{riskEstimate.rationale}</small>}
+        {riskLabel !== 'UNKNOWN' && riskEstimate.sourceUrl ? (
+         <a href={riskEstimate.sourceUrl} target="_blank" rel="noreferrer">
+         Source: {riskEstimate.source}
+         </a>
+        ) : riskLabel !== 'UNKNOWN' ? (
+         <small>Source: {riskEstimate.source || 'Unavailable'}</small>
+        ) : null}
+        {riskLabel !== 'UNKNOWN' && riskEstimate.rationale && (
+         <small>{riskEstimate.rationale}</small>
+        )}
 
        </div>
 
@@ -966,10 +976,7 @@ function Solutions() {
          Boolean(item.pest_id) &&
          item.pest_id === historyPestRecord?.pestId
 
-        const historyRisk = getPestRiskEstimate(
-         historyKey,
-         pestDirectory,
-        )
+        const historyRisk = getDetectionRiskEstimate(item, pestDirectory)
 
         const historyConfidenceLabel = Number.isFinite(historyConfidence)
 
