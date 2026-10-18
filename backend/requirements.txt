@@ -9,7 +9,7 @@ pydantic
 pydantic-settings
 python-multipart
 numpy==1.26.4
-scikit-learn==1.9.0
+scikit-learn
 tensorflow==2.19.1
 librosa
 soundfile
@@ -21,7 +21,3 @@ setuptools<81
 psycopg2-binary
 psycopg[binary]
 
-
-# Dependencies for the Pest Guard experimental background gate
-tensorflow-hub==0.16.1
-joblib==1.6.0

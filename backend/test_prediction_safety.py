@@ -344,7 +344,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         ):
             main.predict_pest(audio)
 
-    def test_low_level_background_noise_is_rejected(self):
+    def test_low_level_background_noise_keeps_top_class_unverified(self):
         audio = np.random.default_rng(1).integers(
             -4, 5, size=80000, dtype=np.int16
         )
@@ -353,10 +353,17 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             body=audio.tobytes(),
         )
 
-        with self.assertRaises(main.HTTPException) as context:
-            asyncio.run(main.ai_predict(request, db=self.database))
+        response = asyncio.run(main.ai_predict(request, db=self.database))
 
-        self.assertEqual(context.exception.status_code, 422)
+        self.assertEqual(response["status"], "UNKNOWN")
+        self.assertIn(response["pest"], main.class_names)
+        self.assertEqual(
+            response["identification_label"], "Possible match"
+        )
+        self.assertEqual(
+            response["message"], "Unverified model prediction"
+        )
+
     def test_low_score_prediction_is_kept_as_an_unverified_possible_match(self):
         request = FakeRequest("application/json", payload={"audio": []})
         candidate_result = {
