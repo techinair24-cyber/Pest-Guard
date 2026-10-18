@@ -1529,8 +1529,8 @@ async def generate_ai_solution(
     payload: AISolutionRequest,
     db: Session = Depends(get_db),
 ):
-    # The CNN output is only a candidate. Do not generate pest-specific advice
-    # unless the requested model class can be matched to the pest catalogue.
+    # Only active CNN labels may be used as model candidates. A candidate label
+    # is not proof that the insect was identified correctly.
     if payload.pest not in class_names:
         return _fallback_uncertain_solution(payload)
 
@@ -1539,35 +1539,80 @@ async def generate_ai_solution(
         payload.pest,
         payload.pest_id,
     )
-    if not pest_record:
-        return _fallback_uncertain_solution(payload)
 
-    # When risk is UNKNOWN, Gemini is explicitly instructed not to recommend
-    # applying a pest-specific pesticide until the candidate is confirmed.
+    if pest_record:
+        candidate_pest = pest_record.scientific_name or pest_record.name
+        candidate_common_name = pest_record.name
+        candidate_pest_id = pest_record.pest_id
+        candidate_description = pest_record.description or payload.pest_description
+        candidate_symptoms = pest_record.symptoms or payload.pest_symptoms
+        candidate_risk = payload.risk
+    else:
+        # Some trained model classes have no matching catalogue record. Still
+        # allow Gemini to provide cautious, general IPM advice for the model's
+        # top candidate instead of silently returning the old generic fallback.
+        class_index = class_names.index(payload.pest)
+        candidate_pest = payload.pest
+        candidate_common_name = (
+            str(common_names[class_index] or '').strip()
+            or payload.common_name
+            or 'Unconfirmed insect'
+        )
+        candidate_pest_id = ''
+        candidate_description = payload.pest_description
+        candidate_symptoms = payload.pest_symptoms
+        candidate_risk = 'UNKNOWN'
+
     gemini_payload = AISolutionRequest(
-        pest=pest_record.scientific_name or pest_record.name,
-        common_name=pest_record.name,
-        risk=payload.risk,
+        pest=candidate_pest,
+        common_name=candidate_common_name,
+        risk=candidate_risk,
         confidence=payload.confidence,
-        pest_id=pest_record.pest_id,
-        pest_description=pest_record.description or payload.pest_description,
-        pest_symptoms=pest_record.symptoms or payload.pest_symptoms,
+        pest_id=candidate_pest_id,
+        pest_description=candidate_description,
+        pest_symptoms=candidate_symptoms,
         crop=payload.crop,
     )
 
     try:
-        return await asyncio.to_thread(_request_gemini_solution, gemini_payload)
+        generated = await asyncio.to_thread(_request_gemini_solution, gemini_payload)
     except HTTPException:
         raise
     except Exception as error:
         logger.exception(
-            "Gemini solution generation failed for pest_id=%s",
-            pest_record.pest_id,
+            "Gemini solution generation failed for model_class=%s",
+            payload.pest,
         )
         raise HTTPException(
             status_code=502,
             detail="Gemini could not generate the pest solution. Please try again.",
         ) from error
+
+    # No verified pesticide-label data source exists in this backend. Keep the
+    # pesticide/dose field guarded in code rather than trusting an LLM to invent
+    # an exact registered product rate. Low-score or catalogue-unmatched labels
+    # also require confirmation before any pest-specific pesticide is considered.
+    uncertain_identification = (
+        not pest_record
+        or candidate_risk == "UNKNOWN"
+        or payload.confidence < PEST_IDENTIFICATION_CONFIDENCE
+    )
+    generated["pest"] = candidate_pest
+    generated["common_name"] = candidate_common_name
+    generated["risk"] = "UNKNOWN" if uncertain_identification else candidate_risk
+    generated["confidence"] = payload.confidence
+    generated["crop"] = payload.crop
+    generated["pesticide_recommendation"] = _pesticide_recommendation(
+        payload.crop,
+        uncertain=uncertain_identification,
+    )
+    generated["precautions"] = (
+        (generated.get("precautions") or "").strip()
+        + "\n\n"
+        + _safe_application_instructions()
+    ).strip()
+    return generated
+
 
 # -------------------------------------------------------------------
 
