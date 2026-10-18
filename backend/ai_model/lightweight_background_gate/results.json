@@ -1,0 +1,270 @@
+{
+  "model": "scikit-learn RandomForest on compact spectral/audio features",
+  "purpose": "Experimental low-memory insect-versus-background gate",
+  "seed": 459,
+  "sample_rate": 16000,
+  "clip_seconds": 5,
+  "feature_count": 59,
+  "sklearn_version_training": "1.9.0",
+  "insect_training_clips": 220,
+  "background_training_clips": 240,
+  "insect_validation_clips": 92,
+  "background_validation_clips": 60,
+  "chosen_validation_metrics": {
+    "threshold": 0.25,
+    "validation_accuracy": 0.9671052631578947,
+    "background_rejection_rate": 0.95,
+    "background_false_accept_rate": 0.05,
+    "insect_acceptance_rate": 0.9782608695652174,
+    "insect_false_rejection_rate": 0.021739130434782608,
+    "confusion_matrix": {
+      "background_correctly_rejected": 57,
+      "background_mistaken_for_insect": 3,
+      "insect_mistaken_for_background": 2,
+      "insect_correctly_accepted": 90
+    }
+  },
+  "threshold_comparison": [
+    {
+      "threshold": 0.1,
+      "validation_accuracy": 0.9539473684210527,
+      "background_rejection_rate": 0.8833333333333333,
+      "background_false_accept_rate": 0.11666666666666667,
+      "insect_acceptance_rate": 1.0,
+      "insect_false_rejection_rate": 0.0,
+      "confusion_matrix": {
+        "background_correctly_rejected": 53,
+        "background_mistaken_for_insect": 7,
+        "insect_mistaken_for_background": 0,
+        "insect_correctly_accepted": 92
+      }
+    },
+    {
+      "threshold": 0.15,
+      "validation_accuracy": 0.9605263157894737,
+      "background_rejection_rate": 0.9166666666666666,
+      "background_false_accept_rate": 0.08333333333333333,
+      "insect_acceptance_rate": 0.9891304347826086,
+      "insect_false_rejection_rate": 0.010869565217391304,
+      "confusion_matrix": {
+        "background_correctly_rejected": 55,
+        "background_mistaken_for_insect": 5,
+        "insect_mistaken_for_background": 1,
+        "insect_correctly_accepted": 91
+      }
+    },
+    {
+      "threshold": 0.2,
+      "validation_accuracy": 0.9605263157894737,
+      "background_rejection_rate": 0.9166666666666666,
+      "background_false_accept_rate": 0.08333333333333333,
+      "insect_acceptance_rate": 0.9891304347826086,
+      "insect_false_rejection_rate": 0.010869565217391304,
+      "confusion_matrix": {
+        "background_correctly_rejected": 55,
+        "background_mistaken_for_insect": 5,
+        "insect_mistaken_for_background": 1,
+        "insect_correctly_accepted": 91
+      }
+    },
+    {
+      "threshold": 0.25,
+      "validation_accuracy": 0.9671052631578947,
+      "background_rejection_rate": 0.95,
+      "background_false_accept_rate": 0.05,
+      "insect_acceptance_rate": 0.9782608695652174,
+      "insect_false_rejection_rate": 0.021739130434782608,
+      "confusion_matrix": {
+        "background_correctly_rejected": 57,
+        "background_mistaken_for_insect": 3,
+        "insect_mistaken_for_background": 2,
+        "insect_correctly_accepted": 90
+      }
+    },
+    {
+      "threshold": 0.3,
+      "validation_accuracy": 0.9671052631578947,
+      "background_rejection_rate": 0.95,
+      "background_false_accept_rate": 0.05,
+      "insect_acceptance_rate": 0.9782608695652174,
+      "insect_false_rejection_rate": 0.021739130434782608,
+      "confusion_matrix": {
+        "background_correctly_rejected": 57,
+        "background_mistaken_for_insect": 3,
+        "insect_mistaken_for_background": 2,
+        "insect_correctly_accepted": 90
+      }
+    },
+    {
+      "threshold": 0.35,
+      "validation_accuracy": 0.9671052631578947,
+      "background_rejection_rate": 0.95,
+      "background_false_accept_rate": 0.05,
+      "insect_acceptance_rate": 0.9782608695652174,
+      "insect_false_rejection_rate": 0.021739130434782608,
+      "confusion_matrix": {
+        "background_correctly_rejected": 57,
+        "background_mistaken_for_insect": 3,
+        "insect_mistaken_for_background": 2,
+        "insect_correctly_accepted": 90
+      }
+    },
+    {
+      "threshold": 0.4,
+      "validation_accuracy": 0.9736842105263158,
+      "background_rejection_rate": 0.9666666666666667,
+      "background_false_accept_rate": 0.03333333333333333,
+      "insect_acceptance_rate": 0.9782608695652174,
+      "insect_false_rejection_rate": 0.021739130434782608,
+      "confusion_matrix": {
+        "background_correctly_rejected": 58,
+        "background_mistaken_for_insect": 2,
+        "insect_mistaken_for_background": 2,
+        "insect_correctly_accepted": 90
+      }
+    },
+    {
+      "threshold": 0.45,
+      "validation_accuracy": 0.9802631578947368,
+      "background_rejection_rate": 0.9833333333333333,
+      "background_false_accept_rate": 0.016666666666666666,
+      "insect_acceptance_rate": 0.9782608695652174,
+      "insect_false_rejection_rate": 0.021739130434782608,
+      "confusion_matrix": {
+        "background_correctly_rejected": 59,
+        "background_mistaken_for_insect": 1,
+        "insect_mistaken_for_background": 2,
+        "insect_correctly_accepted": 90
+      }
+    },
+    {
+      "threshold": 0.5,
+      "validation_accuracy": 0.9736842105263158,
+      "background_rejection_rate": 0.9833333333333333,
+      "background_false_accept_rate": 0.016666666666666666,
+      "insect_acceptance_rate": 0.967391304347826,
+      "insect_false_rejection_rate": 0.03260869565217391,
+      "confusion_matrix": {
+        "background_correctly_rejected": 59,
+        "background_mistaken_for_insect": 1,
+        "insect_mistaken_for_background": 3,
+        "insect_correctly_accepted": 89
+      }
+    },
+    {
+      "threshold": 0.55,
+      "validation_accuracy": 0.9736842105263158,
+      "background_rejection_rate": 1.0,
+      "background_false_accept_rate": 0.0,
+      "insect_acceptance_rate": 0.9565217391304348,
+      "insect_false_rejection_rate": 0.043478260869565216,
+      "confusion_matrix": {
+        "background_correctly_rejected": 60,
+        "background_mistaken_for_insect": 0,
+        "insect_mistaken_for_background": 4,
+        "insect_correctly_accepted": 88
+      }
+    },
+    {
+      "threshold": 0.6,
+      "validation_accuracy": 0.9671052631578947,
+      "background_rejection_rate": 1.0,
+      "background_false_accept_rate": 0.0,
+      "insect_acceptance_rate": 0.9456521739130435,
+      "insect_false_rejection_rate": 0.05434782608695652,
+      "confusion_matrix": {
+        "background_correctly_rejected": 60,
+        "background_mistaken_for_insect": 0,
+        "insect_mistaken_for_background": 5,
+        "insect_correctly_accepted": 87
+      }
+    },
+    {
+      "threshold": 0.65,
+      "validation_accuracy": 0.9671052631578947,
+      "background_rejection_rate": 1.0,
+      "background_false_accept_rate": 0.0,
+      "insect_acceptance_rate": 0.9456521739130435,
+      "insect_false_rejection_rate": 0.05434782608695652,
+      "confusion_matrix": {
+        "background_correctly_rejected": 60,
+        "background_mistaken_for_insect": 0,
+        "insect_mistaken_for_background": 5,
+        "insect_correctly_accepted": 87
+      }
+    },
+    {
+      "threshold": 0.7,
+      "validation_accuracy": 0.9671052631578947,
+      "background_rejection_rate": 1.0,
+      "background_false_accept_rate": 0.0,
+      "insect_acceptance_rate": 0.9456521739130435,
+      "insect_false_rejection_rate": 0.05434782608695652,
+      "confusion_matrix": {
+        "background_correctly_rejected": 60,
+        "background_mistaken_for_insect": 0,
+        "insect_mistaken_for_background": 5,
+        "insect_correctly_accepted": 87
+      }
+    },
+    {
+      "threshold": 0.75,
+      "validation_accuracy": 0.9671052631578947,
+      "background_rejection_rate": 1.0,
+      "background_false_accept_rate": 0.0,
+      "insect_acceptance_rate": 0.9456521739130435,
+      "insect_false_rejection_rate": 0.05434782608695652,
+      "confusion_matrix": {
+        "background_correctly_rejected": 60,
+        "background_mistaken_for_insect": 0,
+        "insect_mistaken_for_background": 5,
+        "insect_correctly_accepted": 87
+      }
+    },
+    {
+      "threshold": 0.8,
+      "validation_accuracy": 0.9539473684210527,
+      "background_rejection_rate": 1.0,
+      "background_false_accept_rate": 0.0,
+      "insect_acceptance_rate": 0.9239130434782609,
+      "insect_false_rejection_rate": 0.07608695652173914,
+      "confusion_matrix": {
+        "background_correctly_rejected": 60,
+        "background_mistaken_for_insect": 0,
+        "insect_mistaken_for_background": 7,
+        "insect_correctly_accepted": 85
+      }
+    },
+    {
+      "threshold": 0.85,
+      "validation_accuracy": 0.9407894736842105,
+      "background_rejection_rate": 1.0,
+      "background_false_accept_rate": 0.0,
+      "insect_acceptance_rate": 0.9021739130434783,
+      "insect_false_rejection_rate": 0.09782608695652174,
+      "confusion_matrix": {
+        "background_correctly_rejected": 60,
+        "background_mistaken_for_insect": 0,
+        "insect_mistaken_for_background": 9,
+        "insect_correctly_accepted": 83
+      }
+    },
+    {
+      "threshold": 0.9,
+      "validation_accuracy": 0.8881578947368421,
+      "background_rejection_rate": 1.0,
+      "background_false_accept_rate": 0.0,
+      "insect_acceptance_rate": 0.8152173913043478,
+      "insect_false_rejection_rate": 0.18478260869565216,
+      "confusion_matrix": {
+        "background_correctly_rejected": 60,
+        "background_mistaken_for_insect": 0,
+        "insect_mistaken_for_background": 17,
+        "insect_correctly_accepted": 75
+      }
+    }
+  ],
+  "threshold_selection_reason": "Highest insect acceptance among thresholds with <=5% background false acceptance on this pilot validation set.",
+  "candidate_for_backend_integration": true,
+  "caution": "ESC-50 categories are a limited proxy, and these validation files do not establish field performance. Test raw ESP32 microphone recordings before enabling live requests."
+}

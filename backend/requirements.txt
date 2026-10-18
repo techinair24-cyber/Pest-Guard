@@ -9,7 +9,7 @@ pydantic
 pydantic-settings
 python-multipart
 numpy==1.26.4
-scikit-learn
+scikit-learn==1.9.0
 tensorflow==2.19.1
 librosa
 soundfile
@@ -21,3 +21,4 @@ setuptools<81
 psycopg2-binary
 psycopg[binary]
 
+joblib==1.6.0

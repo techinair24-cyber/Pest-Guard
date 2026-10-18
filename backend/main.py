@@ -298,8 +298,145 @@ def prepare_audio(audio):
 
     return mel[..., tf.newaxis]
 
+# --- Pest Guard lightweight insect/background gate ---
+# Compact NumPy + scikit-learn feature gate. No YAMNet/TensorFlow Hub is loaded.
+_PEST_LIGHT_GATE = None
+_PEST_LIGHT_GATE_LOCK = __import__("threading").Lock()
+_PEST_LIGHT_GATE_THRESHOLD = float(os.getenv("PEST_BACKGROUND_GATE_THRESHOLD", "0.45"))
+_PEST_LIGHT_GATE_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "ai_model", "lightweight_background_gate", "background_gate.joblib",
+)
+
+
+def _pest_light_gate_features(audio):
+    """Keep features exactly aligned with train_lightweight_background_gate.py."""
+    x = np.asarray(audio, dtype=np.float32).reshape(-1)
+    target_samples = 5 * SAMPLE_RATE
+    if x.size < target_samples:
+        padded = np.zeros(target_samples, dtype=np.float32)
+        padded[:x.size] = x
+        x = padded
+    else:
+        x = x[:target_samples]
+
+    x = x - float(np.mean(x, dtype=np.float64))
+    eps = 1e-12
+    raw_rms = float(np.sqrt(np.mean(np.square(x, dtype=np.float64)) + eps))
+    raw_peak = float(np.max(np.abs(x)) + eps)
+    frame_len = 1024
+    hop = 512
+    frames = np.lib.stride_tricks.sliding_window_view(x, frame_len)[::hop]
+    window = np.hanning(frame_len).astype(np.float32)
+    spec = np.abs(np.fft.rfft(frames * window[None, :], axis=1)).astype(np.float64)
+    power = spec * spec + eps
+    freqs = np.fft.rfftfreq(frame_len, d=1.0 / SAMPLE_RATE)
+    frame_sum = np.sum(power, axis=1) + eps
+    norm_power = power / frame_sum[:, None]
+
+    values = [np.log10(raw_rms + eps), np.log10(raw_peak + eps), float(np.std(x))]
+    rms_frames = np.sqrt(np.mean(np.square(frames.astype(np.float64)), axis=1) + eps)
+    values.extend([float(np.mean(rms_frames)), float(np.std(rms_frames)), float(np.percentile(rms_frames, 90))])
+
+    edges = [0, 125, 250, 500, 1000, 2000, 3000, 4000, 6000, 8000]
+    for lo, hi in zip(edges[:-1], edges[1:]):
+        mask = (freqs >= lo) & (freqs < hi if hi < 8000 else freqs <= hi)
+        band = np.sum(power[:, mask], axis=1) if np.any(mask) else np.zeros(len(power))
+        band_fraction = band / frame_sum
+        values.extend([float(np.mean(band_fraction)), float(np.std(band_fraction)), float(np.log10(np.mean(band) + eps))])
+
+    centroid = np.sum(norm_power * freqs[None, :], axis=1)
+    bandwidth = np.sqrt(np.sum(norm_power * (freqs[None, :] - centroid[:, None]) ** 2, axis=1))
+    cdf = np.cumsum(norm_power, axis=1)
+    roll_idx = np.argmax(cdf >= 0.85, axis=1)
+    rolloff = freqs[roll_idx]
+    flatness = np.exp(np.mean(np.log(power), axis=1)) / (np.mean(power, axis=1) + eps)
+    entropy = -np.sum(norm_power * np.log(norm_power + eps), axis=1)
+    peakiness = np.max(power, axis=1) / (np.mean(power, axis=1) + eps)
+    dominant_freq = freqs[np.argmax(power, axis=1)]
+    for descriptor in (centroid, bandwidth, rolloff, flatness, entropy, peakiness, dominant_freq):
+        values.extend([float(np.mean(descriptor)), float(np.std(descriptor)), float(np.percentile(descriptor, 90))])
+
+    zcr = np.mean((frames[:, 1:] * frames[:, :-1]) < 0, axis=1)
+    values.extend([float(np.mean(zcr)), float(np.std(zcr))])
+    if norm_power.shape[0] > 1:
+        flux = np.sqrt(np.mean(np.square(np.diff(norm_power, axis=0)), axis=1))
+        values.extend([float(np.mean(flux)), float(np.std(flux)), float(np.percentile(flux, 90))])
+    else:
+        values.extend([0.0, 0.0, 0.0])
+
+    result = np.asarray(values, dtype=np.float32)
+    if result.shape != (59,) or not np.all(np.isfinite(result)):
+        raise RuntimeError(f"Background-gate feature vector invalid: {result.shape}")
+    return result
+
+
+def _load_pest_light_gate():
+    global _PEST_LIGHT_GATE, _PEST_LIGHT_GATE_THRESHOLD
+    if _PEST_LIGHT_GATE is not None:
+        return _PEST_LIGHT_GATE
+    with _PEST_LIGHT_GATE_LOCK:
+        if _PEST_LIGHT_GATE is not None:
+            return _PEST_LIGHT_GATE
+        if not os.path.isfile(_PEST_LIGHT_GATE_PATH):
+            logger.error("Pest Guard lightweight background gate is missing: %s", _PEST_LIGHT_GATE_PATH)
+            raise HTTPException(status_code=503, detail="Background sound filter is not installed on this backend.")
+        try:
+            import joblib
+            artifact = joblib.load(_PEST_LIGHT_GATE_PATH)
+            if not isinstance(artifact, dict) or "model" not in artifact:
+                raise RuntimeError("Saved background gate is not the expected model bundle.")
+            gate = artifact["model"]
+            artifact_feature_count = artifact.get("feature_count")
+            artifact_threshold = artifact.get("threshold")
+            if artifact_feature_count != 59 or getattr(gate, "n_features_in_", None) != 59:
+                raise RuntimeError("Loaded gate does not match the 59-feature training schema.")
+            if not isinstance(artifact_threshold, (int, float)) or not 0.0 <= float(artifact_threshold) <= 1.0:
+                raise RuntimeError(f"Invalid saved gate threshold: {artifact_threshold!r}")
+            if "PEST_BACKGROUND_GATE_THRESHOLD" not in os.environ:
+                _PEST_LIGHT_GATE_THRESHOLD = float(artifact_threshold)
+            classes = list(getattr(gate, "classes_", []))
+            if 0 not in classes or 1 not in classes:
+                raise RuntimeError(f"Unexpected background-gate classes: {classes}")
+            import numpy as np
+            probe = np.asarray(gate.predict_proba(np.zeros((1, 59), dtype=np.float32)))
+            if probe.shape != (1, len(classes)) or not np.all(np.isfinite(probe)):
+                raise RuntimeError("Loaded gate failed its prediction smoke test.")
+        except Exception as error:
+            logger.exception("Could not load Pest Guard lightweight background gate")
+            raise HTTPException(status_code=503, detail="Background sound filter failed to load.") from error
+        _PEST_LIGHT_GATE = gate
+        logger.info("Pest Guard lightweight background gate loaded (threshold=%.2f)", _PEST_LIGHT_GATE_THRESHOLD)
+        return _PEST_LIGHT_GATE
+
+
+def _pest_light_gate_score(waveform):
+    gate = _load_pest_light_gate()
+    vector = _pest_light_gate_features(waveform).reshape(1, -1)
+    try:
+        probabilities = np.asarray(gate.predict_proba(vector), dtype=np.float64)
+        classes = list(gate.classes_)
+        positive_index = classes.index(1)
+        if probabilities.ndim != 2 or probabilities.shape != (1, len(classes)):
+            raise RuntimeError(f"Unexpected background-gate probability shape: {probabilities.shape}")
+        score = float(probabilities[0, positive_index])
+        if not np.isfinite(score) or score < 0.0 or score > 1.0:
+            raise RuntimeError("Background gate returned an invalid score.")
+        return score
+    except Exception as error:
+        logger.exception("Pest Guard lightweight background-gate scoring failed")
+        raise HTTPException(status_code=503, detail="Background sound filter could not score this recording.") from error
+
+
+# --- End Pest Guard lightweight background gate ---
+
 def predict_pest(audio):
     waveform = decode_audio_samples(audio)
+    gate_score = _pest_light_gate_score(waveform)
+    if gate_score < _PEST_LIGHT_GATE_THRESHOLD:
+        logger.info("Background gate rejected audio (score=%.4f, threshold=%.2f)", gate_score, _PEST_LIGHT_GATE_THRESHOLD)
+        raise HTTPException(status_code=422, detail="Audio rejected by background-sound filter. No detection was saved.")
+    logger.info("Background gate accepted audio (score=%.4f, threshold=%.2f)", gate_score, _PEST_LIGHT_GATE_THRESHOLD)
     features = prepare_audio(waveform)
     prediction = ai_model.predict(
         tf.expand_dims(features, 0),
