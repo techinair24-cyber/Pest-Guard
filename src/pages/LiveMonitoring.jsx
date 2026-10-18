@@ -635,6 +635,20 @@ function LiveMonitoring() {
           <div className="latest-detection-main">
             <span className="detection-indicator" />
             <div>
+              {predictedPestName && (
+                <small
+                  className="top-match-label"
+                  style={{
+                    display: 'block',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    letterSpacing: '0.08em',
+                    marginBottom: '0.25rem',
+                  }}
+                >
+                  TOP MATCH
+                </small>
+              )}
               <strong>
                 {predictedPestName
                   ? predictedPestDisplayName
@@ -682,7 +696,7 @@ function LiveMonitoring() {
           )}
           <div className="detection-details">
             <div>
-              <span>Model score (not calibrated confidence)</span>
+              <span>Top-match model score (not calibrated confidence)</span>
               <strong>{formatDetectionConfidence(displayDetection?.confidence)}</strong>
             </div>
             <div className={`latest-risk latest-risk-${riskEstimate.toLowerCase()}`}>
