@@ -435,7 +435,7 @@ def predict_pest(audio):
     gate_score = _pest_light_gate_score(waveform)
     if gate_score < _PEST_LIGHT_GATE_THRESHOLD:
         logger.info("Background gate rejected audio (score=%.4f, threshold=%.2f)", gate_score, _PEST_LIGHT_GATE_THRESHOLD)
-        raise HTTPException(status_code=422, detail="Audio rejected by background-sound filter. No detection was saved.")
+        raise HTTPException(status_code=422, detail=f"Audio rejected by background-sound filter. Gate score={gate_score:.4f}, threshold={_PEST_LIGHT_GATE_THRESHOLD:.2f}. No detection was saved.")
     logger.info("Background gate accepted audio (score=%.4f, threshold=%.2f)", gate_score, _PEST_LIGHT_GATE_THRESHOLD)
     features = prepare_audio(waveform)
     prediction = ai_model.predict(
