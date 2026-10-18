@@ -14,7 +14,6 @@ import {
 
  getPests,
 
- getSolution,
 
 } from '../services/api'
 
@@ -66,54 +65,42 @@ async function requestPestSolution(payload) {
  return data
 }
 
-function getPesticideRecommendation(uncertain) {
- if (uncertain) {
-  return 'The pest identification is uncertain. Do not choose or apply a pest-specific pesticide. Confirm the pest and crop with a local agricultural officer first.'
- }
-
- return 'Pest Guard has no verified locally registered product or crop-specific label dose for this pest. Do not guess a product or dose. Ask a local agricultural officer to confirm a registered product and its label rate.'
-}
-
 function toSteps(value) {
  return String(value || '')
   .split(/\r?\n/)
-  .map((step) => step.replace(/^\s*\d+[.)]\s*/, '').trim())
+  .map((step) => step.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').trim())
   .filter(Boolean)
 }
 
 function SolutionSections({ solution, pest, uncertain }) {
- const damageSteps = uncertain
-  ? toSteps(solution?.about || solution?.description || 'The pest identification is uncertain.')
-  : [
-    ...toSteps(pest?.description || solution?.about || solution?.description),
-    ...toSteps(pest?.symptoms),
-   ]
- const protectSteps = [
-  ...(pest?.symptoms && !uncertain
-   ? [`Inspect affected and nearby plants for these signs: ${pest.symptoms}`]
-   : []),
-  ...toSteps(solution?.recommended_action),
- ]
- const pesticideSteps = toSteps(
-  getPesticideRecommendation(uncertain),
+ const damageSteps = toSteps(
+  solution?.about || solution?.description ||
+   (uncertain
+    ? 'The pest identification is uncertain. Confirm the insect before choosing pest-specific treatment.'
+    : pest?.description || pest?.symptoms || 'Pest and crop damage details are not available.'),
  )
- const safeApplicationSteps = [
-  uncertain
-   ? 'Do not apply a pesticide based on this uncertain identification. Confirm the pest and crop with a local agricultural officer first.'
-   : 'Do not apply a pesticide until a locally registered product and its label are confirmed for this pest and crop.',
-  'If an officer recommends a product, wear the protective equipment listed on its label. Follow label instructions for mixing, spraying, re-entry, storage, and disposal. Never mix products.',
-  "Follow the label's pre-harvest waiting period. Pest Guard has no verified product label or waiting period for this case.",
- ]
- const preventionSteps = [
-  ...toSteps(solution?.prevention || pest?.prevention),
-  'Inspect the affected and nearby plants again in 2–3 days. If damage spreads, record what you see and ask a local agricultural officer for help.',
- ]
+ const protectSteps = toSteps(
+  solution?.recommended_action ||
+   'Inspect the affected crop and seek crop-specific advice before selecting a treatment.',
+ )
+ const pesticideSteps = toSteps(
+  solution?.pesticide_recommendation ||
+   'No verified product label or crop-specific dose is available. Do not guess a product or dose; consult the registered label and a qualified local agricultural expert.',
+ )
+ const safeApplicationSteps = toSteps(
+  solution?.precautions ||
+   'Use a pesticide only after confirming the product is registered for this crop and pest. Follow the product label for protective equipment, application, re-entry, storage, disposal, and pre-harvest intervals.',
+ )
+ const preventionSteps = toSteps(
+  solution?.prevention || pest?.prevention ||
+   'Monitor affected and nearby plants, record any crop damage, and seek local agricultural advice if the damage spreads.',
+ )
  const sections = [
-  ['Pest and Crop Damage', damageSteps],
+  ['Pest & Crop Damage', damageSteps],
   ['How to Protect the Crop', protectSteps],
-  ['Recommended Pesticide/Medicine', pesticideSteps],
-  ['Safe Application Instructions', safeApplicationSteps],
-  ['Prevention and Follow-up', preventionSteps],
+  ['Recommended Pesticide/Medicine and Correct Label Dose', pesticideSteps],
+  ['How to Apply It Safely', safeApplicationSteps],
+  ['Prevention and Follow-up Steps', preventionSteps],
  ]
 
  return (
@@ -152,6 +139,8 @@ function Solutions() {
  const [error, setError] = useState('')
 
  const [retryKey, setRetryKey] = useState(0)
+ const [cropDraft, setCropDraft] = useState('')
+ const [selectedCrop, setSelectedCrop] = useState('')
 
  const [highRiskHistory, setHighRiskHistory] = useState([])
 
@@ -340,6 +329,7 @@ function Solutions() {
       pest_id: nextPest?.pest_id || '',
       pest_description: nextPest?.description || '',
       pest_symptoms: nextPest?.symptoms || '',
+      crop: selectedCrop,
      })
 
      if (!active) return
@@ -352,58 +342,6 @@ function Solutions() {
      nextPest.scientific_name || nextPest.name
     const commonName = nextPest.name
 
-    const savedHistory = highRiskHistory.find(
-     (item) =>
-      item?.pest_verified === true &&
-      item?.pest_id === nextPest.pest_id
-    )
-
-    if (savedHistory) {
-      setSolution({
-        about: savedHistory.solution_description || '',
-        description: savedHistory.solution_description || '',
-        recommended_action: savedHistory.recommended_action || '',
-        prevention: savedHistory.prevention || '',
-        precautions: savedHistory.precautions || '',
-        generated: true,
-      })
-      return
-    }
-
-    let nextSolution = null
-
-    if (nextPest.pest_id) {
-
-     try {
-
-      const solutionResult = await getSolution(nextPest.pest_id)
-
-      if (!active) return
-
-      nextSolution = solutionResult?.solution ?? null
-
-     } catch (solutionError) {
-
-      if (!/solution not found|status 404/i.test(solutionError.message || '')) {
-
-       throw solutionError
-
-      }
-
-     }
-
-    }
-
-    if (!active) return
-
-    if (nextSolution) {
-
-     setSolution(nextSolution)
-
-     return
-
-    }
-
     try {
 
      const generatedSolution = await requestPestSolution({
@@ -414,13 +352,15 @@ function Solutions() {
 
       risk: solutionRisk,
 
-      confidence: detectionConfidence,
+      confidence: Number.isFinite(detectionConfidence) ? detectionConfidence : 0,
 
       pest_id: nextPest?.pest_id || '',
 
       pest_description: nextPest?.description || '',
 
       pest_symptoms: nextPest?.symptoms || '',
+
+      crop: selectedCrop,
 
      })
 
@@ -434,7 +374,7 @@ function Solutions() {
 
      setError(
 
-      `No curated solution is available, and fallback guidance could not be loaded: ${aiError.message}`,
+      `Gemini solution generation failed: ${aiError.message}`,
 
      )
 
@@ -481,7 +421,7 @@ function Solutions() {
   isNonPest,
   retryKey,
   historyLoading,
-  highRiskHistory,
+  selectedCrop,
 ])
 
  const isLoading = detectionLoading || loadingSolution
@@ -698,6 +638,60 @@ function Solutions() {
        <strong>{confidenceLabel}</strong>
 
       </div>
+
+      {!isNonPest && (
+       <form
+        className="solution-crop-form"
+        onSubmit={(event) => {
+         event.preventDefault()
+         setSelectedCrop(cropDraft.trim())
+         setRetryKey((value) => value + 1)
+        }}
+        style={{
+         display: 'flex',
+         flexWrap: 'wrap',
+         alignItems: 'end',
+         gap: '12px',
+         margin: '20px 0',
+         padding: '16px',
+         border: '1px solid rgba(20, 70, 57, 0.14)',
+         borderRadius: '12px',
+        }}
+       >
+        <div style={{ flex: '1 1 240px', minWidth: 0 }}>
+         <label htmlFor="solution-crop" className="card-eyebrow" style={{ display: 'block', marginBottom: '8px' }}>
+          Crop for crop-specific advice
+         </label>
+         <input
+          id="solution-crop"
+          type="text"
+          maxLength={100}
+          value={cropDraft}
+          onChange={(event) => setCropDraft(event.target.value)}
+          placeholder="Enter crop, e.g. rice or tomato"
+          style={{
+           boxSizing: 'border-box',
+           width: '100%',
+           minHeight: '42px',
+           padding: '10px 12px',
+           border: '1px solid rgba(20, 70, 57, 0.22)',
+           borderRadius: '8px',
+           font: 'inherit',
+          }}
+         />
+         <p style={{ margin: '7px 0 0', fontSize: '0.8rem', lineHeight: 1.45 }}>
+          A crop name helps tailor guidance. Exact pesticide doses still require a verified applicable product label.
+         </p>
+        </div>
+        <button
+         type="submit"
+         className="solutions-button"
+         style={{ cursor: 'pointer', minHeight: '42px', flex: '0 0 auto' }}
+        >
+         {selectedCrop ? 'Regenerate Solution' : 'Generate Solution'}
+        </button>
+       </form>
+      )}
 
       {isNonPest ? (
 

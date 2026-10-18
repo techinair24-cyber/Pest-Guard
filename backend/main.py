@@ -591,24 +591,36 @@ def _request_gemini_solution(payload: AISolutionRequest) -> dict:
         )
 
     prompt = (
-        "You are an agricultural pest-management assistant.\n\n"
-        "The Pest Guard sensor detected this insect:\n\n"
+        "You are an agricultural pest-management assistant. Return valid JSON only.\n\n"
         f"Common name: {payload.common_name}\n"
         f"Scientific name: {payload.pest}\n"
-        f"Risk: {payload.risk}\n"
-        f"AI confidence: {payload.confidence:.2f}\n\n"
-        "Crop-specific pesticide data is not verified. Do not name or suggest "
-        "any pesticide, medicine, dose, or waiting period.\n\n"
-        f"Known pest ID: {payload.pest_id or 'unavailable'}\n"
+        f"Risk level: {payload.risk}\n"
+        f"AI model score: {payload.confidence:.1%} (uncalibrated; not verified confidence)\n"
+        f"Crop: {payload.crop or 'not supplied'}\n"
+        f"Pest ID: {payload.pest_id or 'unavailable'}\n"
         f"Known description: {payload.pest_description or 'unavailable'}\n"
         f"Known symptoms: {payload.pest_symptoms or 'unavailable'}\n\n"
-        "Generate a concise pest-management response with exactly these JSON "
-        "string fields: about, recommended_action, prevention.\n\n"
-        "Use the identified pest only. Do not replace it with another species. "
-        "Do not claim certainty when confidence is low. Prefer integrated "
-        "pest-management guidance. Give short, practical steps based only on "
-        "the known pest description and symptoms. Do not invent treatment "
-        "claims. Return valid JSON only."
+        "Return exactly these five non-empty JSON string fields: about, recommended_action, "
+        "pesticide_recommendation, precautions, prevention.\n"
+        "about: explain likely pest and crop damage and observable symptoms; be explicit that "
+        "this is a candidate identification, not confirmation.\n"
+        "recommended_action: give practical crop-protection measures, prioritizing integrated "
+        "pest management and suitable non-chemical controls.\n"
+        "pesticide_recommendation: discuss a registered pesticide or medicine only when reliable "
+        "information applicable to this exact pest and crop is available. Never invent a product, "
+        "registration status, or dose. Give an exact dose only when supported by a verified product "
+        "label applicable to this crop and pest. If no such label is provided or verified, say that "
+        "the exact product and dose cannot be verified and advise checking the registered label or "
+        "consulting a qualified local agricultural expert.\n"
+        "precautions: describe label-based protective equipment and application precautions, "
+        "prohibition on unsafe mixing, and following the product label for storage, disposal, "
+        "re-entry, and pre-harvest intervals. Do not invent label intervals.\n"
+        "prevention: give practical monitoring, sanitation, prevention, and follow-up steps.\n\n"
+        "Use only the supplied pest candidate; do not substitute another species. The model score is "
+        "uncalibrated and does not prove identification. If risk is UNKNOWN or identity is otherwise "
+        "uncertain, do not recommend applying a pest-specific pesticide until the pest is confirmed. "
+        "If crop information is missing, say that crop-specific treatment cannot be confirmed. "
+        "Do not invent facts, label details, or treatment claims."
     )
 
     model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip() or "gemini-3.8-flash"
@@ -761,9 +773,14 @@ def _request_gemini_solution(payload: AISolutionRequest) -> dict:
             "Gemini solution provider returned an invalid or unavailable response."
         ) from error
 
+
+
+
     required_fields = (
         "about",
         "recommended_action",
+        "pesticide_recommendation",
+        "precautions",
         "prevention",
     )
 
@@ -779,11 +796,8 @@ def _request_gemini_solution(payload: AISolutionRequest) -> dict:
         "risk": payload.risk,
         "confidence": payload.confidence,
         "crop": payload.crop,
-        "pesticide_recommendation": _pesticide_recommendation(payload.crop),
         **{field: generated[field].strip() for field in required_fields},
-        "precautions": _safe_application_instructions(),
     }
-
 # -------------------------------------------------------------------
 
 # Database
@@ -1515,96 +1529,45 @@ async def generate_ai_solution(
     payload: AISolutionRequest,
     db: Session = Depends(get_db),
 ):
-    # Sound-model output is an unverified candidate, not a confirmed identity.
-    # Do not use species-specific catalogue treatment when the risk is unknown
-    # or when the label is not part of this model's active 47-class vocabulary.
-    if (
-        payload.pest not in class_names
-        or str(payload.risk or '').strip().upper() == 'UNKNOWN'
-    ):
+    # The CNN output is only a candidate. Do not generate pest-specific advice
+    # unless the requested model class can be matched to the pest catalogue.
+    if payload.pest not in class_names:
         return _fallback_uncertain_solution(payload)
 
-    # Match the requested candidate against the database catalog.
-    # A match provides candidate-specific guidance, not proof of identity.
     pest_record = _find_verified_pest_record(
         db,
         payload.pest,
         payload.pest_id,
     )
-
-    # If the candidate cannot be matched safely, keep generic guidance.
     if not pest_record:
         return _fallback_uncertain_solution(payload)
 
-    # Fetch the curated solution belonging to this exact pest ID.
-    solution_record = (
-        db.query(Solution)
-        .filter(Solution.pest_id == pest_record.pest_id)
-        .first()
+    # When risk is UNKNOWN, Gemini is explicitly instructed not to recommend
+    # applying a pest-specific pesticide until the candidate is confirmed.
+    gemini_payload = AISolutionRequest(
+        pest=pest_record.scientific_name or pest_record.name,
+        common_name=pest_record.name,
+        risk=payload.risk,
+        confidence=payload.confidence,
+        pest_id=pest_record.pest_id,
+        pest_description=pest_record.description or payload.pest_description,
+        pest_symptoms=pest_record.symptoms or payload.pest_symptoms,
+        crop=payload.crop,
     )
 
-    description = (
-        pest_record.description
-        or "No catalog description is available."
-    )
-    symptoms = (
-        pest_record.symptoms
-        or "No catalog symptoms are available."
-    )
-
-    # Explain the catalog match without claiming the AI confirmed it.
-    about = (
-        f"Unverified AI candidate: {pest_record.name} "
-        f"({pest_record.scientific_name or pest_record.name}). "
-        f"This catalog match does not confirm the insect's identity. "
-        f"Catalog description: {description} "
-        f"Signs to check in the field: {symptoms}"
-    )
-
-    # Use this pest's saved recommendations when available.
-    if solution_record:
-        recommended_action = (
-            solution_record.recommended_action
-            or (
-                f"Inspect affected plants for these signs: {symptoms} "
-                "and confirm the insect before choosing pest-specific control."
-            )
+    try:
+        return await asyncio.to_thread(_request_gemini_solution, gemini_payload)
+    except HTTPException:
+        raise
+    except Exception as error:
+        logger.exception(
+            "Gemini solution generation failed for pest_id=%s",
+            pest_record.pest_id,
         )
-        prevention = (
-            solution_record.prevention
-            or "Monitor affected plants regularly and record changes in crop damage."
-        )
-    else:
-        recommended_action = (
-            f"Inspect affected plants for these signs: {symptoms} "
-            "and document any damage. Confirm the insect with a qualified "
-            "agricultural adviser before choosing pest-specific control."
-        )
-        prevention = (
-            "Monitor affected and nearby plants regularly. Record changes "
-            "in crop damage and seek crop-specific advice when needed."
-        )
-
-    return {
-        "pest": pest_record.scientific_name or pest_record.name,
-        "common_name": pest_record.name,
-        "risk": "UNKNOWN",
-        "confidence": payload.confidence,
-        "crop": payload.crop,
-        "about": about,
-        "recommended_action": recommended_action,
-        "pesticide_recommendation": _pesticide_recommendation(
-            payload.crop,
-            uncertain=True,
-        ),
-        "prevention": prevention,
-        "precautions": (
-            "Do not apply a pesticide based on this unverified audio result. "
-            "Confirm the pest and crop with a local agricultural officer. "
-            "If a product is recommended, follow its registered label, "
-            "protective-equipment requirements, and pre-harvest waiting period."
-        ),
-    }
+        raise HTTPException(
+            status_code=502,
+            detail="Gemini could not generate the pest solution. Please try again.",
+        ) from error
 
 # -------------------------------------------------------------------
 
