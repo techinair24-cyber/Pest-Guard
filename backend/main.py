@@ -639,7 +639,7 @@ def _request_gemini_solution(payload: AISolutionRequest) -> dict:
             ],
             "generationConfig": {
                 "responseMimeType": "application/json",
-                "maxOutputTokens": 1200,
+                "maxOutputTokens": 2500,
             },
         }
     ).encode("utf-8")
