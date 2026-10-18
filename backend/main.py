@@ -762,7 +762,9 @@ def _request_gemini_solution(payload: AISolutionRequest) -> dict:
             content = content[3:]
         if content.endswith("```"):
             content = content[:-3]
-        generated = json.loads(content.strip())
+        content = content.strip()
+        logger.error("Gemini response text (first 2000 chars): %r", content[:2000])
+        generated = json.loads(content)
 
     except (KeyError, IndexError, TypeError, ValueError) as error:
         logger.error(
