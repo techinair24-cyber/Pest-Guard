@@ -168,8 +168,8 @@ MEL_MATRIX = tf.signal.linear_to_mel_weight_matrix(
 )
 
 SAMPLE_RATE = 16000
-# One signed-int16 LSB at the PCM amplitude scale; less than this is not resolvable.
-PCM16_RMS_FLOOR = 1.0 / 32768.0
+# Reject near-zero PCM audio whose RMS is at or below 8 signed-int16 LSBs.
+PCM16_RMS_FLOOR = 8.0 / 32768.0
 
 PEST_IDENTIFICATION_CONFIDENCE = 0.70
 
@@ -298,8 +298,105 @@ def prepare_audio(audio):
 
     return mel[..., tf.newaxis]
 
+# --- Pest Guard experimental insect/background gate ---
+# This binary gate must accept the audio before the 47-class insect model runs.
+# A rejection raises HTTP 422 here, before the API can save or broadcast a detection.
+_PEST_BACKGROUND_GATE = None
+_PEST_YAMNET_MODEL = None
+_PEST_BACKGROUND_GATE_LOCK = __import__("threading").Lock()
+_PEST_BACKGROUND_GATE_THRESHOLD = float(os.getenv("PEST_BACKGROUND_GATE_THRESHOLD", "0.30"))
+_PEST_BACKGROUND_GATE_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "ai_model", "yamnet_background_gate_pilot", "background_gate.joblib",
+)
+
+
+def _load_pest_background_gate():
+    global _PEST_BACKGROUND_GATE, _PEST_YAMNET_MODEL
+    if _PEST_BACKGROUND_GATE is not None and _PEST_YAMNET_MODEL is not None:
+        return _PEST_BACKGROUND_GATE, _PEST_YAMNET_MODEL
+
+    with _PEST_BACKGROUND_GATE_LOCK:
+        if _PEST_BACKGROUND_GATE is not None and _PEST_YAMNET_MODEL is not None:
+            return _PEST_BACKGROUND_GATE, _PEST_YAMNET_MODEL
+
+        if not os.path.isfile(_PEST_BACKGROUND_GATE_PATH):
+            logger.error("Pest Guard background gate file is missing: %s", _PEST_BACKGROUND_GATE_PATH)
+            raise HTTPException(
+                status_code=503,
+                detail="Background sound filter is not installed on this backend.",
+            )
+
+        try:
+            import joblib
+            import tensorflow_hub as hub
+            gate = joblib.load(_PEST_BACKGROUND_GATE_PATH)
+            yamnet = hub.load("https://tfhub.dev/google/yamnet/1")
+        except Exception as error:
+            logger.exception("Could not load Pest Guard background gate")
+            raise HTTPException(
+                status_code=503,
+                detail="Background sound filter failed to load.",
+            ) from error
+
+        _PEST_BACKGROUND_GATE = gate
+        _PEST_YAMNET_MODEL = yamnet
+        logger.info("Pest Guard background gate loaded (threshold=%.2f)", _PEST_BACKGROUND_GATE_THRESHOLD)
+        return _PEST_BACKGROUND_GATE, _PEST_YAMNET_MODEL
+
+
+def _pest_background_gate_score(waveform):
+    """Return the experimental insect-like score using training-matched framing."""
+    gate, yamnet = _load_pest_background_gate()
+    audio = np.asarray(waveform, dtype=np.float32).reshape(-1)
+    target_length = 80000  # 5 seconds at the backend's 16 kHz sample rate
+
+    if audio.size < SAMPLE_RATE:
+        raise HTTPException(status_code=422, detail="Audio must contain at least one second of samples.")
+    if audio.size > target_length:
+        audio = audio[:target_length]
+    elif audio.size < target_length:
+        padded = np.zeros(target_length, dtype=np.float32)
+        padded[:audio.size] = audio
+        audio = padded
+
+    # Match the exact peak-normalization used when the gate was trained and tested.
+    peak = float(np.max(np.abs(audio))) if audio.size else 0.0
+    if peak > 0:
+        audio = audio / peak
+
+    try:
+        _, embeddings, _ = yamnet(audio)
+        vector = tf.reduce_mean(embeddings, axis=0).numpy().reshape(1, -1)
+        probabilities = np.asarray(gate.predict_proba(vector), dtype=np.float64)
+        if probabilities.ndim != 2 or probabilities.shape[0] != 1 or probabilities.shape[1] < 2:
+            raise RuntimeError("Background gate returned an unexpected probability shape.")
+        score = float(probabilities[0, 1])
+        if not np.isfinite(score) or score < 0.0 or score > 1.0:
+            raise RuntimeError("Background gate returned an invalid score.")
+        return score
+    except HTTPException:
+        raise
+    except Exception as error:
+        logger.exception("Pest Guard background-gate scoring failed")
+        raise HTTPException(
+            status_code=503,
+            detail="Background sound filter could not score this recording.",
+        ) from error
+
+
+# --- End experimental insect/background gate ---
+
 def predict_pest(audio):
     waveform = decode_audio_samples(audio)
+    gate_score = _pest_background_gate_score(waveform)
+    if gate_score < _PEST_BACKGROUND_GATE_THRESHOLD:
+        logger.info("Background gate rejected audio (score=%.4f, threshold=%.2f)", gate_score, _PEST_BACKGROUND_GATE_THRESHOLD)
+        raise HTTPException(
+            status_code=422,
+            detail="Audio rejected by background-sound filter. No detection was saved.",
+        )
+    logger.info("Background gate accepted audio (score=%.4f, threshold=%.2f)", gate_score, _PEST_BACKGROUND_GATE_THRESHOLD)
     features = prepare_audio(waveform)
     prediction = ai_model.predict(
         tf.expand_dims(features, 0),
@@ -1449,7 +1546,7 @@ def _fallback_ai_solution(payload: AISolutionRequest) -> dict:
             "3. Ask a local agricultural officer which non-chemical steps fit this pest and crop, especially if damage spreads."
         ),
         "prevention": (
-            "1. Check the affected and nearby plants again in 2–3 days.\n"
+            "1. Check the affected and nearby plants again in 2â€“3 days.\n"
             "2. Keep a simple note or photo record so you can see whether damage is spreading.\n"
             "3. Ask a local agricultural officer for a crop-specific prevention plan."
         ),
