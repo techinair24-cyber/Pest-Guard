@@ -15,6 +15,8 @@ from twilio.rest import Client
 
 import json
 
+import joblib
+
 import numpy as np
 
 import tensorflow as tf
@@ -184,6 +186,90 @@ if ai_model.input_shape != (None, 155, 128, 1):
     raise RuntimeError(
         f"Unexpected CNN input shape: {ai_model.input_shape}"
     )
+
+# --- Pest Guard hierarchical classifier (four specialist groups) ---
+# The original CNN is retained as a fallback if the experimental bundle is
+# absent. To activate hierarchical predictions in a deployment, ship the
+# joblib bundle alongside this backend file.
+HIERARCHICAL_MODEL_PATH = CANDIDATE_DIR / "hierarchical_audio_classifier.joblib"
+_HIERARCHICAL_BUNDLE = None
+_HIERARCHICAL_INFERENCE_MODEL = None
+
+if HIERARCHICAL_MODEL_PATH.is_file():
+    try:
+        _bundle = joblib.load(HIERARCHICAL_MODEL_PATH)
+        if not isinstance(_bundle, dict):
+            raise RuntimeError("Hierarchical classifier bundle must be a dictionary.")
+        if _bundle.get("version") != 1:
+            raise RuntimeError(f"Unsupported hierarchical bundle version: {_bundle.get('version')!r}")
+        if _bundle.get("labels") != class_names:
+            raise RuntimeError("Hierarchical classifier labels do not exactly match class_names.json.")
+        _feature_layer_name = _bundle.get("feature_layer_name")
+        _feature_dim = _bundle.get("feature_dim")
+        _groups = _bundle.get("groups")
+        _group_by_label = _bundle.get("group_by_label")
+        _experts = _bundle.get("experts")
+        _group_model = _bundle.get("group_model")
+        if not isinstance(_feature_layer_name, str) or not _feature_layer_name.strip():
+            raise RuntimeError("Hierarchical bundle has no valid feature layer name.")
+        if not isinstance(_feature_dim, int) or _feature_dim < 1:
+            raise RuntimeError("Hierarchical bundle has an invalid feature dimension.")
+        if not isinstance(_groups, list) or len(_groups) < 2:
+            raise RuntimeError("Hierarchical bundle has invalid groups.")
+        if not isinstance(_group_by_label, list) or len(_group_by_label) != len(class_names):
+            raise RuntimeError("Hierarchical group mapping does not match the 47 species.")
+        if not isinstance(_experts, dict) or set(_groups) != set(_experts):
+            raise RuntimeError("Hierarchical bundle specialist models do not match its groups.")
+        if not hasattr(_group_model, "predict_proba"):
+            raise RuntimeError("Hierarchical group model does not support probability prediction.")
+
+        _feature_tensor = ai_model.get_layer(_feature_layer_name).output
+        _HIERARCHICAL_INFERENCE_MODEL = tf.keras.Model(
+            inputs=ai_model.inputs,
+            outputs=[_feature_tensor, ai_model.layers[-1].output],
+        )
+        # Smoke-test the saved bundle and feature shape during startup.
+        _probe_features, _ = _HIERARCHICAL_INFERENCE_MODEL(
+            np.zeros((1, 155, 128, 1), dtype=np.float32), training=False
+        )
+        _probe_features = np.asarray(_probe_features)
+        if _probe_features.ndim > 2:
+            _probe_features = _probe_features.reshape(_probe_features.shape[0], -1)
+        if _probe_features.shape != (1, _feature_dim):
+            raise RuntimeError(
+                f"Hierarchical feature shape mismatch: {_probe_features.shape}, expected (1, {_feature_dim})."
+            )
+        _group_ids = set(int(x) for x in _group_model[-1].classes_)
+        if _group_ids != set(range(len(_groups))):
+            raise RuntimeError("Hierarchical group model classes do not match bundle group order.")
+        for _group in _groups:
+            _expert = _experts[_group]
+            _expert_ids = set(int(x) for x in _expert[-1].classes_)
+            _expected_ids = {
+                i for i, mapped_group in enumerate(_group_by_label) if mapped_group == _group
+            }
+            if _expert_ids != _expected_ids:
+                raise RuntimeError(
+                    f"Hierarchical specialist class mapping mismatch for group {_group}."
+                )
+        _HIERARCHICAL_BUNDLE = _bundle
+        logger.info(
+            "Loaded hierarchical classifier: %s groups, validation accuracy %.2f%%, macro F1 %.2f%%",
+            len(_groups),
+            float(_bundle.get("validation_metrics", {}).get("hierarchical_accuracy", 0.0)) * 100.0,
+            float(_bundle.get("validation_metrics", {}).get("hierarchical_macro_f1", 0.0)) * 100.0,
+        )
+    except Exception as error:
+        logger.exception("Hierarchical classifier bundle is incompatible with the active CNN")
+        raise RuntimeError(
+            "Could not initialize the hierarchical classifier. Keep the matching model and bundle together."
+        ) from error
+else:
+    logger.warning(
+        "Hierarchical classifier bundle not found at %s; using the original CNN predictor.",
+        HIERARCHICAL_MODEL_PATH,
+    )
+# --- End hierarchical classifier ---
 
 
 def decode_audio_samples(audio):
@@ -438,16 +524,45 @@ def predict_pest(audio):
         raise HTTPException(status_code=422, detail=f"Audio rejected by background-sound filter. Gate score={gate_score:.4f}, threshold={_PEST_LIGHT_GATE_THRESHOLD:.2f}. No detection was saved.")
     logger.info("Background gate accepted audio (score=%.4f, threshold=%.2f)", gate_score, _PEST_LIGHT_GATE_THRESHOLD)
     features = prepare_audio(waveform)
-    prediction = ai_model.predict(
-        tf.expand_dims(features, 0),
-        verbose=0,
-    )[0]
+    model_input = tf.expand_dims(features, 0)
 
+    if _HIERARCHICAL_BUNDLE is not None and _HIERARCHICAL_INFERENCE_MODEL is not None:
+        embedding_batch, _ = _HIERARCHICAL_INFERENCE_MODEL(model_input, training=False)
+        embedding = np.asarray(embedding_batch, dtype=np.float32).reshape(1, -1)
+        bundle = _HIERARCHICAL_BUNDLE
+        group_model = bundle["group_model"]
+        group_probs = np.asarray(group_model.predict_proba(embedding), dtype=np.float64)[0]
+        group_class_ids = [int(x) for x in group_model[-1].classes_]
+        group_probability_by_id = {
+            group_id: float(group_probs[column])
+            for column, group_id in enumerate(group_class_ids)
+        }
+        class_scores = np.zeros(len(class_names), dtype=np.float64)
+        for group_id, group in enumerate(bundle["groups"]):
+            group_probability = group_probability_by_id.get(group_id)
+            if group_probability is None:
+                raise RuntimeError(f"Hierarchical model did not return probability for group {group}.")
+            expert = bundle["experts"][group]
+            specialist_probs = np.asarray(expert.predict_proba(embedding), dtype=np.float64)[0]
+            specialist_class_ids = [int(x) for x in expert[-1].classes_]
+            for class_id, class_probability in zip(specialist_class_ids, specialist_probs):
+                class_scores[class_id] = group_probability * float(class_probability)
+
+        score_sum = float(np.sum(class_scores))
+        if not np.all(np.isfinite(class_scores)) or score_sum <= 0.0:
+            raise RuntimeError("Hierarchical classifier returned invalid class scores.")
+        class_scores /= score_sum
+        index = int(np.argmax(class_scores))
+        return {
+            "pest": class_names[index],
+            "confidence": float(class_scores[index]),
+        }
+
+    # Safe fallback for deployments that have not shipped the new bundle yet.
+    prediction = ai_model.predict(model_input, verbose=0)[0]
     prediction = np.asarray(prediction, dtype=np.float32)
     if prediction.shape != (len(class_names),):
-        raise RuntimeError(
-            "Model output does not match the class labels."
-        )
+        raise RuntimeError("Model output does not match the class labels.")
     if not np.all(np.isfinite(prediction)):
         raise RuntimeError("Model output contains non-finite scores.")
 
