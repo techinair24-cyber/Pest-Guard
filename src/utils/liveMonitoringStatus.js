@@ -25,7 +25,7 @@ export function getLeadingSpeciesLabel(detection) {
 export function getIdentificationLabel(detection) {
   return detection?.identification_status === 'CONFIRMED'
     ? 'CONFIRMED IDENTIFICATION'
-    : 'UNVERIFIED SPECIES CANDIDATE'
+    : 'SPECIES PREDICTION'
 }
 
 export function formatDeviceTemperature(value, isOnline) {

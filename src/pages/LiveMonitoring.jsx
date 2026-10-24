@@ -653,7 +653,7 @@ function LiveMonitoring() {
           {displayDetection && (
             <p className="latest-identification-status">
               {predictedPestName
-                ? 'Unverified model result · '
+                ? 'Model prediction · '
                 : !isUnconfirmedMatchStatus(displayDetectionLabel)
                   ? `${displayDetectionLabel} · `
                   : ''}

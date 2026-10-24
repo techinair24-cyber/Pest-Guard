@@ -34,7 +34,7 @@ export function getPredictionUncertainty(detection) {
     return ''
   }
 
-  return 'Unverified result — model scores are uncalibrated ranking estimates, not confirmed identifications.'
+  return 'Model prediction — scores are uncalibrated ranking estimates, not confirmed identifications.'
 }
 
 export function getCandidateDisplayName(candidate) {

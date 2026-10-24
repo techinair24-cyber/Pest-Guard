@@ -40,7 +40,7 @@ test('confirmation is shown only for the explicit backend CONFIRMED status', () 
         identification_status: status,
         group_score: 0.999,
       }),
-      'SPECIES CANDIDATE',
+      'SPECIES PREDICTION',
     )
   }
 })

@@ -49,19 +49,20 @@ test('missing model scores are not converted to fabricated zero scores', () => {
   )
 })
 
-test('low-scoring and historical candidate results always show uncertainty', () => {
-  assert.match(
-    getPredictionUncertainty({
+test('candidate results use neutral wording and retain the score qualification', () => {
+  for (const detection of [
+    {
       confidence: 0.277,
       pest: 'Chorthippus mollis',
       identification_status: 'UNCONFIRMED',
-    }),
-    /Unverified result/,
-  )
-  assert.match(
-    getPredictionUncertainty({ confidence: null, pest: 'Chorthippus mollis' }),
-    /uncalibrated ranking estimates/,
-  )
+    },
+    { confidence: null, pest: 'Chorthippus mollis' },
+  ]) {
+    const message = getPredictionUncertainty(detection)
+    assert.match(message, /Model prediction/)
+    assert.match(message, /uncalibrated ranking estimates/)
+    assert.doesNotMatch(message, /unverified/i)
+  }
 })
 
 test('history and live websocket records use the same group and candidate display rules', () => {

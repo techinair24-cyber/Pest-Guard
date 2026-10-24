@@ -231,7 +231,7 @@ function LiveStatusCard({ detection, device, error }) {
             </div>
 
             <div>
-              <span>Candidate risk · unverified</span>
+              <span>Candidate risk</span>
 
               <strong
                 className={
@@ -278,7 +278,7 @@ function LiveStatusCard({ detection, device, error }) {
                   <li key={`${prediction.pest}-${index}`}>
                     <span>
                       {getCandidateDisplayName(prediction)}
-                      <small>Unverified candidate</small>
+                      <small>Species candidate</small>
                     </span>
                     <strong>{formatModelScore(prediction.score)}</strong>
                   </li>
