@@ -14,6 +14,7 @@ class DeviceHeartbeat(BaseModel):
     connection: str = "CONNECTED"
     temperature: Optional[float] = None
     humidity: Optional[float] = None
+    detection_enabled: Optional[bool] = None
 
 
 class DeviceResponse(BaseModel):

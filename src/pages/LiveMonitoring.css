@@ -1145,6 +1145,19 @@
   background: #fef3c7;
 }
 
+.detection-control-state.is-requested {
+  color: #854d0e;
+  background: #fef3c7;
+}
+
+.latest-species-candidate {
+  display: block;
+  margin-top: 0.45rem;
+  color: var(--monitoring-muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
 .detection-control-button {
   min-height: 44px;
   padding: 0.7rem 1.1rem;

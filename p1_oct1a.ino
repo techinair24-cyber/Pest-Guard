@@ -41,7 +41,7 @@ const char* heartbeatURL =
 
 // The field unit starts stopped until the website enables detection.
 
-bool detectionEnabled = false;
+volatile bool detectionEnabled = false;
 
 unsigned long lastControlPollMs = 0;
 
@@ -85,11 +85,12 @@ void sendDeviceHeartbeat() {
 
   heartbeatHttp.addHeader("Content-Type", "application/json");
 
-  int heartbeatCode = heartbeatHttp.POST(
+  String heartbeatPayload =
+    "{\"status\":\"ONLINE\",\"connection\":\"CONNECTED\",\"detection_enabled\":";
+  heartbeatPayload += detectionEnabled ? "true" : "false";
+  heartbeatPayload += "}";
 
-    "{\"status\":\"ONLINE\",\"connection\":\"CONNECTED\"}"
-
-  );
+  int heartbeatCode = heartbeatHttp.POST(heartbeatPayload);
 
   if (heartbeatCode >= 200 && heartbeatCode < 300) {
 
@@ -1202,6 +1203,8 @@ bool pollDetectionControl() {
       ? "Remote command: DETECT enabled"
 
       : "Remote command: STOP detection");
+
+    sendDeviceHeartbeat();
 
   }
 

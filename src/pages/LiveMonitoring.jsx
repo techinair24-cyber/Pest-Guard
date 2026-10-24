@@ -26,20 +26,17 @@ import {
   getPredictionUncertainty,
   getTopSpeciesPredictions,
 } from '../utils/insectPredictions'
+import {
+  formatDeviceHumidity,
+  formatDeviceTemperature,
+  getDetectionControlPresentation,
+  getIdentificationLabel,
+  getLeadingSpeciesPrediction,
+} from '../utils/liveMonitoringStatus'
 import './LiveMonitoring.css'
 
 const HISTORY_CLEAR_KEY = 'pest_guard_history_cleared_at'
 const ALERTED_DETECTIONS_KEY = 'pest_guard_alerted_detection_keys'
-
-function formatOnlineTemperature(value) {
-  const number = Number(value)
-  return Number.isFinite(number) ? `${number.toFixed(1)} °C` : '—'
-}
-
-function formatOnlineHumidity(value) {
-  const number = Number(value)
-  return Number.isFinite(number) ? `${number.toFixed(0)}%` : '—'
-}
 
 function getStoredClearTime() {
   try {
@@ -119,8 +116,10 @@ function LiveMonitoring() {
   const [historyRetryCount, setHistoryRetryCount] = useState(0)
   const [historyClearedAt, setHistoryClearedAt] = useState(() => getStoredClearTime())
   const [popup, setPopup] = useState(null)
-  const [detectionControlEnabled, setDetectionControlEnabled] = useState(false)
   const [detectionControlKnown, setDetectionControlKnown] = useState(false)
+  const [detectionControlView, setDetectionControlView] = useState(
+    () => getDetectionControlPresentation({ enabled: false }),
+  )
   const [detectionControlBusy, setDetectionControlBusy] = useState(false)
   const [detectionControlError, setDetectionControlError] = useState('')
   const [detectionControlMessage, setDetectionControlMessage] = useState(
@@ -165,17 +164,10 @@ function LiveMonitoring() {
       getDetectionControl(deviceId)
         .then((result) => {
           if (!active) return
-          if (typeof result?.enabled !== 'boolean') {
-            throw new Error('Backend returned an invalid control state.')
-          }
-          const enabled = result.enabled
-          setDetectionControlEnabled(enabled)
+          const control = getDetectionControlPresentation(result)
+          setDetectionControlView(control)
           setDetectionControlKnown(true)
-          setDetectionControlMessage(
-            enabled
-              ? 'Backend command: Detect. The field unit has not acknowledged an active cycle.'
-              : 'Backend command: Stop. The field unit may finish an active cycle.',
-          )
+          setDetectionControlMessage(control.message)
           setDetectionControlError('')
         })
         .catch((controlError) => {
@@ -200,17 +192,13 @@ function LiveMonitoring() {
 
     try {
       const result = await setDetectionEnabled(deviceId, enabled)
-      if (typeof result?.enabled !== 'boolean' || result.enabled !== enabled) {
+      const control = getDetectionControlPresentation(result)
+      if (control.enabled !== enabled) {
         throw new Error('Backend did not confirm the requested control value.')
       }
-      const accepted = result.enabled
-      setDetectionControlEnabled(accepted)
+      setDetectionControlView(control)
       setDetectionControlKnown(true)
-      setDetectionControlMessage(
-        accepted
-          ? 'Backend command: Detect. The field unit has not acknowledged an active cycle.'
-          : 'Backend command: Stop. The field unit may finish an active cycle.'
-      )
+      setDetectionControlMessage(control.message)
     } catch (controlError) {
       setDetectionControlKnown(false)
       setDetectionControlError(`Control request failed: ${controlError.message}`)
@@ -220,8 +208,8 @@ function LiveMonitoring() {
   }
   const deviceTimestamp = liveDevice?.last_seen || liveDevice?.lastSeen
   const healthTone = connectionState === 'Online' ? 'online' : 'offline'
-  const predictedPestName =
-    typeof displayDetection?.pest === 'string' ? displayDetection.pest.trim() : ''
+  const leadingSpeciesPrediction = getLeadingSpeciesPrediction(displayDetection)
+  const predictedPestName = leadingSpeciesPrediction?.pest || ''
   const insectGroup = getDetectionInsectGroup(displayDetection)
   const topSpeciesPredictions = getTopSpeciesPredictions(
     displayDetection?.top_predictions,
@@ -385,8 +373,14 @@ function LiveMonitoring() {
     }
   }, [])
 
-  const displayTemperature = liveDevice?.temperature
-  const displayHumidity = liveDevice?.humidity
+  const displayTemperature = formatDeviceTemperature(
+    liveDevice?.temperature,
+    connectionState === 'Online',
+  )
+  const displayHumidity = formatDeviceHumidity(
+    liveDevice?.humidity,
+    connectionState === 'Online',
+  )
 
   useEffect(() => {
     let active = true
@@ -571,26 +565,20 @@ function LiveMonitoring() {
           )}
         </div>
         <div className="detection-control-actions">
-          <span
-            className={`detection-control-state ${
-              !detectionControlKnown
-                ? 'is-unknown'
-                : detectionControlEnabled
-                  ? 'is-running'
-                  : 'is-stopped'
-            }`}
-          >
-            {!detectionControlKnown
-              ? 'CONTROL UNKNOWN'
-              : detectionControlEnabled
-                ? 'DETECT REQUESTED'
-                : 'STOP REQUESTED'}
+            <span
+              className={`detection-control-state ${
+                detectionControlKnown ? detectionControlView.className : 'is-unknown'
+              }`}
+            >
+              {!detectionControlKnown
+                ? 'CONTROL UNKNOWN'
+                : detectionControlView.label}
           </span>
           <button
             type="button"
             className="detection-control-button detection-control-start"
             onClick={() => handleDetectionControl(true)}
-            disabled={detectionControlBusy || (detectionControlKnown && detectionControlEnabled)}
+            disabled={detectionControlBusy || (detectionControlKnown && detectionControlView.enabled)}
           >
             {detectionControlBusy ? 'Please wait…' : 'Detect'}
           </button>
@@ -598,7 +586,7 @@ function LiveMonitoring() {
             type="button"
             className="detection-control-button detection-control-stop"
             onClick={() => handleDetectionControl(false)}
-            disabled={detectionControlBusy || (detectionControlKnown && !detectionControlEnabled)}
+            disabled={detectionControlBusy || (detectionControlKnown && !detectionControlView.enabled)}
           >
             {detectionControlBusy ? 'Please wait…' : 'Stop'}
           </button>
@@ -628,9 +616,7 @@ function LiveMonitoring() {
                     marginBottom: '0.25rem',
                   }}
                 >
-                  {displayDetection?.identification_status === 'CONFIRMED'
-                    ? 'CONFIRMED IDENTIFICATION'
-                    : 'UNVERIFIED SPECIES CANDIDATE'}
+                  {getIdentificationLabel(displayDetection)}
                 </small>
               )}
               <strong>
@@ -652,6 +638,15 @@ function LiveMonitoring() {
                             ? 'Checking for detections…'
                             : 'No detection received'}
               </strong>
+              {predictedPestName && (
+                <small className="latest-species-candidate">
+                  Leading species candidate:{' '}
+                  {getCandidateDisplayName(leadingSpeciesPrediction)}
+                  {' · '}
+                  {formatModelScore(leadingSpeciesPrediction.score)}
+                  {' (uncalibrated score)'}
+                </small>
+              )}
             </div>
           </div>
 
@@ -755,11 +750,11 @@ function LiveMonitoring() {
             </div>
             <div className="device-health-row">
               <span>Temperature</span>
-              <strong>{formatOnlineTemperature(displayTemperature)}</strong>
+              <strong>{displayTemperature}</strong>
             </div>
             <div className="device-health-row">
               <span>Humidity</span>
-              <strong>{formatOnlineHumidity(displayHumidity)}</strong>
+              <strong>{displayHumidity}</strong>
             </div>
           </div>
         </article>

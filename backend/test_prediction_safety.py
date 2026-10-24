@@ -1,7 +1,7 @@
 import asyncio
 import json
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -1031,6 +1031,123 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
             response["affected_crops"],
         )
         broadcast.assert_awaited_once_with(response)
+
+
+class DeviceHeartbeatAndControlTests(unittest.TestCase):
+    def setUp(self):
+        self.device_id = "TEST-CONTROL-UNIT"
+        self.device = SimpleNamespace(
+            device_id=self.device_id,
+            name="Test field unit",
+            status="ONLINE",
+            connection="CONNECTED",
+            last_seen=datetime.now(timezone.utc).replace(tzinfo=None),
+            temperature=0.0,
+            humidity=0.0,
+        )
+        self.db = Mock()
+        self.db.query.return_value.filter.return_value.first.return_value = self.device
+        self.db.refresh.side_effect = lambda device: None
+        main.DETECTION_CONTROL_STATE.pop(self.device_id, None)
+        main.DETECTION_CONTROL_REPORTS.pop(self.device_id, None)
+        main.DEVICE_SENSOR_REPORTS.pop(self.device_id, None)
+
+    def tearDown(self):
+        main.DETECTION_CONTROL_STATE.pop(self.device_id, None)
+        main.DETECTION_CONTROL_REPORTS.pop(self.device_id, None)
+        main.DEVICE_SENSOR_REPORTS.pop(self.device_id, None)
+
+    def test_heartbeat_clears_unreported_sensor_values(self):
+        response = main.device_heartbeat(
+            self.device_id,
+            main.DeviceHeartbeat(),
+            self.db,
+        )
+
+        self.assertIsNone(self.device.temperature)
+        self.assertIsNone(self.device.humidity)
+        self.assertIsNone(response["device"]["temperature"])
+        self.assertIsNone(response["device"]["humidity"])
+
+    def test_stored_sensor_values_without_a_fresh_device_report_are_unavailable(self):
+        main.DEVICE_SENSOR_REPORTS.pop(self.device_id, None)
+
+        response = main._device_response(self.device)
+
+        self.assertIsNone(response["temperature"])
+        self.assertIsNone(response["humidity"])
+
+    def test_invalid_sensor_values_are_unavailable_and_valid_zero_is_preserved(self):
+        response = main.device_heartbeat(
+            self.device_id,
+            main.DeviceHeartbeat(temperature=float("nan"), humidity=101),
+            self.db,
+        )
+        self.assertIsNone(response["device"]["temperature"])
+        self.assertIsNone(response["device"]["humidity"])
+
+        response = main.device_heartbeat(
+            self.device_id,
+            main.DeviceHeartbeat(temperature=0, humidity=0),
+            self.db,
+        )
+        self.assertEqual(response["device"]["temperature"], 0)
+        self.assertEqual(response["device"]["humidity"], 0)
+
+    def test_control_state_waits_for_real_heartbeat_acknowledgement(self):
+        requested = main.set_detection_control(
+            self.device_id,
+            {"enabled": True},
+        )
+        self.assertEqual(requested["status"], "UNKNOWN")
+        self.assertIsNone(requested["device_enabled"])
+
+        main.device_heartbeat(
+            self.device_id,
+            main.DeviceHeartbeat(detection_enabled=False),
+            self.db,
+        )
+        self.assertEqual(
+            main.get_detection_control(self.device_id)["status"],
+            "REQUESTED",
+        )
+
+        main.device_heartbeat(
+            self.device_id,
+            main.DeviceHeartbeat(detection_enabled=True),
+            self.db,
+        )
+        acknowledged = main.get_detection_control(self.device_id)
+        self.assertEqual(acknowledged["status"], "RUNNING")
+        self.assertTrue(acknowledged["device_enabled"])
+
+        stopped = main.set_detection_control(
+            self.device_id,
+            {"enabled": False},
+        )
+        self.assertEqual(stopped["status"], "REQUESTED")
+
+        main.device_heartbeat(
+            self.device_id,
+            main.DeviceHeartbeat(detection_enabled=False),
+            self.db,
+        )
+        self.assertEqual(
+            main.get_detection_control(self.device_id)["status"],
+            "STOPPED",
+        )
+
+    def test_stale_control_heartbeat_is_not_presented_as_acknowledgement(self):
+        main.DETECTION_CONTROL_STATE[self.device_id] = True
+        main.DETECTION_CONTROL_REPORTS[self.device_id] = {
+            "enabled": True,
+            "reported_at": datetime.now(timezone.utc) - timedelta(minutes=2),
+        }
+
+        response = main.get_detection_control(self.device_id)
+
+        self.assertEqual(response["status"], "UNKNOWN")
+        self.assertIsNone(response["device_enabled"])
 
 
 if __name__ == "__main__":

@@ -37,6 +37,18 @@ test('species candidates use actual response values and sort to the top three', 
   assert.equal(formatModelScore(candidates[1].score), '80.0%')
 })
 
+test('missing model scores are not converted to fabricated zero scores', () => {
+  assert.equal(formatModelScore(null), 'N/A')
+  assert.equal(formatModelScore(undefined), 'N/A')
+  assert.deepEqual(
+    getTopSpeciesPredictions([
+      { pest: 'no score', score: null },
+      { pest: 'valid score', score: 0.25 },
+    ]).map(({ pest }) => pest),
+    ['valid score'],
+  )
+})
+
 test('low-scoring and historical candidate results always show uncertainty', () => {
   assert.match(
     getPredictionUncertainty({

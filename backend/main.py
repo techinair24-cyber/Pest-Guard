@@ -1163,6 +1163,8 @@ async def lifespan(_: FastAPI):
 # PEST_GUARD_DETECTION_CONTROL_STATE
 # Default to stopped after backend restart for fail-safe behavior.
 DETECTION_CONTROL_STATE = {}
+DETECTION_CONTROL_REPORTS = {}
+DEVICE_SENSOR_REPORTS = {}
 
 app = FastAPI(
 
@@ -1435,23 +1437,31 @@ def _device_response(device):
         except ValueError:
             last_seen = None
     is_online = False
+    now = datetime.now(timezone.utc)
     if isinstance(last_seen, datetime):
         if last_seen.tzinfo is None or last_seen.utcoffset() is None:
             last_seen = last_seen.replace(tzinfo=timezone.utc)
         else:
             last_seen = last_seen.astimezone(timezone.utc)
-        age_seconds = (
-            datetime.now(timezone.utc) - last_seen
-        ).total_seconds()
+        age_seconds = (now - last_seen).total_seconds()
         is_online = 0 <= age_seconds <= DEVICE_STALE_SECONDS
+
+    sensor_report = DEVICE_SENSOR_REPORTS.get(device.device_id)
+    sensor_values_are_fresh = False
+    if sensor_report and is_online:
+        sensor_age = (now - sensor_report["reported_at"]).total_seconds()
+        sensor_values_are_fresh = 0 <= sensor_age <= DEVICE_STALE_SECONDS
+
     return {
         "device_id": device.device_id,
         "name": device.name,
         "status": "ONLINE" if is_online else "OFFLINE",
         "connection": "CONNECTED" if is_online else "DISCONNECTED",
         "last_seen": device.last_seen,
-        "temperature": device.temperature,
-        "humidity": device.humidity,
+        "temperature": (
+            sensor_report["temperature"] if sensor_values_are_fresh else None
+        ),
+        "humidity": sensor_report["humidity"] if sensor_values_are_fresh else None,
     }
 
 @app.get("/api/devices")
@@ -1523,10 +1533,32 @@ def device_heartbeat(
 
     device.connection = payload.connection
 
-    for f in payload.model_fields_set & {"temperature", "humidity"}:
-        setattr(device, f, getattr(payload, f))
+    for field in ("temperature", "humidity"):
+        value = getattr(payload, field)
+        if value is not None and not np.isfinite(value):
+            value = None
+        if field == "humidity" and value is not None and not 0 <= value <= 100:
+            value = None
+        setattr(device, field, value)
 
-    device.last_seen = datetime.now(timezone.utc).replace(tzinfo=None)
+    heartbeat_time = datetime.now(timezone.utc)
+    device.last_seen = heartbeat_time.replace(tzinfo=None)
+    DEVICE_SENSOR_REPORTS[device_id] = {
+        "temperature": device.temperature,
+        "humidity": device.humidity,
+        "reported_at": heartbeat_time,
+    }
+
+    if "detection_enabled" in payload.model_fields_set:
+        if payload.detection_enabled is None:
+            DETECTION_CONTROL_REPORTS.pop(device_id, None)
+        else:
+            DETECTION_CONTROL_REPORTS[device_id] = {
+                "enabled": payload.detection_enabled,
+                "reported_at": heartbeat_time,
+            }
+    else:
+        DETECTION_CONTROL_REPORTS.pop(device_id, None)
 
     db.commit()
     db.refresh(device)
@@ -1536,12 +1568,40 @@ def device_heartbeat(
     }
 
 # PEST_GUARD_DETECTION_CONTROL_ENDPOINTS
-@app.get("/api/devices/{device_id}/detection-control")
-def get_detection_control(device_id: str):
+def _detection_control_response(device_id):
+    requested_enabled = bool(DETECTION_CONTROL_STATE.get(device_id, False))
+    report = DETECTION_CONTROL_REPORTS.get(device_id)
+    device_enabled = None
+    reported_at = None
+    if report:
+        reported_at = report["reported_at"]
+        age_seconds = (
+            datetime.now(timezone.utc) - reported_at
+        ).total_seconds()
+        if 0 <= age_seconds <= DEVICE_STALE_SECONDS:
+            device_enabled = report["enabled"]
+        else:
+            reported_at = None
+
+    if device_enabled is None:
+        status = "UNKNOWN"
+    elif device_enabled != requested_enabled:
+        status = "REQUESTED"
+    else:
+        status = "RUNNING" if device_enabled else "STOPPED"
+
     return {
         "device_id": device_id,
-        "enabled": bool(DETECTION_CONTROL_STATE.get(device_id, False)),
+        "enabled": requested_enabled,
+        "device_enabled": device_enabled,
+        "status": status,
+        "reported_at": reported_at.isoformat() if reported_at else None,
     }
+
+
+@app.get("/api/devices/{device_id}/detection-control")
+def get_detection_control(device_id: str):
+    return _detection_control_response(device_id)
 
 
 @app.post("/api/devices/{device_id}/detection-control")
@@ -1554,7 +1614,7 @@ def set_detection_control(device_id: str, payload: dict):
         )
 
     DETECTION_CONTROL_STATE[device_id] = enabled
-    return {"device_id": device_id, "enabled": enabled}
+    return _detection_control_response(device_id)
 
 
 @app.post("/api/ai/predict")

@@ -11,6 +11,9 @@ export function getTopSpeciesPredictions(predictions) {
     .filter((prediction) => (
       typeof prediction?.pest === 'string' &&
       prediction.pest.trim() !== '' &&
+      prediction.score !== null &&
+      prediction.score !== undefined &&
+      prediction.score !== '' &&
       Number.isFinite(Number(prediction.score))
     ))
     .slice()
@@ -19,6 +22,7 @@ export function getTopSpeciesPredictions(predictions) {
 }
 
 export function formatModelScore(value) {
+  if (value === null || value === undefined || value === '') return 'N/A'
   const score = Number(value)
   if (!Number.isFinite(score) || score < 0) return 'N/A'
   const percentage = score > 1 ? score : score * 100
