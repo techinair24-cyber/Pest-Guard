@@ -633,7 +633,7 @@ function LiveMonitoring() {
               }`}
             >
               {detectionControlActionView?.label || (!detectionControlKnown
-                ? 'CONTROL UNKNOWN'
+                 ? 'READY'
                 : detectionControlView.label)}
           </span>
           <button

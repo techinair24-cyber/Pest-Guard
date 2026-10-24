@@ -118,7 +118,7 @@ export function getDetectionControlPresentation(response, { commandAccepted = fa
           ? 'DEVICE OFFLINE'
           : status === 'TIMEOUT'
             ? 'COMMAND TIMED OUT'
-            : 'CONTROL UNKNOWN'
+            : 'READY'
   const message = status === 'RUNNING'
     ? 'The field unit acknowledged Detect and is monitoring.'
     : status === 'STOPPED'
