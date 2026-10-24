@@ -666,11 +666,6 @@ function LiveMonitoring() {
               Latest refresh failed; showing the most recently received record.
             </p>
           )}
-          {displayDetection && predictedPestName && (
-            <p className="prediction-uncertainty">
-              {getPredictionUncertainty(displayDetection)}
-            </p>
-          )}
           {topSpeciesPredictions.length > 0 && (
             <div className="monitoring-top-species">
               <h3>Top Species Predictions</h3>
