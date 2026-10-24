@@ -8,6 +8,7 @@ import {
   getIdentificationLabel,
   getLeadingSpeciesLabel,
   getLeadingSpeciesPrediction,
+  requestDetectionControl,
 } from './liveMonitoringStatus.js'
 
 test('latest detection highlights the highest-scoring returned species, not only its group', () => {
@@ -123,5 +124,84 @@ test('control presentation distinguishes unknown, sent, and acknowledged command
       status: 'REQUESTED',
     }).label,
     'COMMAND SENT',
+  )
+})
+
+test('Detect is shown as sent until the field unit acknowledges it', async () => {
+  const calls = []
+  const control = await requestDetectionControl(
+    'FIELD-UNIT-01',
+    true,
+    async (...args) => {
+      calls.push(args)
+      return {
+        device_id: 'FIELD-UNIT-01',
+        enabled: true,
+        command_received: true,
+        device_enabled: null,
+        status: 'REQUESTED',
+      }
+    },
+  )
+
+  assert.deepEqual(calls, [['FIELD-UNIT-01', true]])
+  assert.equal(control.label, 'COMMAND SENT')
+  assert.match(control.message, /waiting for the field-unit acknowledgement/)
+})
+
+test('Stop is shown as sent until the field unit acknowledges it', async () => {
+  const control = await requestDetectionControl(
+    'FIELD-UNIT-01',
+    false,
+    async () => ({
+      device_id: 'FIELD-UNIT-01',
+      enabled: false,
+      command_received: true,
+      device_enabled: true,
+      status: 'REQUESTED',
+    }),
+  )
+
+  assert.equal(control.label, 'COMMAND SENT')
+  assert.match(control.message, /Stop command was accepted/)
+})
+
+test('accepted commands show confirmed labels only with matching device acknowledgement', async () => {
+  const detect = await requestDetectionControl('FIELD-UNIT-01', true, async () => ({
+    enabled: true,
+    device_enabled: true,
+    status: 'RUNNING',
+  }))
+  const stop = await requestDetectionControl('FIELD-UNIT-01', false, async () => ({
+    enabled: false,
+    device_enabled: false,
+    status: 'STOPPED',
+  }))
+
+  assert.equal(detect.label, 'DETECTING')
+  assert.equal(stop.label, 'DETECTION STOPPED')
+})
+
+test('failed control requests reject without producing a successful control state', async () => {
+  await assert.rejects(
+    requestDetectionControl(
+      'FIELD-UNIT-01',
+      true,
+      async () => {
+        throw new Error('backend unavailable')
+      },
+    ),
+    /backend unavailable/,
+  )
+})
+
+test('a response that does not accept the requested state is rejected', async () => {
+  await assert.rejects(
+    requestDetectionControl('FIELD-UNIT-01', true, async () => ({
+      enabled: false,
+      device_enabled: null,
+      status: 'UNKNOWN',
+    })),
+    /Backend did not confirm the requested control value/,
   )
 })

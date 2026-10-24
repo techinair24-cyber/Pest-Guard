@@ -34,6 +34,7 @@ import {
   getDetectionControlPresentation,
   getIdentificationLabel,
   getLeadingSpeciesPrediction,
+  requestDetectionControl,
 } from '../utils/liveMonitoringStatus'
 import './LiveMonitoring.css'
 
@@ -118,6 +119,7 @@ function LiveMonitoring() {
   const [historyRetryCount, setHistoryRetryCount] = useState(0)
   const [historyClearedAt, setHistoryClearedAt] = useState(() => getStoredClearTime())
   const [popup, setPopup] = useState(null)
+  const [controlRefreshNonce, setControlRefreshNonce] = useState(0)
   const [detectionControlKnown, setDetectionControlKnown] = useState(false)
   const [detectionControlView, setDetectionControlView] = useState(
     () => getDetectionControlPresentation({ enabled: false }),
@@ -127,6 +129,9 @@ function LiveMonitoring() {
   const [detectionControlMessage, setDetectionControlMessage] = useState(
     'Checking the backend control command.',
   )
+  const controlCommandVersionRef = useRef(0)
+  const controlReadVersionRef = useRef(0)
+  const controlCommandPendingRef = useRef(false)
   const [pestDirectory, setPestDirectory] = useState({})
   const alertedKeysRef = useRef(getStoredAlertedKeys())
 
@@ -163,9 +168,16 @@ function LiveMonitoring() {
     let active = true
 
     const refreshControlState = () => {
+      if (controlCommandPendingRef.current) return
+      const commandVersion = controlCommandVersionRef.current
+      const readVersion = ++controlReadVersionRef.current
       getDetectionControl(deviceId)
         .then((result) => {
-          if (!active) return
+          if (
+            !active ||
+            commandVersion !== controlCommandVersionRef.current ||
+            readVersion !== controlReadVersionRef.current
+          ) return
           const control = getDetectionControlPresentation(result)
           setDetectionControlView(control)
           setDetectionControlKnown(true)
@@ -173,7 +185,11 @@ function LiveMonitoring() {
           setDetectionControlError('')
         })
         .catch((controlError) => {
-          if (!active) return
+          if (
+            !active ||
+            commandVersion !== controlCommandVersionRef.current ||
+            readVersion !== controlReadVersionRef.current
+          ) return
           setDetectionControlKnown(false)
           setDetectionControlError(`Unable to read backend control command: ${controlError.message}`)
         })
@@ -186,26 +202,29 @@ function LiveMonitoring() {
       active = false
       window.clearInterval(refreshTimer)
     }
-  }, [deviceId])
+  }, [deviceId, controlRefreshNonce])
 
   const handleDetectionControl = async (enabled) => {
+    controlCommandVersionRef.current += 1
+    controlReadVersionRef.current += 1
+    controlCommandPendingRef.current = true
     setDetectionControlBusy(true)
     setDetectionControlError('')
 
     try {
-      const result = await setDetectionEnabled(deviceId, enabled)
-      const control = getDetectionControlPresentation(result, {
-        commandAccepted: true,
-      })
-      if (control.enabled !== enabled) {
-        throw new Error('Backend did not confirm the requested control value.')
-      }
+      const control = await requestDetectionControl(
+        deviceId,
+        enabled,
+        setDetectionEnabled,
+      )
       setDetectionControlView(control)
       setDetectionControlKnown(true)
       setDetectionControlMessage(control.message)
+      setControlRefreshNonce((nonce) => nonce + 1)
     } catch (controlError) {
       setDetectionControlError(`Control request failed: ${controlError.message}`)
     } finally {
+      controlCommandPendingRef.current = false
       setDetectionControlBusy(false)
     }
   }

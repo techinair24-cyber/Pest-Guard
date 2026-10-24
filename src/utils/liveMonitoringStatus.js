@@ -115,3 +115,14 @@ export function getDetectionControlPresentation(response, { commandAccepted = fa
           : 'is-unknown',
   }
 }
+
+export async function requestDetectionControl(deviceId, enabled, sendCommand) {
+  const response = await sendCommand(deviceId, enabled)
+  const control = getDetectionControlPresentation(response, {
+    commandAccepted: true,
+  })
+  if (control.enabled !== enabled) {
+    throw new Error('Backend did not confirm the requested control value.')
+  }
+  return control
+}
