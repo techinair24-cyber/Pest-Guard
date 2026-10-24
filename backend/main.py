@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
@@ -1090,6 +1090,7 @@ def _migrate_detection_metadata_columns():
         "affected_crops": "TEXT",
         "metadata_source_name": "VARCHAR(200)",
         "metadata_source_url": "VARCHAR(1000)",
+        "top_predictions": "TEXT",
     }
     with engine.begin() as connection:
         existing_columns = {
