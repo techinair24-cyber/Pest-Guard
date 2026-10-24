@@ -14,6 +14,8 @@ import {
 import {
   getDetectionTime,
   getDetectionDisplayStatus,
+  getDetectionHistoryKey,
+  filterDetectionHistory,
   isLatestDetectionCandidate,
   isAfterHistoryClear,
   mergeDetections,
@@ -408,12 +410,13 @@ function LiveMonitoring() {
 
         setHistory((current) => {
           const currentVisible = current.filter(
-            (item) =>
-              (historyFilter === 'ALL' || item.status === historyFilter) &&
-              isAfterHistoryClear(item, historyClearedAt),
+            (item) => isAfterHistoryClear(item, historyClearedAt),
           )
 
-          return mergeDetections(currentVisible, visibleDetections)
+          return filterDetectionHistory(
+            mergeDetections(currentVisible, visibleDetections),
+            historyFilter,
+          )
         })
       } catch (historyFetchError) {
         if (!active) {
@@ -490,13 +493,10 @@ function LiveMonitoring() {
   const historyWithLiveDetection = mergeDetections(history, detection ? [detection] : [])
     .filter((item) => isAfterHistoryClear(item, historyClearedAt))
 
-  const filteredHistory = historyWithLiveDetection.filter((item) => {
-    if (historyFilter === 'ALL') {
-      return true
-    }
-
-    return item.status === historyFilter
-  })
+  const filteredHistory = filterDetectionHistory(
+    historyWithLiveDetection,
+    historyFilter,
+  )
 
   const canLoadMore = filteredHistory.length >= historyLimit
 
@@ -838,7 +838,7 @@ function LiveMonitoring() {
                 const topCandidates = getTopSpeciesPredictions(item.top_predictions)
 
                 return (
-                  <div key={item.id ?? `${item.device_id}-${item.detected_at}`} className="history-row">
+                  <div key={getDetectionHistoryKey(item)} className="history-row">
                     <div className="history-main">
                       <span className="history-time">{formatDate(getDetectionTime(item))}</span>
                       <strong>

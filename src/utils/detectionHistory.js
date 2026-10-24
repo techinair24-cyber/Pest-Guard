@@ -125,15 +125,46 @@ export function isAfterHistoryClear(item, clearedAt) {
   return Number.isFinite(detectionTimeMs) && detectionTimeMs > clearedAtMs
 }
 
+function getFallbackDetectionIdentity(detection) {
+  return JSON.stringify([
+    detection?.device_id || '',
+    parseServerTimestamp(getDetectionTime(detection)),
+    String(detection?.status || '').toUpperCase(),
+    String(detection?.pest || '').trim(),
+    String(detection?.insect_group || '').trim(),
+    detection?.confidence ?? '',
+    String(detection?.message || ''),
+  ])
+}
+
+export function getDetectionHistoryKey(detection) {
+  return detection?.id != null
+    ? `id:${detection.id}`
+    : `event:${getFallbackDetectionIdentity(detection)}`
+}
+
+export function filterDetectionHistory(detections, filter = 'ALL') {
+  if (!Array.isArray(detections)) {
+    return []
+  }
+
+  const normalizedFilter = String(filter || 'ALL').trim().toUpperCase()
+  if (normalizedFilter === 'ALL') {
+    return detections
+  }
+
+  return detections.filter(
+    (detection) =>
+      String(detection?.status || '').trim().toUpperCase() === normalizedFilter,
+  )
+}
+
 function sameDetection(first, second) {
   if (first?.id != null && second?.id != null) {
     return String(first.id) === String(second.id)
   }
 
-  const firstTime = parseServerTimestamp(getDetectionTime(first))
-  const secondTime = parseServerTimestamp(getDetectionTime(second))
-
-  return Number.isFinite(firstTime) && firstTime === secondTime
+  return getFallbackDetectionIdentity(first) === getFallbackDetectionIdentity(second)
 }
 
 function sortNewestFirst(detections) {
@@ -152,8 +183,19 @@ export function mergeDetections(...groups) {
   const merged = []
 
   groups.flat().forEach((detection) => {
-    if (!merged.some((existing) => sameDetection(existing, detection))) {
+    const existingIndex = merged.findIndex((existing) =>
+      sameDetection(existing, detection),
+    )
+
+    if (existingIndex === -1) {
       merged.push(detection)
+    } else {
+      const existing = merged[existingIndex]
+      merged[existingIndex] = {
+        ...existing,
+        ...detection,
+        id: detection?.id ?? existing?.id,
+      }
     }
   })
 
