@@ -25,6 +25,20 @@ class FakeRequest:
         return self._payload
 
 
+class FakeProbabilityPipeline:
+    def __init__(self, classes, probabilities):
+        self.estimator = Mock(classes_=np.asarray(classes))
+        self.probabilities = np.asarray(probabilities, dtype=np.float64)
+
+    def __getitem__(self, index):
+        if index != -1:
+            raise IndexError(index)
+        return self.estimator
+
+    def predict_proba(self, _features):
+        return self.probabilities
+
+
 class AudioPredictionSafetyTests(unittest.TestCase):
     def setUp(self):
         self.database = Mock()
@@ -130,12 +144,16 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             np.array([-800, 800], dtype=np.int16),
             40000,
         )
-        scores = np.full(len(main.class_names), 1 / len(main.class_names))
+        embedding = np.zeros((1, main._HIERARCHICAL_BUNDLE["feature_dim"]))
+        inference = Mock(return_value=(embedding, None))
 
-        with patch.object(main.ai_model, "predict", return_value=[scores]) as predict:
+        with (
+            patch.object(main, "_pest_light_gate_score", return_value=1.0),
+            patch.object(main, "_HIERARCHICAL_INFERENCE_MODEL", inference),
+        ):
             main.predict_pest(audio)
 
-        features = predict.call_args.args[0].numpy()
+        features = inference.call_args.args[0].numpy()
         self.assertEqual(features.shape, (1, 155, 128, 1))
 
     def test_prediction_inference_is_dispatched_off_the_async_event_loop(self):
@@ -181,6 +199,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
                 "common_name",
                 "scientific_name",
                 "confidence",
+                "top_predictions",
                 "risk",
                 "risk_rationale",
                 "affected_crops",
@@ -317,29 +336,112 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             np.array([-800, 800], dtype=np.int16),
             40000,
         )
-        scores = np.zeros(len(main.class_names), dtype=np.float32)
         selected_index = 17
         expected_label = main.class_names[selected_index]
-        scores[selected_index] = 0.983
+        bundle = dict(main._HIERARCHICAL_BUNDLE)
+        groups = bundle["groups"]
+        group_by_label = bundle["group_by_label"]
+        selected_group = group_by_label[selected_index]
+        group_index = groups.index(selected_group)
+        group_probs = np.zeros((1, len(groups)), dtype=np.float64)
+        group_probs[0, group_index] = 1.0
+        bundle["group_model"] = FakeProbabilityPipeline(
+            range(len(groups)),
+            group_probs,
+        )
+        experts = {}
+        for group in groups:
+            class_ids = [
+                index
+                for index, mapped_group in enumerate(group_by_label)
+                if mapped_group == group
+            ]
+            specialist_probs = np.zeros((1, len(class_ids)), dtype=np.float64)
+            specialist_probs[0, 0] = 1.0
+            if group == selected_group:
+                specialist_probs[0] = 0.0
+                specialist_probs[0, class_ids.index(selected_index)] = 0.983
+                other_index = next(
+                    index
+                    for index, class_id in enumerate(class_ids)
+                    if class_id != selected_index
+                )
+                specialist_probs[0, other_index] = 0.017
+            experts[group] = FakeProbabilityPipeline(class_ids, specialist_probs)
+        bundle["experts"] = experts
+        embedding = np.zeros((1, bundle["feature_dim"]))
 
-        with patch.object(main.ai_model, "predict", return_value=[scores]):
+        with (
+            patch.object(main, "_pest_light_gate_score", return_value=1.0),
+            patch.object(main, "_HIERARCHICAL_BUNDLE", bundle),
+            patch.object(
+                main,
+                "_HIERARCHICAL_INFERENCE_MODEL",
+                Mock(return_value=(embedding, None)),
+            ),
+        ):
             result = main.predict_pest(audio)
 
         self.assertEqual(result["pest"], expected_label)
         self.assertAlmostEqual(result["confidence"], 0.983, places=5)
 
-    def test_model_output_with_wrong_class_count_is_rejected(self):
+    def test_missing_hierarchical_classifier_does_not_fall_back_to_cnn(self):
         audio = np.tile(
             np.array([-800, 800], dtype=np.int16),
             40000,
         )
-        wrong_output = np.zeros(len(main.class_names) - 1, dtype=np.float32)
 
         with (
-            patch.object(main.ai_model, "predict", return_value=[wrong_output]),
+            patch.object(main, "_pest_light_gate_score", return_value=1.0),
+            patch.object(main, "_HIERARCHICAL_BUNDLE", None),
+            patch.object(main, "_HIERARCHICAL_INFERENCE_MODEL", None),
+            patch.object(main.ai_model, "predict") as cnn_predict,
             self.assertRaisesRegex(
                 RuntimeError,
-                "Model output does not match the class labels",
+                "Required hierarchical classifier was not initialized",
+            ),
+        ):
+            main.predict_pest(audio)
+
+        cnn_predict.assert_not_called()
+
+    def test_hierarchical_specialist_output_with_wrong_class_count_is_rejected(self):
+        audio = np.tile(
+            np.array([-800, 800], dtype=np.int16),
+            40000,
+        )
+        bundle = dict(main._HIERARCHICAL_BUNDLE)
+        group_index = bundle["groups"].index("true_crickets")
+        group_probs = np.zeros((1, len(bundle["groups"])), dtype=np.float64)
+        group_probs[0, group_index] = 1.0
+        bundle["group_model"] = FakeProbabilityPipeline(
+            range(len(bundle["groups"])),
+            group_probs,
+        )
+        experts = dict(bundle["experts"])
+        class_ids = [
+            index
+            for index, group in enumerate(bundle["group_by_label"])
+            if group == "true_crickets"
+        ]
+        experts["true_crickets"] = FakeProbabilityPipeline(
+            class_ids,
+            np.zeros((1, len(class_ids) - 1), dtype=np.float64),
+        )
+        bundle["experts"] = experts
+        embedding = np.zeros((1, bundle["feature_dim"]))
+
+        with (
+            patch.object(main, "_pest_light_gate_score", return_value=1.0),
+            patch.object(main, "_HIERARCHICAL_BUNDLE", bundle),
+            patch.object(
+                main,
+                "_HIERARCHICAL_INFERENCE_MODEL",
+                Mock(return_value=(embedding, None)),
+            ),
+            self.assertRaisesRegex(
+                RuntimeError,
+                "Hierarchical specialist probabilities do not match the class labels",
             ),
         ):
             main.predict_pest(audio)
@@ -470,6 +572,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             scientific_name=None,
             common_name=None,
             confidence=0.632,
+            top_predictions=None,
             risk="UNKNOWN",
             risk_rationale=None,
             affected_crops="[]",
@@ -497,6 +600,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             scientific_name=None,
             common_name=None,
             confidence=0.0,
+            top_predictions=None,
             risk="UNKNOWN",
             risk_rationale=None,
             affected_crops="[]",

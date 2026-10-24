@@ -1,14 +1,41 @@
 import { Link } from 'react-router-dom'
 import { ArrowIcon, SignalIcon } from './Icons'
 import { formatTemperature, formatHumidity } from '../utils/formatters'
-import pestPreview from '../assets/pests/rice-planthopper.jpg'
 
 function formatConfidence(value) {
-  if (typeof value !== 'number' || Number.isNaN(value)) {
-    return '—'
+  if (value === null || value === undefined || value === '') {
+    return 'N/A'
   }
 
-  return `${(value * 100).toFixed(1)}%`
+  const number = Number(value)
+  if (!Number.isFinite(number) || number < 0) {
+    return 'N/A'
+  }
+
+  const percentage = number > 1 ? number : number * 100
+  return `${Math.min(percentage, 100).toFixed(1)}%`
+}
+
+function formatModelScore(value) {
+  const number = Number(value)
+
+  if (!Number.isFinite(number) || number < 0) {
+    return 'N/A'
+  }
+
+  const percentage = number > 1 ? number : number * 100
+  return `${Math.min(percentage, 100).toFixed(1)}%`
+}
+
+function getConfidenceLabel(value) {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return 'Not available'
+
+  const percentage = number > 1 ? number : number * 100
+
+  if (percentage < 50) return 'Low confidence · Verify result'
+  if (percentage < 75) return 'Moderate confidence'
+  return 'Higher confidence'
 }
 
 function formatTime(timestamp) {
@@ -162,6 +189,10 @@ function LiveStatusCard({ detection, device, error }) {
   const confidence =
     detection?.confidence ?? null
 
+  const topPredictions = Array.isArray(detection?.top_predictions)
+    ? detection.top_predictions.slice(0, 3)
+    : []
+
   const risk =
     detection?.risk ||
     'UNKNOWN'
@@ -207,19 +238,12 @@ function LiveStatusCard({ detection, device, error }) {
       {detectionAvailable ? (
         <>
           <div className="detection-name">
-            {pestName ? (
-              <img
-                src={pestPreview}
-                alt={`${pestName} crop pest`}
-              />
-            ) : (
-              <div
-                className="detection-placeholder"
-                aria-hidden="true"
-              >
-                <SignalIcon size={20} />
-              </div>
-            )}
+            <div
+              className="detection-placeholder"
+              aria-hidden="true"
+            >
+              <SignalIcon size={24} />
+            </div>
 
             <div>
               <span>Latest Detection</span>
@@ -233,11 +257,12 @@ function LiveStatusCard({ detection, device, error }) {
           {/* DETAILS */}
           <div className="status-details">
             <div>
-              <span>Confidence</span>
+              <span>AI Confidence</span>
 
               <strong>
                 {formatConfidence(confidence)}
               </strong>
+              <small>{getConfidenceLabel(confidence)}</small>
             </div>
 
             <div>
@@ -278,6 +303,25 @@ function LiveStatusCard({ detection, device, error }) {
               </strong>
             </div>
           </div>
+
+          {topPredictions.length > 0 && (
+            <div className="top-predictions">
+              <h4>Top AI Predictions</h4>
+
+              <ol>
+                {topPredictions.map((prediction, index) => (
+                  <li key={`${prediction.pest}-${index}`}>
+                    <span>{prediction.pest}</span>
+                    <strong>{formatModelScore(prediction.score)}</strong>
+                  </li>
+                ))}
+              </ol>
+
+              <small>
+                Model scores are ranking estimates, not verified probabilities.
+              </small>
+            </div>
+          )}
 
           <div className="status-extra">
             <span>Status</span>

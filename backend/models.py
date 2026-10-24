@@ -44,6 +44,7 @@ class Detection(Base):
     common_name = Column(String(150), nullable=True)
 
     confidence = Column(Float, nullable=True)
+    top_predictions = Column(Text, nullable=True)
 
     risk = Column(String(50), nullable=True)
     risk_rationale = Column(Text, nullable=True)
