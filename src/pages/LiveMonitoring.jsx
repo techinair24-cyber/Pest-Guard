@@ -628,7 +628,9 @@ function LiveMonitoring() {
                     marginBottom: '0.25rem',
                   }}
                 >
-                  UNVERIFIED BROAD GROUP
+                  {displayDetection?.identification_status === 'CONFIRMED'
+                    ? 'CONFIRMED IDENTIFICATION'
+                    : 'UNVERIFIED SPECIES CANDIDATE'}
                 </small>
               )}
               <strong>
