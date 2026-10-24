@@ -679,7 +679,7 @@ function LiveMonitoring() {
                   <li key={`${candidate.pest}-${index}`}>
                     <span>
                       {getCandidateDisplayName(candidate)}
-                      <small>Unverified candidate</small>
+                      <small>Species candidate</small>
                     </span>
                     <strong>{formatModelScore(candidate.score)}</strong>
                   </li>
@@ -694,7 +694,7 @@ function LiveMonitoring() {
             </div>
             <div className={`latest-risk latest-risk-${riskEstimate.toLowerCase()}`}>
               <div className="latest-risk-heading">
-                <span>Candidate risk · unverified</span>
+                <span>Candidate risk</span>
                 <strong>{displayDetection ? riskEstimate : '—'}</strong>
               </div>
               <div
@@ -867,7 +867,7 @@ function LiveMonitoring() {
                                 {getCandidateDisplayName(candidate)}
                                 {' · '}
                                 {formatModelScore(candidate.score)}
-                                {' · Unverified'}
+                               
                               </li>
                             ))}
                           </ol>
