@@ -1,6 +1,7 @@
+
 import os
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 DATABASE_URL = os.getenv(
@@ -46,3 +47,33 @@ def get_db():
 
 def create_tables():
     Base.metadata.create_all(bind=engine)
+
+    # Safely migrate existing databases.
+    # create_all() does not add columns to existing tables.
+    with engine.begin() as connection:
+        inspector = inspect(connection)
+        tables = inspector.get_table_names()
+
+        if "detections" not in tables:
+            return
+
+        columns = {
+            column["name"]
+            for column in inspector.get_columns("detections")
+        }
+
+        if "top_predictions" not in columns:
+            if connection.dialect.name == "postgresql":
+                connection.execute(
+                    text(
+                        "ALTER TABLE detections "
+                        "ADD COLUMN IF NOT EXISTS top_predictions TEXT"
+                    )
+                )
+            else:
+                connection.execute(
+                    text(
+                        "ALTER TABLE detections "
+                        "ADD COLUMN top_predictions TEXT"
+                    )
+                )
