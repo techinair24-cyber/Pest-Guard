@@ -1,0 +1,20 @@
+PEST GUARD AUDIO LIBRARY BUILD SUMMARY
+Project root: C:\Users\Deepthi MG\Desktop\Pest guard
+Manifest entries: 2011
+Unique species labels: 47
+Unique recording paths: 2011
+Audio files found: 2011
+Audio files missing: 0
+Class names: 47
+Common names: 47
+
+Entries by split:
+  train: 1599
+  validation: 412
+
+Outputs:
+  C:\Users\Deepthi MG\Desktop\Pest guard\backend\ai_model\pest_audio_library\library_manifest.json
+  C:\Users\Deepthi MG\Desktop\Pest guard\backend\ai_model\pest_audio_library\recordings_index.csv
+  C:\Users\Deepthi MG\Desktop\Pest guard\backend\ai_model\pest_audio_library\missing_audio_paths.txt
+
+No audio files were moved/copied. No model, backend, or UI files were changed.

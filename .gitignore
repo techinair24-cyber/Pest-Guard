@@ -32,3 +32,12 @@ backend/.venv/
 # Local AI test/backup files
 backend/pest_test.wav
 backend/ai_model/best_cnn_v3_old_76_59.keras
+# Python virtual environments
+.venv/
+venv/
+backend/.venv/
+backend/.venv311/
+
+# Python cache
+__pycache__/
+*.py[cod]

@@ -514,9 +514,10 @@
 
 .latest-risk-heading {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .latest-risk-heading > span {
@@ -529,6 +530,8 @@
 
 .latest-risk-heading > strong {
   margin: 0;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .latest-risk-low .latest-risk-heading > strong {

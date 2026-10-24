@@ -1,0 +1,13 @@
+{
+  "background_audio_files_selected": 300,
+  "background_categories": 15,
+  "background_folder": "C:\\Users\\Deepthi MG\\Desktop\\InsectSound1000_Training\\ESC50_background_pilot",
+  "insect_train_records": 1599,
+  "insect_validation_records": 412,
+  "compatible_manifest": "C:\\Users\\Deepthi MG\\Desktop\\Pest guard\\backend\\ai_model\\combined_split_manifest.json",
+  "trainer": "C:\\Users\\Deepthi MG\\Desktop\\Pest guard\\backend\\train_background_gate_pilot_wav.py",
+  "production_backend_modified": false,
+  "active_insect_model_modified": false,
+  "firmware_modified": false,
+  "note": "Preparation only. The gate must be trained and evaluated before any production integration."
+}

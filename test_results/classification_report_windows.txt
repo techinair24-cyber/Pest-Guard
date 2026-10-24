@@ -1,0 +1,53 @@
+                                    precision    recall  f1-score   support
+
+                 Acheta domesticus       0.86      0.91      0.88       172
+               Barbitistes yersini       0.68      0.98      0.81       117
+        Chorthippus albomarginatus       0.96      0.84      0.90       155
+            Chorthippus apricarius       0.47      0.45      0.46        74
+            Chorthippus biguttulus       0.74      0.43      0.55        81
+              Chorthippus brunneus       0.51      0.54      0.53        68
+                Chorthippus mollis       0.70      0.92      0.79        48
+                Chorthippus vagans       0.78      0.39      0.52        46
+               Chrysochraon dispar       0.80      0.40      0.53        30
+             Conocephalus dorsalis       0.40      0.62      0.49        53
+               Conocephalus fuscus       0.76      0.60      0.67       114
+             Decticus verrucivorus       0.96      0.58      0.72       119
+                Ephippiger diurnus       0.70      0.53      0.60       114
+           Eupholidoptera schmidti       0.64      0.76      0.70        21
+                Gampsocleis glabra       0.80      0.69      0.74        97
+              Gomphocerippus rufus       0.57      0.41      0.48        39
+             Gomphocerus sibiricus       0.99      0.96      0.97        96
+               Gryllus bimaculatus       0.85      0.97      0.91       109
+                Gryllus campestris       0.96      0.70      0.81       264
+          Leptophyes punctatissima       0.81      0.62      0.70        71
+            Melanogryllus desertus       0.50      0.45      0.47        20
+           Metrioptera brachyptera       0.54      0.77      0.64        35
+          Myrmeleotettix maculatus       0.94      0.92      0.93       183
+               Nemobius sylvestris       0.89      0.57      0.69        30
+               Oecanthus pellucens       0.75      0.95      0.84        41
+                Omocestus petraeus       0.24      0.38      0.29        16
+                 Omocestus rufipes       0.40      0.70      0.51        60
+               Omocestus viridulus       0.99      0.55      0.71       205
+              Phaneroptera falcata       0.33      0.05      0.08        22
+                 Phaneroptera nana       0.40      0.79      0.53        52
+               Pholidoptera aptera       0.85      0.81      0.83        48
+         Pholidoptera griseoaptera       0.00      0.00      0.00         9
+           Pholidoptera littoralis       0.30      0.76      0.43        21
+           Platycleis albopunctata       0.50      0.23      0.31        35
+          Platypleura cf. catenata       1.00      0.87      0.93        15
+               Platypleura plumosa       0.38      1.00      0.55         6
+                Platypleura sp. 10       0.00      0.00      0.00         3
+Platypleura sp. 12 cf. hirtipennis       0.00      0.00      0.00         2
+                Platypleura sp. 13       0.00      0.00      0.00         2
+        Pseudochorthippus montanus       0.23      1.00      0.37         9
+      Pseudochorthippus parallelus       0.08      0.25      0.12         8
+               Roeseliana roeselii       0.03      0.29      0.06         7
+             Stenobothrus lineatus       0.00      0.00      0.00         4
+          Stenobothrus stigmaticus       0.25      0.82      0.38        11
+                Tettigonia cantans       0.65      0.81      0.72        32
+            Tettigonia viridissima       0.00      0.00      0.00         3
+                Tylopsis lilifolia       0.17      0.83      0.29         6
+
+                          accuracy                           0.70      2773
+                         macro avg       0.54      0.58      0.52      2773
+                      weighted avg       0.77      0.70      0.71      2773

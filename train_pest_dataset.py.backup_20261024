@@ -1,0 +1,185 @@
+
+import os
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+
+import json
+import random
+from pathlib import Path
+
+import numpy as np
+import librosa
+import tensorflow as tf
+
+SEED = 42
+random.seed(SEED)
+np.random.seed(SEED)
+tf.random.set_seed(SEED)
+
+DATA_ROOT = Path.home() / "Desktop" / "Pest Sound Dataset"
+OUT_DIR = Path.cwd() / "backend" / "ai_model" / "pest_dataset_candidate_v2"
+OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+SAMPLE_RATE = 16000
+CLIP_SECONDS = 5
+TARGET_LENGTH = SAMPLE_RATE * CLIP_SECONDS
+BATCH_SIZE = 16
+EPOCHS = 30
+VALIDATION_FRACTION = 0.20
+
+if not DATA_ROOT.is_dir():
+    raise FileNotFoundError(f"Dataset folder missing: {DATA_ROOT}")
+
+class_names = sorted(
+    p.name for p in DATA_ROOT.iterdir()
+    if p.is_dir() and any(
+        f.suffix.lower() in (".mp3", ".oga")
+        for f in p.iterdir() if f.is_file()
+    )
+)
+if len(class_names) < 2:
+    raise RuntimeError("Need at least two classes.")
+
+label_index = {name: i for i, name in enumerate(class_names)}
+
+# Split original recordings before making segments.
+train_files, val_files = [], []
+for name in class_names:
+    files = sorted(
+        f for f in (DATA_ROOT / name).iterdir()
+        if f.is_file() and f.suffix.lower() in (".mp3", ".oga")
+    )
+    random.shuffle(files)
+    if len(files) >= 3:
+        n_val = max(1, round(len(files) * VALIDATION_FRACTION))
+        val_files.extend((f, name) for f in files[:n_val])
+        train_files.extend((f, name) for f in files[n_val:])
+    else:
+        train_files.extend((f, name) for f in files)
+
+if not val_files:
+    raise RuntimeError("Validation set is empty.")
+
+def read_audio(path):
+    audio, _ = librosa.load(
+        str(path), sr=SAMPLE_RATE, mono=True
+    )
+    return np.asarray(audio, dtype=np.float32)
+
+def split_into_clips(audio):
+    # Use non-overlapping 5-second clips. Pad a short final clip.
+    clips = []
+    for start in range(0, len(audio), TARGET_LENGTH):
+        clip = audio[start:start + TARGET_LENGTH]
+        if len(clip) < SAMPLE_RATE:  # Ignore fragments under 1 second
+            continue
+        if len(clip) < TARGET_LENGTH:
+            clip = np.pad(clip, (0, TARGET_LENGTH - len(clip)))
+        clips.append(clip)
+    return clips
+
+mel_matrix = tf.signal.linear_to_mel_weight_matrix(
+    num_mel_bins=128,
+    num_spectrogram_bins=513,
+    sample_rate=SAMPLE_RATE,
+    lower_edge_hertz=50.0,
+    upper_edge_hertz=8000.0,
+)
+
+def make_feature(audio):
+    audio = tf.convert_to_tensor(audio, dtype=tf.float32)
+    peak = tf.reduce_max(tf.abs(audio))
+    audio = tf.cond(
+        peak > 0,
+        lambda: audio / peak,
+        lambda: audio,
+    )
+    spec = tf.signal.stft(
+        audio, frame_length=1024, frame_step=512, fft_length=1024
+    )
+    mel = tf.matmul(tf.square(tf.abs(spec)), mel_matrix)
+    mel = tf.math.log(mel + 1e-6)
+    mel = (mel - tf.reduce_mean(mel)) / (
+        tf.math.reduce_std(mel) + 1e-6
+    )
+    return mel[..., tf.newaxis].numpy().astype(np.float32)
+
+def prepare(files, description):
+    features, targets = [], []
+    for i, (path, name) in enumerate(files, 1):
+        audio = read_audio(path)
+        clips = split_into_clips(audio)
+        if not clips:
+            print("Skipped very short recording:", path.name)
+            continue
+        for clip in clips:
+            features.append(make_feature(clip))
+            targets.append(label_index[name])
+        print(f"{description}: {i}/{len(files)} recordings", flush=True)
+    if not features:
+        raise RuntimeError(f"No usable {description} clips.")
+    return np.stack(features), np.asarray(targets, dtype=np.int32)
+
+print("Classes:", len(class_names), class_names)
+print("Training recordings:", len(train_files))
+print("Validation recordings:", len(val_files))
+print("Preparing 5-second clips...", flush=True)
+
+X_train, y_train = prepare(train_files, "Training")
+X_val, y_val = prepare(val_files, "Validation")
+
+print("Training clips:", len(y_train))
+print("Validation clips:", len(y_val))
+print("Training class counts:")
+for name in class_names:
+    print(f"  {name}: {int(np.sum(y_train == label_index[name]))}")
+
+# Fresh model. Production model is never loaded or overwritten.
+model = tf.keras.Sequential([
+    tf.keras.layers.Input(shape=(155, 128, 1)),
+    tf.keras.layers.Conv2D(16, 3, padding="same", activation="relu"),
+    tf.keras.layers.MaxPooling2D(2),
+    tf.keras.layers.Conv2D(32, 3, padding="same", activation="relu"),
+    tf.keras.layers.MaxPooling2D(2),
+    tf.keras.layers.Conv2D(64, 3, padding="same", activation="relu"),
+    tf.keras.layers.GlobalAveragePooling2D(),
+    tf.keras.layers.Dropout(0.35),
+    tf.keras.layers.Dense(64, activation="relu"),
+    tf.keras.layers.Dropout(0.35),
+    tf.keras.layers.Dense(len(class_names), activation="softmax"),
+])
+
+model.compile(
+    optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
+    loss="sparse_categorical_crossentropy",
+    metrics=["accuracy"],
+)
+
+callbacks = [
+    tf.keras.callbacks.EarlyStopping(
+        monitor="val_loss", patience=5, restore_best_weights=True
+    ),
+    tf.keras.callbacks.ModelCheckpoint(
+        str(OUT_DIR / "best_candidate.keras"),
+        monitor="val_loss", save_best_only=True,
+    ),
+]
+
+history = model.fit(
+    X_train, y_train,
+    validation_data=(X_val, y_val),
+    batch_size=BATCH_SIZE,
+    epochs=EPOCHS,
+    shuffle=True,
+    callbacks=callbacks,
+)
+
+(OUT_DIR / "class_names.json").write_text(
+    json.dumps(class_names, indent=2), encoding="utf-8"
+)
+(OUT_DIR / "training_history.json").write_text(
+    json.dumps(history.history, indent=2), encoding="utf-8"
+)
+
+print("\nCandidate training finished.")
+print("Candidate folder:", OUT_DIR)
+print("Production model unchanged.")

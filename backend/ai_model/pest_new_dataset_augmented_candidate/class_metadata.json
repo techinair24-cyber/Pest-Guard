@@ -1,0 +1,237 @@
+[
+  {
+    "class_index": 0,
+    "scientific_name": "Acheta domesticus",
+    "common_name": "House Cricket"
+  },
+  {
+    "class_index": 1,
+    "scientific_name": "Barbitistes yersini",
+    "common_name": "Yersin's Bush-cricket"
+  },
+  {
+    "class_index": 2,
+    "scientific_name": "Chorthippus albomarginatus",
+    "common_name": "Lesser Marsh Grasshopper"
+  },
+  {
+    "class_index": 3,
+    "scientific_name": "Chorthippus apricarius",
+    "common_name": "Steppe Grasshopper"
+  },
+  {
+    "class_index": 4,
+    "scientific_name": "Chorthippus biguttulus",
+    "common_name": "Bow-winged Grasshopper"
+  },
+  {
+    "class_index": 5,
+    "scientific_name": "Chorthippus brunneus",
+    "common_name": "Common Field Grasshopper"
+  },
+  {
+    "class_index": 6,
+    "scientific_name": "Chorthippus mollis",
+    "common_name": "Chorthippus mollis"
+  },
+  {
+    "class_index": 7,
+    "scientific_name": "Chorthippus vagans",
+    "common_name": "Heath Grasshopper"
+  },
+  {
+    "class_index": 8,
+    "scientific_name": "Chrysochraon dispar",
+    "common_name": "Large Gold Grasshopper"
+  },
+  {
+    "class_index": 9,
+    "scientific_name": "Conocephalus dorsalis",
+    "common_name": "Short-winged Conehead"
+  },
+  {
+    "class_index": 10,
+    "scientific_name": "Conocephalus fuscus",
+    "common_name": "Long-winged Conehead"
+  },
+  {
+    "class_index": 11,
+    "scientific_name": "Decticus verrucivorus",
+    "common_name": "Wart-biter"
+  },
+  {
+    "class_index": 12,
+    "scientific_name": "Ephippiger diurnus",
+    "common_name": "Saddle-backed Bush-cricket"
+  },
+  {
+    "class_index": 13,
+    "scientific_name": "Eupholidoptera schmidti",
+    "common_name": "Schmidt's Bush-cricket"
+  },
+  {
+    "class_index": 14,
+    "scientific_name": "Gampsocleis glabra",
+    "common_name": "Gampsocleis glabra"
+  },
+  {
+    "class_index": 15,
+    "scientific_name": "Gomphocerippus rufus",
+    "common_name": "Rufous Grasshopper"
+  },
+  {
+    "class_index": 16,
+    "scientific_name": "Gomphocerus sibiricus",
+    "common_name": "Siberian Grasshopper"
+  },
+  {
+    "class_index": 17,
+    "scientific_name": "Gryllus bimaculatus",
+    "common_name": "Two-spotted Cricket"
+  },
+  {
+    "class_index": 18,
+    "scientific_name": "Gryllus campestris",
+    "common_name": "Field Cricket"
+  },
+  {
+    "class_index": 19,
+    "scientific_name": "Leptophyes punctatissima",
+    "common_name": "Speckled Bush-cricket"
+  },
+  {
+    "class_index": 20,
+    "scientific_name": "Melanogryllus desertus",
+    "common_name": "Melanogryllus desertus"
+  },
+  {
+    "class_index": 21,
+    "scientific_name": "Metrioptera brachyptera",
+    "common_name": "Bog Bush-cricket"
+  },
+  {
+    "class_index": 22,
+    "scientific_name": "Myrmeleotettix maculatus",
+    "common_name": "Mottled Grasshopper"
+  },
+  {
+    "class_index": 23,
+    "scientific_name": "Nemobius sylvestris",
+    "common_name": "Wood Cricket"
+  },
+  {
+    "class_index": 24,
+    "scientific_name": "Oecanthus pellucens",
+    "common_name": "Pale Tree Cricket"
+  },
+  {
+    "class_index": 25,
+    "scientific_name": "Omocestus petraeus",
+    "common_name": "Steppe Grasshopper"
+  },
+  {
+    "class_index": 26,
+    "scientific_name": "Omocestus rufipes",
+    "common_name": "Red-legged Grasshopper"
+  },
+  {
+    "class_index": 27,
+    "scientific_name": "Omocestus viridulus",
+    "common_name": "Common Green Grasshopper"
+  },
+  {
+    "class_index": 28,
+    "scientific_name": "Phaneroptera falcata",
+    "common_name": "Sickle-bearing Bush-cricket"
+  },
+  {
+    "class_index": 29,
+    "scientific_name": "Phaneroptera nana",
+    "common_name": "Phaneroptera nana"
+  },
+  {
+    "class_index": 30,
+    "scientific_name": "Pholidoptera aptera",
+    "common_name": "Alpine Dark Bush-cricket"
+  },
+  {
+    "class_index": 31,
+    "scientific_name": "Pholidoptera griseoaptera",
+    "common_name": "Dark Bush-cricket"
+  },
+  {
+    "class_index": 32,
+    "scientific_name": "Pholidoptera littoralis",
+    "common_name": "Pholidoptera littoralis"
+  },
+  {
+    "class_index": 33,
+    "scientific_name": "Platycleis albopunctata",
+    "common_name": "Platycleis albopunctata"
+  },
+  {
+    "class_index": 34,
+    "scientific_name": "Platypleura cf. catenata",
+    "common_name": "Platypleura cf. catenata"
+  },
+  {
+    "class_index": 35,
+    "scientific_name": "Platypleura plumosa",
+    "common_name": "Platypleura plumosa"
+  },
+  {
+    "class_index": 36,
+    "scientific_name": "Platypleura sp. 10",
+    "common_name": "Platypleura sp. 10"
+  },
+  {
+    "class_index": 37,
+    "scientific_name": "Platypleura sp. 12 cf. hirtipennis",
+    "common_name": "Platypleura sp. 12 (cf. hirtipennis)"
+  },
+  {
+    "class_index": 38,
+    "scientific_name": "Platypleura sp. 13",
+    "common_name": "Platypleura sp. 13"
+  },
+  {
+    "class_index": 39,
+    "scientific_name": "Pseudochorthippus montanus",
+    "common_name": "Bog Grasshopper"
+  },
+  {
+    "class_index": 40,
+    "scientific_name": "Pseudochorthippus parallelus",
+    "common_name": "Meadow Grasshopper"
+  },
+  {
+    "class_index": 41,
+    "scientific_name": "Roeseliana roeselii",
+    "common_name": "Roesel's Bush-cricket"
+  },
+  {
+    "class_index": 42,
+    "scientific_name": "Stenobothrus lineatus",
+    "common_name": "Stripe-winged Grasshopper"
+  },
+  {
+    "class_index": 43,
+    "scientific_name": "Stenobothrus stigmaticus",
+    "common_name": "Lesser Mottled Grasshopper"
+  },
+  {
+    "class_index": 44,
+    "scientific_name": "Tettigonia cantans",
+    "common_name": "Singing Bush-cricket"
+  },
+  {
+    "class_index": 45,
+    "scientific_name": "Tettigonia viridissima",
+    "common_name": "Great Green Bush-cricket"
+  },
+  {
+    "class_index": 46,
+    "scientific_name": "Tylopsis lilifolia",
+    "common_name": "Lily Bush-cricket"
+  }
+]

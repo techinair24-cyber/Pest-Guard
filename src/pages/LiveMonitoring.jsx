@@ -385,8 +385,8 @@ function LiveMonitoring() {
     }
   }, [])
 
-  const displayTemperature = onlineWeather.temperature
-  const displayHumidity = onlineWeather.humidity
+  const displayTemperature = liveDevice?.temperature
+  const displayHumidity = liveDevice?.humidity
 
   useEffect(() => {
     let active = true

@@ -1,0 +1,759 @@
+import os
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+
+import json
+import random
+import re
+from collections import defaultdict
+from pathlib import Path
+
+import numpy as np
+import librosa
+import tensorflow as tf
+
+
+# ============================================================
+# 1. REPRODUCIBILITY
+# ============================================================
+
+SEED = 42
+
+random.seed(SEED)
+np.random.seed(SEED)
+tf.random.set_seed(SEED)
+
+
+# ============================================================
+# 2. DATASET AND OUTPUT LOCATIONS
+# ============================================================
+
+DATA_ROOT = (
+    Path.home()
+    / "Desktop"
+    / "Pest_Guard_New_Datasets"
+)
+
+COMMON_NAMES_FILE = (
+    Path.cwd()
+    / "pest_common_names.json"
+)
+
+OUT_DIR = (
+    Path.cwd()
+    / "backend"
+    / "ai_model"
+    / "pest_new_dataset_candidate"
+)
+
+# A separate candidate folder. Never overwrite the production model.
+OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+
+# ============================================================
+# 3. TRAINING SETTINGS
+# ============================================================
+
+SAMPLE_RATE = 16000
+CLIP_SECONDS = 5
+TARGET_LENGTH = SAMPLE_RATE * CLIP_SECONDS
+
+BATCH_SIZE = 16
+EPOCHS = 30
+VALIDATION_FRACTION = 0.20
+
+AUDIO_EXTENSIONS = {".wav"}
+
+
+# ============================================================
+# 4. SCIENTIFIC-NAME DISPLAY MAPPING
+# ============================================================
+
+# Keys are normalized versions of the filename labels.
+# The order of these names is synchronized with model outputs.
+
+SCIENTIFIC_NAMES = {
+    "achetadomesticus": "Acheta domesticus",
+    "barbitistesyersini": "Barbitistes yersini",
+    "chorthippusalbomarginatus": "Chorthippus albomarginatus",
+    "chorthippusapricarius": "Chorthippus apricarius",
+    "chorthippusbiguttulus": "Chorthippus biguttulus",
+    "chorthippusbrunneus": "Chorthippus brunneus",
+    "chorthippusmollis": "Chorthippus mollis",
+    "chorthippusvagans": "Chorthippus vagans",
+    "chrysochraondispar": "Chrysochraon dispar",
+    "conocephalusdorsalis": "Conocephalus dorsalis",
+    "conocephalusfuscus": "Conocephalus fuscus",
+    "decticusverrucivorus": "Decticus verrucivorus",
+   "ephippigerdiurnus": "Ephippiger diurnus",
+    "eupholidopteraschmidti": "Eupholidoptera schmidti",
+    "gampsocleisglabra": "Gampsocleis glabra",
+    "gomphocerippusrufus": "Gomphocerippus rufus",
+    "gomphocerussibiricus": "Gomphocerus sibiricus",
+    "gryllusbimaculatus": "Gryllus bimaculatus",
+    "grylluscampestris": "Gryllus campestris",
+    "leptophyespunctatissima": "Leptophyes punctatissima",
+    "melanogryllusdesertus": "Melanogryllus desertus",
+    "metriopterabrachyptera": "Metrioptera brachyptera",
+    "myrmeleotettixmaculatus": "Myrmeleotettix maculatus",
+    "nemobiussylvestris": "Nemobius sylvestris",
+    "oecanthuspellucens": "Oecanthus pellucens",
+    "omocestuspetraeus": "Omocestus petraeus",
+    "omocestusrufipes": "Omocestus rufipes",
+    "omocestusviridulus": "Omocestus viridulus",
+    "phaneropterafalcata": "Phaneroptera falcata",
+    "phaneropteranana": "Phaneroptera nana",
+    "pholidopteraaptera": "Pholidoptera aptera",
+    "pholidopteragriseoaptera": "Pholidoptera griseoaptera",
+    "pholidopteralittoralis": "Pholidoptera littoralis",
+    "platycleisalbopunctata": "Platycleis albopunctata",
+    "platypleuracfcatenata": "Platypleura cf. catenata",
+    "platypleuraplumosa": "Platypleura plumosa",
+    "platypleurasp10": "Platypleura sp. 10",
+    "platypleurasp12cfhirtipennis": (
+        "Platypleura sp. 12 cf. hirtipennis"
+    ),
+    "platypleurasp13": "Platypleura sp. 13",
+    "pseudochorthippusmontanus": "Pseudochorthippus montanus",
+    "pseudochorthippusparallelus": "Pseudochorthippus parallelus",
+    "roeselianaroeselii": "Roeseliana roeselii",
+    "stenobothruslineatus": "Stenobothrus lineatus",
+    "stenobothrusstigmaticus": "Stenobothrus stigmaticus",
+    "tettigoniacantans": "Tettigonia cantans",
+    "tettigoniaviridissima": "Tettigonia viridissima",
+    "tylopsislilifolia": "Tylopsis lilifolia",
+}
+
+
+def normalize_label(value):
+    """Normalize labels for case-insensitive matching."""
+    return re.sub(
+        r"[^a-z0-9]",
+        "",
+        value.casefold(),
+    )
+
+
+# ============================================================
+# 5. CHECK DATASET AND COMMON-NAME FILE
+# ============================================================
+
+if not DATA_ROOT.is_dir():
+    raise FileNotFoundError(
+        f"New dataset folder missing: {DATA_ROOT}"
+    )
+
+if not COMMON_NAMES_FILE.is_file():
+    raise FileNotFoundError(
+        f"Common-name mapping missing: {COMMON_NAMES_FILE}"
+    )
+
+try:
+    raw_common_names = json.loads(
+        COMMON_NAMES_FILE.read_text(encoding="utf-8")
+    )
+except (OSError, json.JSONDecodeError) as error:
+    raise RuntimeError(
+        "The common-name mapping could not be read."
+    ) from error
+
+if not isinstance(raw_common_names, dict):
+    raise RuntimeError(
+        "The common-name mapping must be a JSON object."
+    )
+
+common_name_lookup = {
+    normalize_label(scientific_name): common_name
+    for scientific_name, common_name in raw_common_names.items()
+    if isinstance(scientific_name, str)
+    and isinstance(common_name, str)
+    and common_name.strip()
+}
+
+
+# ============================================================
+# 6. DISCOVER AUDIO AND EXTRACT SCIENTIFIC LABELS
+# ============================================================
+
+paths = sorted(
+    path
+    for path in DATA_ROOT.rglob("*")
+    if path.is_file()
+    and path.suffix.lower() in AUDIO_EXTENSIONS
+)
+
+if not paths:
+    raise RuntimeError("No WAV files were found.")
+
+records = []
+label_display = {}
+
+# Deduplicate only obvious copies with the same filename and size.
+seen_names_and_sizes = set()
+
+for path in paths:
+    # Example filename:
+    # Acheta domesticus_XC123456_edit1.wav
+    raw_label = path.stem.split("_", 1)[0]
+
+    label_key = normalize_label(raw_label)
+
+    if not label_key:
+        print(
+            "Skipped filename without a species label:",
+            path.name,
+        )
+        continue
+
+    signature = (
+        path.name.casefold(),
+        path.stat().st_size,
+    )
+
+    if signature in seen_names_and_sizes:
+        continue
+
+    seen_names_and_sizes.add(signature)
+
+    label_display.setdefault(label_key, raw_label)
+
+    # Remove only the edit suffix.
+    # Edited versions of one original recording stay grouped together.
+    recording_id = re.sub(
+        r"_edit\d+$",
+        "",
+        path.stem,
+        flags=re.IGNORECASE,
+    )
+
+    group_key = normalize_label(recording_id)
+
+    records.append({
+        "path": path,
+        "label": label_key,
+        "group": group_key,
+    })
+
+
+# ============================================================
+# 7. CREATE SYNCHRONIZED CLASS LABELS
+# ============================================================
+
+class_keys = sorted(label_display)
+
+if len(class_keys) < 2:
+    raise RuntimeError("Need at least two insect species.")
+
+# Fail rather than silently train on unexpected labels.
+missing_scientific_names = [
+    key
+    for key in class_keys
+    if key not in SCIENTIFIC_NAMES
+]
+
+missing_common_names = [
+    key
+    for key in class_keys
+    if key not in common_name_lookup
+]
+
+if missing_scientific_names:
+    raise RuntimeError(
+        "Missing scientific-name display mappings: "
+        + ", ".join(missing_scientific_names)
+    )
+
+if missing_common_names:
+    raise RuntimeError(
+        "Missing common-name mappings: "
+        + ", ".join(missing_common_names)
+    )
+
+# These arrays share precisely the same model-output order.
+class_names = [
+    SCIENTIFIC_NAMES[key]
+    for key in class_keys
+]
+
+common_names = [
+    common_name_lookup[key]
+    for key in class_keys
+]
+
+label_index = {
+    key: index
+    for index, key in enumerate(class_keys)
+}
+
+print("\nMODEL CLASS MAPPING")
+print("=" * 65)
+
+for index, (scientific_name, common_name) in enumerate(
+    zip(class_names, common_names)
+):
+    print(
+        f"{index:02d}: {common_name} "
+        f"({scientific_name})"
+    )
+
+print("\nDataset audio files:", len(records))
+print("Model classes:", len(class_names))
+
+
+# ============================================================
+# 8. GROUP RECORDINGS BEFORE TRAIN / VALIDATION SPLIT
+# ============================================================
+
+grouped = defaultdict(lambda: defaultdict(list))
+
+for record in records:
+    grouped[record["label"]][record["group"]].append(record)
+
+train_records = []
+val_records = []
+split_manifest = []
+
+rng = random.Random(SEED)
+
+for label in class_keys:
+    group_keys = sorted(grouped[label])
+    rng.shuffle(group_keys)
+
+    if len(group_keys) < 2:
+        print(
+            "WARNING: Only one recording group for",
+            SCIENTIFIC_NAMES[label],
+            "- independent validation is unavailable for this class.",
+        )
+
+        train_groups = group_keys
+        val_groups = []
+
+    else:
+        val_count = max(
+            1,
+            round(len(group_keys) * VALIDATION_FRACTION),
+        )
+
+        val_count = min(
+            val_count,
+            len(group_keys) - 1,
+        )
+
+        val_groups = group_keys[:val_count]
+        train_groups = group_keys[val_count:]
+
+    for group in train_groups:
+        for record in grouped[label][group]:
+            train_records.append(record)
+
+            split_manifest.append({
+                "file": str(
+                    record["path"].relative_to(DATA_ROOT)
+                ),
+                "scientific_name": SCIENTIFIC_NAMES[label],
+                "common_name": common_name_lookup[label],
+                "class_index": label_index[label],
+                "group": group,
+                "split": "train",
+            })
+
+    for group in val_groups:
+        for record in grouped[label][group]:
+            val_records.append(record)
+
+            split_manifest.append({
+                "file": str(
+                    record["path"].relative_to(DATA_ROOT)
+                ),
+                "scientific_name": SCIENTIFIC_NAMES[label],
+                "common_name": common_name_lookup[label],
+                "class_index": label_index[label],
+                "group": group,
+                "split": "validation",
+            })
+
+
+# Confirm that the same recording group never appears on both sides.
+train_group_pairs = {
+    (record["label"], record["group"])
+    for record in train_records
+}
+
+val_group_pairs = {
+    (record["label"], record["group"])
+    for record in val_records
+}
+
+overlap = train_group_pairs & val_group_pairs
+
+if overlap:
+    raise RuntimeError(
+        "Data leakage detected: recording groups appear in both splits."
+    )
+
+print("\nDATA SPLIT")
+print("Training recordings:", len(train_records))
+print("Validation recordings:", len(val_records))
+print("Cross-split group overlap:", len(overlap))
+
+print("\nSpecies with fewer than 5 recording groups:")
+for label in class_keys:
+    group_count = len(grouped[label])
+
+    if group_count < 5:
+        print(
+                     f"  {SCIENTIFIC_NAMES[label]}: "
+            f"{group_count} groups"
+        )
+
+
+# ============================================================
+# 9. MEL-SPECTROGRAM FEATURE EXTRACTION
+# ============================================================
+
+mel_matrix = tf.signal.linear_to_mel_weight_matrix(
+    num_mel_bins=128,
+    num_spectrogram_bins=513,
+    sample_rate=SAMPLE_RATE,
+    lower_edge_hertz=50.0,
+    upper_edge_hertz=8000.0,
+)
+
+
+def make_feature(audio):
+    audio = tf.convert_to_tensor(
+        audio,
+        dtype=tf.float32,
+    )
+
+    peak = tf.reduce_max(tf.abs(audio))
+
+    audio = tf.cond(
+        peak > 0,
+        lambda: audio / peak,
+        lambda: audio,
+    )
+
+    spec = tf.signal.stft(
+        audio,
+        frame_length=1024,
+        frame_step=512,
+        fft_length=1024,
+    )
+
+    mel = tf.matmul(
+        tf.square(tf.abs(spec)),
+        mel_matrix,
+    )
+
+    mel = tf.math.log(mel + 1e-6)
+
+    mel = (
+        mel - tf.reduce_mean(mel)
+    ) / (
+        tf.math.reduce_std(mel) + 1e-6
+    )
+
+    feature = mel[..., tf.newaxis].numpy().astype(
+        np.float32
+    )
+
+    return feature
+
+
+# ============================================================
+# 10. READ RECORDINGS AND CREATE FIVE-SECOND CLIPS
+# ============================================================
+
+def prepare(record_list, description):
+    features = []
+    targets = []
+
+    skipped_files = 0
+    skipped_short = 0
+    skipped_invalid = 0
+
+    for index, record in enumerate(record_list, 1):
+        path = record["path"]
+
+        try:
+            audio, _ = librosa.load(
+                str(path),
+                sr=SAMPLE_RATE,
+                mono=True,
+            )
+
+        except Exception as error:
+            print(
+                "Skipped unreadable audio:",
+                path.name,
+                type(error).__name__,
+            )
+            skipped_files += 1
+            continue
+
+        if audio.size == 0:
+            skipped_files += 1
+            continue
+
+        # Non-overlapping clips of five seconds.
+        # Ignore final fragments shorter than one second.
+        for start in range(0, len(audio), TARGET_LENGTH):
+            clip = audio[start:start + TARGET_LENGTH]
+
+            if len(clip) < SAMPLE_RATE:
+                skipped_short += 1
+                continue
+
+            if len(clip) < TARGET_LENGTH:
+                clip = np.pad(
+                    clip,
+                    (0, TARGET_LENGTH - len(clip)),
+                )
+
+            feature = make_feature(clip)
+
+            if not np.all(np.isfinite(feature)):
+                skipped_invalid += 1
+                continue
+
+            features.append(feature)
+            targets.append(
+                label_index[record["label"]]
+            )
+
+        if index % 25 == 0 or index == len(record_list):
+            print(
+                f"{description}: "
+                f"{index}/{len(record_list)} recordings",
+                flush=True,
+            )
+
+    print(f"{description} unreadable files:", skipped_files)
+    print(f"{description} short fragments skipped:", skipped_short)
+    print(f"{description} invalid features skipped:", skipped_invalid)
+
+    if not features:
+        raise RuntimeError(
+            f"No usable {description} clips."
+        )
+
+    return (
+        np.stack(features),
+        np.asarray(targets, dtype=np.int32),
+    )
+
+
+# ============================================================
+# 11. PREPARE TRAINING AND VALIDATION ARRAYS
+# ============================================================
+
+print("\nPreparing audio features...", flush=True)
+
+X_train, y_train = prepare(
+    train_records,
+    "Training",
+)
+
+X_val, y_val = prepare(
+    val_records,
+    "Validation",
+)
+
+print("\nTraining clips:", len(y_train))
+print("Validation clips:", len(y_val))
+
+if len(y_val) == 0:
+    raise RuntimeError("Validation set is empty.")
+
+train_class_counts = np.bincount(
+    y_train,
+    minlength=len(class_names),
+)
+
+missing_train = [
+    class_names[index]
+    for index, count in enumerate(train_class_counts)
+    if count == 0
+]
+
+if missing_train:
+    raise RuntimeError(
+        "These species have no usable training clips: "
+        + ", ".join(missing_train)
+    )
+
+print("\nTraining clips per species:")
+
+for index, scientific_name in enumerate(class_names):
+    print(
+        f"  {common_names[index]} "
+        f"({scientific_name}): "
+        f"{train_class_counts[index]}"
+    )
+
+
+# ============================================================
+# 12. CLASS WEIGHTS TO REDUCE CLASS IMBALANCE
+# ============================================================
+
+total_clips = len(y_train)
+
+class_weight = {
+    index: min(
+        5.0,
+        total_clips / (
+            len(class_names) * train_class_counts[index]
+        ),
+    )
+    for index in range(len(class_names))
+    if train_class_counts[index] > 0
+}
+
+
+# ============================================================
+# 13. BUILD A FRESH CNN
+# ============================================================
+
+# Do not load or overwrite best_cnn_v3.keras.
+
+model = tf.keras.Sequential([
+    tf.keras.layers.Input(
+        shape=(155, 128, 1)
+    ),
+
+    tf.keras.layers.Conv2D(
+        16,
+        3,
+        padding="same",
+        activation="relu",
+    ),
+
+    tf.keras.layers.MaxPooling2D(2),
+
+    tf.keras.layers.Conv2D(
+        32,
+        3,
+        padding="same",
+        activation="relu",
+    ),
+
+    tf.keras.layers.MaxPooling2D(2),
+
+    tf.keras.layers.Conv2D(
+        64,
+        3,
+        padding="same",
+        activation="relu",
+    ),
+
+    tf.keras.layers.GlobalAveragePooling2D(),
+
+    tf.keras.layers.Dropout(0.35),
+
+    tf.keras.layers.Dense(
+        64,
+        activation="relu",
+    ),
+
+    tf.keras.layers.Dropout(0.35),
+
+    tf.keras.layers.Dense(
+        len(class_names),
+        activation="softmax",
+    ),
+])
+
+model.compile(
+    optimizer=tf.keras.optimizers.Adam(
+        learning_rate=0.001
+    ),
+    loss="sparse_categorical_crossentropy",
+    metrics=["accuracy"],
+)
+
+callbacks = [
+    tf.keras.callbacks.EarlyStopping(
+        monitor="val_loss",
+        patience=5,
+        restore_best_weights=True,
+    ),
+
+    tf.keras.callbacks.ModelCheckpoint(
+        str(OUT_DIR / "best_candidate.keras"),
+        monitor="val_loss",
+        save_best_only=True,
+    ),
+]
+
+
+# ============================================================
+# 14. SAVE CLASS NAMES AND DATA SPLIT METADATA
+# ============================================================
+
+# All name arrays use the same class index as the model outputs.
+
+(OUT_DIR / "class_names.json").write_text(
+    json.dumps(class_names, indent=2),
+    encoding="utf-8",
+)
+
+(OUT_DIR / "common_names.json").write_text(
+    json.dumps(common_names, indent=2),
+    encoding="utf-8",
+)
+
+class_metadata = [
+    {
+        "class_index": index,
+        "scientific_name": scientific_name,
+        "common_name": common_name,
+    }
+    for index, (scientific_name, common_name) in enumerate(
+        zip(class_names, common_names)
+    )
+]
+
+(OUT_DIR / "class_metadata.json").write_text(
+    json.dumps(class_metadata, indent=2),
+    encoding="utf-8",
+)
+
+(OUT_DIR / "split_manifest.json").write_text(
+    json.dumps(split_manifest, indent=2),
+    encoding="utf-8",
+)
+
+
+# ============================================================
+# 15. TRAIN THE CANDIDATE MODEL
+# ============================================================
+
+print("\nStarting fresh candidate training...", flush=True)
+
+history = model.fit(
+    X_train,
+    y_train,
+    validation_data=(X_val, y_val),
+    batch_size=BATCH_SIZE,
+    epochs=EPOCHS,
+    shuffle=True,
+    class_weight=class_weight,
+    callbacks=callbacks,
+)
+
+# Save training metrics for evaluation.
+(OUT_DIR / "training_history.json").write_text(
+    json.dumps(history.history, indent=2),
+    encoding="utf-8",
+)
+
+# Report the best validation accuracy reached.
+best_val_accuracy = max(
+    history.history.get("val_accuracy", [0.0])
+)
+
+print("\nCandidate training finished.")
+print("Best validation accuracy:", round(best_val_accuracy, 4))
+print("Candidate folder:", OUT_DIR)
+print("Production model unchanged.")

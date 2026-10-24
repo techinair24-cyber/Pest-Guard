@@ -1,0 +1,707 @@
+[
+  {
+    "model_class": "Acheta domesticus",
+    "scientific_name": "Acheta domesticus",
+    "common_name": "House Cricket",
+    "aliases": [
+      "House Cricket"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Acheta%20domesticus&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Barbitistes yersini",
+    "scientific_name": "Barbitistes yersini",
+    "common_name": "Yersin's Bush-cricket",
+    "aliases": [
+      "Yersin's Bush-cricket"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Barbitistes%20yersini&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Chorthippus albomarginatus",
+    "scientific_name": "Chorthippus albomarginatus",
+    "common_name": "Lesser Marsh Grasshopper",
+    "aliases": [
+      "Lesser Marsh Grasshopper"
+    ],
+    "risk": "MEDIUM",
+    "risk_rationale": "Regional agricultural accounts report damage to cereals, hay meadows, pastures, and forage grasses when populations become high. This supports a context-dependent crop/forage concern, not a claim that damage is occurring at this site.",
+    "affected_crops": [
+      "Cereals",
+      "Hay meadows",
+      "Pastures",
+      "Forage grasses"
+    ],
+    "source_name": "Regional agricultural species account for Chorthippus albomarginatus",
+    "source_url": "https://hleb-produkt.ru/saranchovye/1652-stroynaya-ili-belopolosaya-kobylka-chorthippus-albomarginatus-dg.html",
+    "geographic_limitations": "Evidence is regional and population-dependent; severity elsewhere is not established by this source."
+  },
+  {
+    "model_class": "Chorthippus apricarius",
+    "scientific_name": "Chorthippus apricarius",
+    "common_name": "Steppe Grasshopper",
+    "aliases": [
+      "Steppe Grasshopper"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Chorthippus%20apricarius&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Chorthippus biguttulus",
+    "scientific_name": "Chorthippus biguttulus",
+    "common_name": "Bow-winged Grasshopper",
+    "aliases": [
+      "Bow-winged Grasshopper"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Chorthippus%20biguttulus&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Chorthippus brunneus",
+    "scientific_name": "Chorthippus brunneus",
+    "common_name": "Common Field Grasshopper",
+    "aliases": [
+      "Common Field Grasshopper"
+    ],
+    "risk": "MEDIUM",
+    "risk_rationale": "A crop-insect field survey reported common field grasshopper damage in sesame. The source supports crop injury in that study context but does not establish a universal loss level or a current site-specific outbreak.",
+    "affected_crops": [
+      "Sesame",
+      "Cereal crops"
+    ],
+    "source_name": "International Journal of Entomology Research crop-insect survey",
+    "source_url": "https://www.entomologyjournals.com/assets/archives/2017/vol2issue3/2-2-22-906.pdf",
+    "geographic_limitations": "Observed crop injury is geographically and density dependent."
+  },
+  {
+    "model_class": "Chorthippus mollis",
+    "scientific_name": "Chorthippus mollis",
+    "common_name": "Chorthippus mollis",
+    "aliases": [],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Chorthippus%20mollis&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Chorthippus vagans",
+    "scientific_name": "Chorthippus vagans",
+    "common_name": "Heath Grasshopper",
+    "aliases": [
+      "Heath Grasshopper"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Chorthippus%20vagans&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Chrysochraon dispar",
+    "scientific_name": "Chrysochraon dispar",
+    "common_name": "Large Gold Grasshopper",
+    "aliases": [
+      "Large Gold Grasshopper"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Chrysochraon%20dispar&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Conocephalus dorsalis",
+    "scientific_name": "Conocephalus dorsalis",
+    "common_name": "Short-winged Conehead",
+    "aliases": [
+      "Short-winged Conehead"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Conocephalus%20dorsalis&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Conocephalus fuscus",
+    "scientific_name": "Conocephalus fuscus",
+    "common_name": "Long-winged Conehead",
+    "aliases": [
+      "Long-winged Conehead"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Conocephalus%20fuscus&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Decticus verrucivorus",
+    "scientific_name": "Decticus verrucivorus",
+    "common_name": "Wart-biter",
+    "aliases": [
+      "Wart-biter"
+    ],
+    "risk": "MEDIUM",
+    "risk_rationale": "The USDA crop-insect handbook lists cereals and cotton as host crops and identifies the species as an economic species in Iran. MEDIUM indicates documented regional crop-pest potential; the source does not prove a current infestation at this site.",
+    "affected_crops": [
+      "Cereals",
+      "Cotton"
+    ],
+    "source_name": "USDA Agriculture Handbook 273, Crop Insects of Northeast Africa–Southwest Asia",
+    "source_url": "https://www.govinfo.gov/content/pkg/GOVPUB-A-PURL-gpo22225/pdf/GOVPUB-A-PURL-gpo22225.pdf",
+    "geographic_limitations": "The economic-pest designation is specifically reported for Iran; local risk may differ."
+  },
+  {
+    "model_class": "Ephippiger diurnus",
+    "scientific_name": "Ephippiger diurnus",
+    "common_name": "Saddle-backed Bush-cricket",
+    "aliases": [
+      "Saddle-backed Bush-cricket"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Ephippiger%20diurnus&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Eupholidoptera schmidti",
+    "scientific_name": "Eupholidoptera schmidti",
+    "common_name": "Schmidt's Bush-cricket",
+    "aliases": [
+      "Schmidt's Bush-cricket"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Eupholidoptera%20schmidti&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Gampsocleis glabra",
+    "scientific_name": "Gampsocleis glabra",
+    "common_name": "Gampsocleis glabra",
+    "aliases": [],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Gampsocleis%20glabra&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Gomphocerippus rufus",
+    "scientific_name": "Gomphocerippus rufus",
+    "common_name": "Rufous Grasshopper",
+    "aliases": [
+      "Rufous Grasshopper"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Gomphocerippus%20rufus&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Gomphocerus sibiricus",
+    "scientific_name": "Gomphocerus sibiricus",
+    "common_name": "Siberian Grasshopper",
+    "aliases": [
+      "Siberian Grasshopper"
+    ],
+    "risk": "HIGH",
+    "risk_rationale": "A peer-reviewed global review describes this species as a serious agricultural pest in parts of the former USSR, Kazakhstan, Siberia, and Xinjiang, with severe damage reported to cereal crops and pasture/forage. HIGH describes documented potential in those regions, not confirmed damage at this site.",
+    "affected_crops": [
+      "Wheat",
+      "Rye",
+      "Oats",
+      "Barley",
+      "Maize",
+      "Millet",
+      "Potato",
+      "Cabbage",
+      "Mustard",
+      "Pasture",
+      "Hay"
+    ],
+    "source_name": "Frontiers in Ecology and Evolution, global review on locusts and grazing",
+    "source_url": "https://www.frontiersin.org/journals/ecology-and-evolution/articles/10.3389/fevo.2019.00263/full",
+    "geographic_limitations": "Serious damage is reported in specific eastern European/Asian regions and is not a site-specific risk forecast."
+  },
+  {
+    "model_class": "Gryllus bimaculatus",
+    "scientific_name": "Gryllus bimaculatus",
+    "common_name": "Two-spotted Cricket",
+    "aliases": [
+      "Two-spotted Cricket"
+    ],
+    "risk": "HIGH",
+    "risk_rationale": "Agricultural references document attacks on seedlings and economic crop damage; reports include wheat, crucifers, rice, and severe potato damage in some regions. HIGH reflects documented crop-pest potential in those contexts, not a verified field diagnosis or current outbreak.",
+    "affected_crops": [
+      "Wheat",
+      "Rice",
+      "Potato",
+      "Crucifers",
+      "Cucurbits",
+      "Cotton",
+      "Tobacco"
+    ],
+    "source_name": "USDA Agriculture Handbook 273, Crop Insects of Northeast Africa–Southwest Asia, with peer-reviewed Gryllidae review",
+    "source_url": "https://www.govinfo.gov/content/pkg/GOVPUB-A-PURL-gpo22225/pdf/GOVPUB-A-PURL-gpo22225.pdf",
+    "geographic_limitations": "The source documents strong regional differences; crop losses depend on abundance, crop, and location."
+  },
+  {
+    "model_class": "Gryllus campestris",
+    "scientific_name": "Gryllus campestris",
+    "common_name": "Field Cricket",
+    "aliases": [
+      "Field Cricket"
+    ],
+    "risk": "MEDIUM",
+    "risk_rationale": "The USDA crop-insect handbook reports feeding on young leaves, buds, and seedlings, with medium-to-severe damage when populations are heavy enough. MEDIUM reflects this population-dependent crop-pest potential, not a confirmed local infestation.",
+    "affected_crops": [
+      "Wheat",
+      "Barley",
+      "Cotton",
+      "Tobacco",
+      "Nursery plants",
+      "Other young crops"
+    ],
+    "source_name": "USDA Agriculture Handbook 273, Crop Insects of Northeast Africa–Southwest Asia",
+    "source_url": "https://www.govinfo.gov/content/pkg/GOVPUB-A-PURL-gpo22225/pdf/GOVPUB-A-PURL-gpo22225.pdf",
+    "geographic_limitations": "Damage is described as medium-to-severe under heavy populations in source regions."
+  },
+  {
+    "model_class": "Leptophyes punctatissima",
+    "scientific_name": "Leptophyes punctatissima",
+    "common_name": "Speckled Bush-cricket",
+    "aliases": [
+      "Speckled Bush-cricket"
+    ],
+    "risk": "LOW",
+    "risk_rationale": "A fruit-crop handbook describes this as a minor fruit-tree pest. Although isolated reports of extensive leaf damage exist, the handbook says such damage is generally of little or no economic importance and is usually localized.",
+    "affected_crops": [
+      "Apple",
+      "Nectarine",
+      "Peach",
+      "Other stone-fruit trees"
+    ],
+    "source_name": "Pests of Fruit Crops, Colour Handbook",
+    "source_url": "https://books.tarbaweya.org/static/documents/uploads/pdf/Agriculture/Pests%20of%20Fruit%20Crops%20A%20Colour%20Handbook.pdf",
+    "geographic_limitations": "The reference describes generally minor impacts, with occasional localized leaf injury in orchards."
+  },
+  {
+    "model_class": "Melanogryllus desertus",
+    "scientific_name": "Melanogryllus desertus",
+    "common_name": "Melanogryllus desertus",
+    "aliases": [],
+    "risk": "HIGH",
+    "risk_rationale": "Agricultural research from Central Anatolia identifies black cricket as a polyphagous pest of cultivated crops, with greatest damage from later nymphs and young adults; regional agricultural accounts also report damage to vegetables and field crops. HIGH reflects documented regional crop-pest potential, not current local damage.",
+    "affected_crops": [
+      "Vegetables",
+      "Field crops",
+      "Vineyards",
+      "Gardens",
+      "Pastures"
+    ],
+    "source_name": "Turkish Ministry of Agriculture research institute study on harmful black cricket in cultivated crops",
+    "source_url": "https://arastirma.tarimorman.gov.tr/zmmae/Belgeler/Sol%20Menu/Yay%C4%B1nlar/Ara%C5%9Ft%C4%B1rma%20Y%C4%B1ll%C4%B1klar%C4%B1/ZMAY_1994_24-25.pdf",
+    "geographic_limitations": "Evidence is strongest for Central Anatolia and nearby source regions; damage varies with crop, season, and population."
+  },
+  {
+    "model_class": "Metrioptera brachyptera",
+    "scientific_name": "Metrioptera brachyptera",
+    "common_name": "Bog Bush-cricket",
+    "aliases": [
+      "Bog Bush-cricket"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Metrioptera%20brachyptera&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Myrmeleotettix maculatus",
+    "scientific_name": "Myrmeleotettix maculatus",
+    "common_name": "Mottled Grasshopper",
+    "aliases": [
+      "Mottled Grasshopper"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Myrmeleotettix%20maculatus&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Nemobius sylvestris",
+    "scientific_name": "Nemobius sylvestris",
+    "common_name": "Wood Cricket",
+    "aliases": [
+      "Wood Cricket"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Nemobius%20sylvestris&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Oecanthus pellucens",
+    "scientific_name": "Oecanthus pellucens",
+    "common_name": "Pale Tree Cricket",
+    "aliases": [
+      "Pale Tree Cricket"
+    ],
+    "risk": "LOW",
+    "risk_rationale": "A crop-pest survey reported only a few specimens on young tobacco leaves and described the damage as slight. Other regional references list this species among plant-feeding insects, so LOW reflects the observed survey conditions rather than a universal guarantee.",
+    "affected_crops": [
+      "Tobacco",
+      "Cereals",
+      "Cotton",
+      "Grapes",
+      "Fruit trees"
+    ],
+    "source_name": "Crop Pest Fauna in Ethiopia survey",
+    "source_url": "https://swfrec.ifas.ufl.edu/hlb/database/pdf/00002313.pdf",
+    "geographic_limitations": "The slight-damage evidence is from a limited survey; abundance and crop context can change the result."
+  },
+  {
+    "model_class": "Omocestus petraeus",
+    "scientific_name": "Omocestus petraeus",
+    "common_name": "Steppe Grasshopper",
+    "aliases": [
+      "Steppe Grasshopper"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Omocestus%20petraeus&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Omocestus rufipes",
+    "scientific_name": "Omocestus rufipes",
+    "common_name": "Red-legged Grasshopper",
+    "aliases": [
+      "Red-legged Grasshopper"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Omocestus%20rufipes&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Omocestus viridulus",
+    "scientific_name": "Omocestus viridulus",
+    "common_name": "Common Green Grasshopper",
+    "aliases": [
+      "Common Green Grasshopper"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Omocestus%20viridulus&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Phaneroptera falcata",
+    "scientific_name": "Phaneroptera falcata",
+    "common_name": "Sickle-bearing Bush-cricket",
+    "aliases": [
+      "Sickle-bearing Bush-cricket"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Phaneroptera%20falcata&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Phaneroptera nana",
+    "scientific_name": "Phaneroptera nana",
+    "common_name": "Phaneroptera nana",
+    "aliases": [],
+    "risk": "LOW",
+    "risk_rationale": "A fruit-crop handbook records browsing on a range of plants but states that this species is not a significant fruit-crop pest and that crop damage is of little or no importance in the described contexts. LOW is not a statement that damage is impossible.",
+    "affected_crops": [
+      "Pear",
+      "Apple",
+      "Grapevine",
+      "Other fruit crops"
+    ],
+    "source_name": "Pests of Fruit Crops, Colour Handbook",
+    "source_url": "https://books.tarbaweya.org/static/documents/uploads/pdf/Agriculture/Pests%20of%20Fruit%20Crops%20A%20Colour%20Handbook.pdf",
+    "geographic_limitations": "Evidence is from fruit-crop contexts; field risk elsewhere is not established by this reference."
+  },
+  {
+    "model_class": "Pholidoptera aptera",
+    "scientific_name": "Pholidoptera aptera",
+    "common_name": "Alpine Dark Bush-cricket",
+    "aliases": [
+      "Alpine Dark Bush-cricket"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Pholidoptera%20aptera&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Pholidoptera griseoaptera",
+    "scientific_name": "Pholidoptera griseoaptera",
+    "common_name": "Dark Bush-cricket",
+    "aliases": [
+      "Dark Bush-cricket"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Pholidoptera%20griseoaptera&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Pholidoptera littoralis",
+    "scientific_name": "Pholidoptera littoralis",
+    "common_name": "Pholidoptera littoralis",
+    "aliases": [],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Pholidoptera%20littoralis&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Platycleis albopunctata",
+    "scientific_name": "Platycleis albopunctata",
+    "common_name": "Platycleis albopunctata",
+    "aliases": [],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Platycleis%20albopunctata&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Platypleura cf. catenata",
+    "scientific_name": null,
+    "common_name": "Platypleura cf. catenata",
+    "aliases": [],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Platypleura%20cf.%20catenata&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Platypleura plumosa",
+    "scientific_name": "Platypleura plumosa",
+    "common_name": "Platypleura plumosa",
+    "aliases": [],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Platypleura%20plumosa&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Platypleura sp. 10",
+    "scientific_name": null,
+    "common_name": "Platypleura sp. 10",
+    "aliases": [],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Platypleura%20sp.%2010&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Platypleura sp. 12 cf. hirtipennis",
+    "scientific_name": null,
+    "common_name": "Platypleura sp. 12 (cf. hirtipennis)",
+    "aliases": [
+      "Platypleura sp. 12 (cf. hirtipennis)"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Platypleura%20sp.%2012%20cf.%20hirtipennis&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Platypleura sp. 13",
+    "scientific_name": null,
+    "common_name": "Platypleura sp. 13",
+    "aliases": [],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Platypleura%20sp.%2013&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Pseudochorthippus montanus",
+    "scientific_name": "Pseudochorthippus montanus",
+    "common_name": "Bog Grasshopper",
+    "aliases": [
+      "Bog Grasshopper"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Pseudochorthippus%20montanus&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Pseudochorthippus parallelus",
+    "scientific_name": "Pseudochorthippus parallelus",
+    "common_name": "Meadow Grasshopper",
+    "aliases": [
+      "Meadow Grasshopper"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Pseudochorthippus%20parallelus&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Roeseliana roeselii",
+    "scientific_name": "Roeseliana roeselii",
+    "common_name": "Roesel's Bush-cricket",
+    "aliases": [
+      "Roesel's Bush-cricket"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Roeseliana%20roeselii&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Stenobothrus lineatus",
+    "scientific_name": "Stenobothrus lineatus",
+    "common_name": "Stripe-winged Grasshopper",
+    "aliases": [
+      "Stripe-winged Grasshopper"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Stenobothrus%20lineatus&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Stenobothrus stigmaticus",
+    "scientific_name": "Stenobothrus stigmaticus",
+    "common_name": "Lesser Mottled Grasshopper",
+    "aliases": [
+      "Lesser Mottled Grasshopper"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Stenobothrus%20stigmaticus&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Tettigonia cantans",
+    "scientific_name": "Tettigonia cantans",
+    "common_name": "Singing Bush-cricket",
+    "aliases": [
+      "Singing Bush-cricket"
+    ],
+    "risk": "UNKNOWN",
+    "risk_rationale": "No sufficiently reliable crop-damage evidence for this exact model class was established in this rapid review to support a LOW, MEDIUM, or HIGH tier. UNKNOWN does not mean zero risk. Assessment needs the crop, geography, species confirmation, and local abundance.",
+    "affected_crops": [],
+    "source_name": "GBIF taxonomic search",
+    "source_url": "https://api.gbif.org/v1/species/search?q=Tettigonia%20cantans&limit=5",
+    "geographic_limitations": "No general tier assigned; risk may vary by crop, geography, season, and population density."
+  },
+  {
+    "model_class": "Tettigonia viridissima",
+    "scientific_name": "Tettigonia viridissima",
+    "common_name": "Great Green Bush-cricket",
+    "aliases": [
+      "Great Green Bush-cricket"
+    ],
+    "risk": "MEDIUM",
+    "risk_rationale": "The USDA crop-insect handbook reports this species as an economic species in Iran and Cyprus on cotton, cereals, beets, legumes, and other plants. A separate Hungarian maize-field study found only slight damage in the observed fields. MEDIUM reflects variable, region-dependent crop-pest potential.",
+    "affected_crops": [
+      "Cotton",
+      "Cereals",
+      "Beets",
+      "Legumes",
+      "Maize",
+      "Tobacco"
+    ],
+    "source_name": "USDA Agriculture Handbook 273, Crop Insects of Northeast Africa–Southwest Asia",
+    "source_url": "https://www.govinfo.gov/content/pkg/GOVPUB-A-PURL-gpo22225/pdf/GOVPUB-A-PURL-gpo22225.pdf",
+    "geographic_limitations": "Impacts vary regionally; a Hungarian maize study reported slight damage, while the handbook notes economic-pest status in Iran and Cyprus."
+  },
+  {
+    "model_class": "Tylopsis lilifolia",
+    "scientific_name": "Tylopsis lilifolia",
+    "common_name": "Lily Bush-cricket",
+    "aliases": [
+      "Lily Bush-cricket"
+    ],
+    "risk": "LOW",
+    "risk_rationale": "A regional natural-history species profile describes this plant-feeding bush-cricket as not causing crop damage. LOW reflects that source's regional account; it should not be interpreted as a locally measured risk assessment.",
+    "affected_crops": [],
+    "source_name": "Regional Orthoptera species profile (Phrygana.eu)",
+    "source_url": "https://phrygana.eu/Fauna/Orthoptera/Tylopsis-lilifolia/Tylopsis-lilifolia.html",
+    "geographic_limitations": "Regional species profile; local observations may differ."
+  }
+]
