@@ -1,6 +1,8 @@
 import asyncio
 import json
 import unittest
+from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import numpy as np
@@ -199,6 +201,8 @@ class AudioPredictionSafetyTests(unittest.TestCase):
                 "common_name",
                 "scientific_name",
                 "confidence",
+                "insect_group",
+                "group_score",
                 "top_predictions",
                 "risk",
                 "risk_rationale",
@@ -307,7 +311,21 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             patch.object(
                 main,
                 "predict_pest",
-                return_value={"pest": main.class_names[0], "confidence": 0.81},
+                return_value={
+                    "pest": main.class_names[0],
+                    "confidence": 0.81,
+                    "insect_group": main.MODEL_SPECIES_GROUPS[
+                        main._normalize_pest_label(main.class_names[0])
+                    ],
+                    "group_score": 0.44,
+                    "top_predictions": [
+                        {
+                            "pest": main.class_names[0],
+                            "score": 0.81,
+                            "common_name": main.common_names[0],
+                        }
+                    ],
+                },
             ),
             patch.object(
                 main.manager,
@@ -848,6 +866,22 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         self.assertEqual(detection.status, "NON_PEST")
         self.assertIsNone(detection.pest)
         self.assertEqual(detection.risk, "LOW")
+        self.assertEqual(
+            detection.insect_group,
+            main.UNKNOWN_INSECT_GROUP,
+        )
+        response = main.DetectionResponse.model_validate(
+            {
+                "id": detection.id or 1,
+                "device_id": detection.device_id,
+                "status": detection.status,
+                "insect_group": detection.insect_group,
+                "group_score": detection.group_score,
+                "detected_at": detection.detected_at,
+            }
+        )
+        self.assertEqual(response.insect_group, main.UNKNOWN_INSECT_GROUP)
+        self.assertIsNone(response.group_score)
 
 
 class DetectionHistoryPersistenceTests(unittest.TestCase):
@@ -863,6 +897,44 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
     def tearDown(self):
         self.db.close()
         self.engine.dispose()
+
+    def test_legacy_detection_without_group_fields_remains_serializable(self):
+        pest = main.class_names[0]
+        detection = SimpleNamespace(
+            id=1,
+            device_id="LEGACY-UNIT",
+            status="UNKNOWN",
+            pest=pest,
+            scientific_name=pest,
+            common_name=main.common_names[0],
+            confidence=0.277,
+            top_predictions=json.dumps([{"pest": pest, "score": 0.277}]),
+            risk="UNKNOWN",
+            risk_rationale=None,
+            affected_crops="[]",
+            metadata_source_name=None,
+            metadata_source_url=None,
+            temperature=None,
+            humidity=None,
+            audio_file=None,
+            message="Unverified model prediction",
+            detected_at=datetime(2026, 1, 1),
+        )
+
+        response = main._serialize_detection(detection, None)
+
+        self.assertEqual(
+            response["insect_group"],
+            main.MODEL_SPECIES_GROUPS[
+                main._normalize_pest_label(pest)
+            ],
+        )
+        self.assertIsNone(response["group_score"])
+        self.assertEqual(response["top_predictions"][0]["score"], 0.277)
+        self.assertEqual(
+            response["top_predictions"][0]["common_name"],
+            main.common_names[0],
+        )
 
     def test_one_device_event_is_committed_and_returned_once_by_history(self):
         payload = main.DetectionCreate(
@@ -906,7 +978,21 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
             patch.object(
                 main,
                 "predict_pest",
-                return_value={"pest": main.class_names[0], "confidence": 0.81},
+                return_value={
+                    "pest": main.class_names[0],
+                    "confidence": 0.81,
+                    "insect_group": main.MODEL_SPECIES_GROUPS[
+                        main._normalize_pest_label(main.class_names[0])
+                    ],
+                    "group_score": 0.44,
+                    "top_predictions": [
+                        {
+                            "pest": main.class_names[0],
+                            "score": 0.81,
+                            "common_name": main.common_names[0],
+                        }
+                    ],
+                },
             ),
             patch.object(
                 main.manager,
@@ -931,6 +1017,14 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
             self.assertEqual(
                 record.scientific_name if hasattr(record, "scientific_name") else record["scientific_name"],
                 response["scientific_name"],
+            )
+            self.assertEqual(
+                record.insect_group if hasattr(record, "insect_group") else record["insect_group"],
+                response["insect_group"],
+            )
+            self.assertEqual(
+                record.group_score if hasattr(record, "group_score") else record["group_score"],
+                response["group_score"],
             )
         self.assertEqual(
             json.loads(saved.affected_crops),

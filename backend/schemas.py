@@ -55,6 +55,8 @@ class DetectionResponse(BaseModel):
     scientific_name: Optional[str] = None
     common_name: Optional[str] = None
     confidence: Optional[float] = None
+    insect_group: Optional[str] = None
+    group_score: Optional[float] = None
     risk: Optional[str] = None
     risk_rationale: Optional[str] = None
     affected_crops: list[str] = Field(default_factory=list)

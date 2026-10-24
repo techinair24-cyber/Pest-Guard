@@ -52,7 +52,15 @@ from models import (
 )
 
 from pest_data import PEST_DATA, SOLUTION_DATA
-
+from insect_groups import (
+    UNKNOWN_INSECT_GROUP,
+    aggregate_group_scores,
+    build_species_group_mapping,
+    enrich_top_predictions,
+    get_species_group,
+    rank_species_predictions,
+    resolve_saved_group_prediction,
+)
 from schemas import (
 
     DetectionCreate,
@@ -273,6 +281,16 @@ except Exception as error:
         f"{HIERARCHICAL_MODEL_PATH.resolve()}: {error}"
     ) from error
 # --- End hierarchical classifier ---
+
+MODEL_SPECIES_GROUPS = build_species_group_mapping(
+    _HIERARCHICAL_BUNDLE["labels"],
+    _HIERARCHICAL_BUNDLE["group_by_label"],
+    _HIERARCHICAL_BUNDLE["groups"],
+)
+MODEL_COMMON_NAMES = {
+    _normalize_pest_label(label): common_name
+    for label, common_name in zip(class_names, common_names)
+}
 
 
 def decode_audio_samples(audio):
@@ -574,17 +592,27 @@ def predict_pest(audio):
             raise RuntimeError("Hierarchical classifier returned invalid class scores.")
         class_scores /= score_sum
         index = int(np.argmax(class_scores))
-        top_indices = np.argsort(class_scores)[::-1][:3]
+        group_scores = aggregate_group_scores(
+            class_names,
+            class_scores,
+            MODEL_SPECIES_GROUPS,
+        )
+        if group_scores is None:
+            insect_group = UNKNOWN_INSECT_GROUP
+            group_score = None
+        else:
+            insect_group = max(group_scores, key=group_scores.get)
+            group_score = float(group_scores[insect_group])
         return {
             "pest": class_names[index],
             "confidence": float(class_scores[index]),
-            "top_predictions": [
-                {
-                    "pest": class_names[int(i)],
-                    "score": float(class_scores[int(i)]),
-                }
-                for i in top_indices
-            ],
+            "insect_group": insect_group,
+            "group_score": group_score,
+            "top_predictions": rank_species_predictions(
+                class_names,
+                class_scores,
+                common_names,
+            ),
         }
 
     raise RuntimeError("Required hierarchical classifier was not initialized.")
@@ -809,10 +837,13 @@ def _serialize_detection(detection: Detection, db: Session | None) -> dict:
         "scientific_name": detection.scientific_name or resolved["scientific_name"],
         "common_name": detection.common_name or resolved["common_name"],
         "confidence": detection.confidence,
-        "top_predictions": (
+        "insect_group": None,
+        "group_score": None,
+        "top_predictions": enrich_top_predictions(
             json.loads(detection.top_predictions)
             if detection.top_predictions
-            else []
+            else [],
+            MODEL_COMMON_NAMES,
         ),
         "risk": risk,
         "risk_rationale": detection.risk_rationale or resolved["risk_rationale"],
@@ -829,6 +860,12 @@ def _serialize_detection(detection: Detection, db: Session | None) -> dict:
         "message": detection.message,
         "detected_at": detection.detected_at,
     }
+    response["insect_group"], response["group_score"] = resolve_saved_group_prediction(
+        detection.pest,
+        getattr(detection, "insect_group", None),
+        getattr(detection, "group_score", None),
+        MODEL_SPECIES_GROUPS,
+    )
     detection_message = str(detection.message or "")
     normalized_message = detection_message.casefold()
     if normalized_message.startswith("inference_error:"):
@@ -1091,6 +1128,8 @@ def _migrate_detection_metadata_columns():
         "metadata_source_name": "VARCHAR(200)",
         "metadata_source_url": "VARCHAR(1000)",
         "top_predictions": "TEXT",
+        "insect_group": "VARCHAR(100)",
+        "group_score": "FLOAT",
     }
     with engine.begin() as connection:
         existing_columns = {
@@ -1602,6 +1641,12 @@ async def ai_predict(
         predicted_pest = (
             result["pest"] if result["pest"] in class_names else None
         )
+        insect_group = (
+            str(result.get("insect_group") or UNKNOWN_INSECT_GROUP)
+            if predicted_pest
+            else UNKNOWN_INSECT_GROUP
+        )
+        group_score = result.get("group_score") if predicted_pest else None
         prediction_message = "Unverified model prediction"
         species_metadata = _resolve_species_metadata(predicted_pest, db)
         common_name = (
@@ -1633,6 +1678,8 @@ async def ai_predict(
             ),
 
             "confidence": model_confidence,
+            "insect_group": insect_group,
+            "group_score": group_score,
             "top_predictions": top_predictions,
 
             "risk": resolved_risk,
@@ -1668,6 +1715,8 @@ async def ai_predict(
             common_name=common_name,
             confidence=model_confidence,
             top_predictions=json.dumps(top_predictions),
+            insect_group=insect_group,
+            group_score=group_score,
             risk=resolved_risk,
             risk_rationale=(
                 species_metadata["risk_rationale"] if predicted_pest else None
@@ -2066,6 +2115,8 @@ async def create_detection(
         pest=detection_pest,
 
         confidence=payload.confidence,
+        insect_group=get_species_group(detection_pest, MODEL_SPECIES_GROUPS),
+        group_score=None,
 
         risk=detection_risk,
 

@@ -45,6 +45,8 @@ class Detection(Base):
 
     confidence = Column(Float, nullable=True)
     top_predictions = Column(Text, nullable=True)
+    insect_group = Column(String(100), nullable=True)
+    group_score = Column(Float, nullable=True)
 
     risk = Column(String(50), nullable=True)
     risk_rationale = Column(Text, nullable=True)

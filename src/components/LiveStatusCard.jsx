@@ -1,44 +1,15 @@
 import { Link } from 'react-router-dom'
 import { ArrowIcon, SignalIcon } from './Icons'
 import { formatTemperature, formatHumidity } from '../utils/formatters'
+import {
+  formatModelScore,
+  getCandidateDisplayName,
+  getDetectionInsectGroup,
+  getPredictionUncertainty,
+  getTopSpeciesPredictions,
+} from '../utils/insectPredictions'
 
-function formatConfidence(value) {
-  if (value === null || value === undefined || value === '') {
-    return 'N/A'
-  }
-
-  const number = Number(value)
-  if (!Number.isFinite(number) || number < 0) {
-    return 'N/A'
-  }
-
-  const percentage = number > 1 ? number : number * 100
-  return `${Math.min(percentage, 100).toFixed(1)}%`
-}
-
-function formatModelScore(value) {
-  const number = Number(value)
-
-  if (!Number.isFinite(number) || number < 0) {
-    return 'N/A'
-  }
-
-  const percentage = number > 1 ? number : number * 100
-  return `${Math.min(percentage, 100).toFixed(1)}%`
-}
-
-function getConfidenceLabel(value) {
-  const number = Number(value)
-  if (!Number.isFinite(number)) return 'Not available'
-
-  const percentage = number > 1 ? number : number * 100
-
-  if (percentage < 50) return 'Low confidence · Verify result'
-  if (percentage < 75) return 'Moderate confidence'
-  return 'Higher confidence'
-}
-
-function formatTime(timestamp) {
+function formatDateTime(timestamp) {
   if (!timestamp) {
     return '—'
   }
@@ -49,10 +20,7 @@ function formatTime(timestamp) {
     return '—'
   }
 
-  return date.toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  return date.toLocaleString()
 }
 
 function getStatusLabel(status) {
@@ -186,12 +154,8 @@ function LiveStatusCard({ detection, device, error }) {
     detection?.pest_name ||
     null
 
-  const confidence =
-    detection?.confidence ?? null
-
-  const topPredictions = Array.isArray(detection?.top_predictions)
-    ? detection.top_predictions.slice(0, 3)
-    : []
+  const insectGroup = getDetectionInsectGroup(detection)
+  const topPredictions = getTopSpeciesPredictions(detection?.top_predictions)
 
   const risk =
     detection?.risk ||
@@ -205,6 +169,7 @@ function LiveStatusCard({ detection, device, error }) {
 
   const deviceName =
     device?.device_id ||
+    detection?.device_id ||
     device?.name ||
     'Field Unit'
 
@@ -246,10 +211,10 @@ function LiveStatusCard({ detection, device, error }) {
             </div>
 
             <div>
-              <span>Latest Detection</span>
+              <span>Broad insect group</span>
 
               <strong>
-                {pestName || statusLabel}
+                {pestName ? insectGroup : statusLabel}
               </strong>
             </div>
           </div>
@@ -257,16 +222,16 @@ function LiveStatusCard({ detection, device, error }) {
           {/* DETAILS */}
           <div className="status-details">
             <div>
-              <span>AI Confidence</span>
+              <span>Group model score</span>
 
               <strong>
-                {formatConfidence(confidence)}
+                {formatModelScore(detection?.group_score)}
               </strong>
-              <small>{getConfidenceLabel(confidence)}</small>
+              <small>Uncalibrated ranking estimate</small>
             </div>
 
             <div>
-              <span>Risk</span>
+              <span>Candidate risk · unverified</span>
 
               <strong
                 className={
@@ -280,10 +245,10 @@ function LiveStatusCard({ detection, device, error }) {
             </div>
 
             <div>
-              <span>Time</span>
+              <span>Detection date &amp; time</span>
 
               <strong>
-                {formatTime(timestamp)}
+                {formatDateTime(timestamp)}
               </strong>
             </div>
 
@@ -306,21 +271,30 @@ function LiveStatusCard({ detection, device, error }) {
 
           {topPredictions.length > 0 && (
             <div className="top-predictions">
-              <h4>Top AI Predictions</h4>
+              <h4>Top Species Predictions</h4>
 
               <ol>
                 {topPredictions.map((prediction, index) => (
                   <li key={`${prediction.pest}-${index}`}>
-                    <span>{prediction.pest}</span>
+                    <span>
+                      {getCandidateDisplayName(prediction)}
+                      <small>Unverified candidate</small>
+                    </span>
                     <strong>{formatModelScore(prediction.score)}</strong>
                   </li>
                 ))}
               </ol>
 
               <small>
-                Model scores are ranking estimates, not verified probabilities.
+                Model scores are uncalibrated ranking estimates, not verified probabilities.
               </small>
             </div>
+          )}
+
+          {getPredictionUncertainty(detection) && (
+            <p className="status-uncertainty">
+              {getPredictionUncertainty(detection)}
+            </p>
           )}
 
           <div className="status-extra">
@@ -353,7 +327,7 @@ function LiveStatusCard({ detection, device, error }) {
 
       {/* DEVICE */}
       <p className="status-device-id">
-        {deviceName}
+        Device ID: {deviceName}
       </p>
 
       {/* LINK */}

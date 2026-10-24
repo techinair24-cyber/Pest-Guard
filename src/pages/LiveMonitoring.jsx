@@ -10,7 +10,6 @@ import {
   buildPestDirectory,
   getDisplayPestName,
   getDetectionRiskEstimate,
-  normalizePestName,
 } from '../utils/pestNames'
 import {
   getDetectionTime,
@@ -20,6 +19,13 @@ import {
   mergeDetections,
   parseServerTimestamp,
 } from '../utils/detectionHistory'
+import {
+  formatModelScore,
+  getCandidateDisplayName,
+  getDetectionInsectGroup,
+  getPredictionUncertainty,
+  getTopSpeciesPredictions,
+} from '../utils/insectPredictions'
 import './LiveMonitoring.css'
 
 const HISTORY_CLEAR_KEY = 'pest_guard_history_cleared_at'
@@ -74,15 +80,6 @@ function formatConfidence(value) {
   }
 
   return `${(number * 100).toFixed(1)}%`
-}
-
-function formatDetectionConfidence(value) {
-  if (value === null || value === undefined || value === '') {
-    return 'N/A'
-  }
-
-  const number = Number(value)
-  return Number.isFinite(number) ? `${(number * 100).toFixed(1)}%` : 'N/A'
 }
 
 function isUnconfirmedMatchStatus(value) {
@@ -225,27 +222,12 @@ function LiveMonitoring() {
   const healthTone = connectionState === 'Online' ? 'online' : 'offline'
   const predictedPestName =
     typeof displayDetection?.pest === 'string' ? displayDetection.pest.trim() : ''
+  const insectGroup = getDetectionInsectGroup(displayDetection)
+  const topSpeciesPredictions = getTopSpeciesPredictions(
+    displayDetection?.top_predictions,
+  )
   const riskDetails = getDetectionRiskEstimate(displayDetection, pestDirectory)
   const riskEstimate = riskDetails.risk
-  const matchingPestRecord =
-    pestDirectory[normalizePestName(predictedPestName)]
-  const predictedScientificName =
-    displayDetection?.scientific_name ||
-    matchingPestRecord?.scientificName ||
-    ''
-  const predictedPestDisplayName = predictedPestName
-    ? String(
-        displayDetection?.common_name ||
-          matchingPestRecord?.commonName ||
-          (predictedScientificName
-            ? predictedPestName
-            : getDisplayPestName(
-                predictedPestName,
-                pestDirectory,
-                displayDetection,
-              )),
-      ).trim()
-    : ''
   const reportingDeviceId =
     displayDetection?.device_id || device?.device_id || 'N/A'
 
@@ -646,12 +628,12 @@ function LiveMonitoring() {
                     marginBottom: '0.25rem',
                   }}
                 >
-                  TOP MATCH
+                  UNVERIFIED BROAD GROUP
                 </small>
               )}
               <strong>
                 {predictedPestName
-                  ? predictedPestDisplayName
+                  ? insectGroup
                   : displayDetection
                     ? displayDetectionLabel === 'Inference error'
                       ? displayDetectionLabel
@@ -668,23 +650,16 @@ function LiveMonitoring() {
                             ? 'Checking for detections…'
                             : 'No detection received'}
               </strong>
-              {predictedPestName && predictedScientificName &&
-                normalizePestName(predictedScientificName) !==
-                  normalizePestName(predictedPestDisplayName) && (
-                  <small
-                    className="latest-identification-detail"
-                    style={{ display: 'block', marginTop: '0.3rem' }}
-                  >
-                    Scientific name: <em>{predictedScientificName}</em>
-                  </small>
-                )}
             </div>
           </div>
 
           {displayDetection && (
             <p className="latest-identification-status">
-              {!isUnconfirmedMatchStatus(displayDetectionLabel) &&
-                `${displayDetectionLabel} · `}
+              {predictedPestName
+                ? 'Unverified model result · '
+                : !isUnconfirmedMatchStatus(displayDetectionLabel)
+                  ? `${displayDetectionLabel} · `
+                  : ''}
               Detected{' '}
               {formatDate(getDetectionTime(displayDetection))}
             </p>
@@ -694,14 +669,35 @@ function LiveMonitoring() {
               Latest refresh failed; showing the most recently received record.
             </p>
           )}
+          {displayDetection && predictedPestName && (
+            <p className="prediction-uncertainty">
+              {getPredictionUncertainty(displayDetection)}
+            </p>
+          )}
+          {topSpeciesPredictions.length > 0 && (
+            <div className="monitoring-top-species">
+              <h3>Top Species Predictions</h3>
+              <ol>
+                {topSpeciesPredictions.map((candidate, index) => (
+                  <li key={`${candidate.pest}-${index}`}>
+                    <span>
+                      {getCandidateDisplayName(candidate)}
+                      <small>Unverified candidate</small>
+                    </span>
+                    <strong>{formatModelScore(candidate.score)}</strong>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
           <div className="detection-details">
             <div>
-              <span>Top-match model score (not calibrated confidence)</span>
-              <strong>{formatDetectionConfidence(displayDetection?.confidence)}</strong>
+              <span>Group-level model score (uncalibrated)</span>
+              <strong>{formatModelScore(displayDetection?.group_score)}</strong>
             </div>
             <div className={`latest-risk latest-risk-${riskEstimate.toLowerCase()}`}>
               <div className="latest-risk-heading">
-                <span>Risk Level</span>
+                <span>Candidate risk · unverified</span>
                 <strong>{displayDetection ? riskEstimate : '—'}</strong>
               </div>
               <div
@@ -842,10 +838,7 @@ function LiveMonitoring() {
             <div className="history-list">
               {filteredHistory.map((item) => {
                 const scientificName = String(item.pest || '').trim()
-                const commonName =
-                  String(item.common_name || '').trim() ||
-                  scientificName ||
-                  'Unidentified pest'
+                const topCandidates = getTopSpeciesPredictions(item.top_predictions)
 
                 return (
                   <div key={item.id ?? `${item.device_id}-${item.detected_at}`} className="history-row">
@@ -853,14 +846,41 @@ function LiveMonitoring() {
                       <span className="history-time">{formatDate(getDetectionTime(item))}</span>
                       <strong>
                         {scientificName
-                          ? commonName
+                          ? getDetectionInsectGroup(item)
                           : getDetectionDisplayStatus(item) === 'Inference error'
                             ? 'Inference error'
                             : getDetectionDisplayStatus(item) === 'Non-pest sound'
                               ? 'Non-pest sound'
                               : 'Unidentified sound'}
                       </strong>
-                      {scientificName && <small>{scientificName}</small>}
+                      {scientificName && (
+                        <small>
+                          Top species candidate: {getCandidateDisplayName({
+                            pest: scientificName,
+                            common_name: item.common_name,
+                          })}
+                        </small>
+                      )}
+                      {topCandidates.length > 0 && (
+                        <div className="history-top-species">
+                          <strong>Top Species Predictions</strong>
+                          <ol>
+                            {topCandidates.map((candidate, index) => (
+                              <li key={`${candidate.pest}-${index}`}>
+                                {getCandidateDisplayName(candidate)}
+                                {' · '}
+                                {formatModelScore(candidate.score)}
+                                {' · Unverified'}
+                              </li>
+                            ))}
+                          </ol>
+                        </div>
+                      )}
+                      {scientificName && (
+                        <small className="history-uncertainty">
+                          {getPredictionUncertainty(item)}
+                        </small>
+                      )}
                       {!isUnconfirmedMatchStatus(getDetectionDisplayStatus(item)) && (
                         <small>{getDetectionDisplayStatus(item)}</small>
                       )}
@@ -872,6 +892,9 @@ function LiveMonitoring() {
                         <span>{item.status}</span>
                       )}
                       <strong>{formatConfidence(item.confidence)}</strong>
+                      <small>Species score</small>
+                      <strong>{formatModelScore(item.group_score)}</strong>
+                      <small>Group score</small>
                       <strong>{getDetectionRiskEstimate(item, pestDirectory).risk}</strong>
                       <strong>{item.device_id || deviceId}</strong>
                     </div>
