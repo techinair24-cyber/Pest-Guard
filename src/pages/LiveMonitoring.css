@@ -1101,11 +1101,17 @@
   margin: 0.15rem 0 0.45rem;
 }
 
-.detection-control-copy > p:not(.monitoring-card-eyebrow) {
+.detection-control-copy > p:not(.monitoring-card-eyebrow),
+.detection-control-copy > .detection-control-message {
+  display: block;
   margin: 0;
   max-width: 52rem;
   color: var(--muted, #647067);
   line-height: 1.55;
+}
+
+.detection-control-copy > .detection-control-message {
+  font-size: 0.82rem;
 }
 
 .detection-control-copy .detection-control-error {

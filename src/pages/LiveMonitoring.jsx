@@ -32,6 +32,8 @@ import {
   formatDeviceHumidity,
   formatDeviceTemperature,
   getDetectionControlPresentation,
+  matchesDetectionControlAction,
+  getRequestedDetectionControlPresentation,
   getIdentificationLabel,
   getLeadingSpeciesPrediction,
   requestDetectionControl,
@@ -121,17 +123,17 @@ function LiveMonitoring() {
   const [popup, setPopup] = useState(null)
   const [controlRefreshNonce, setControlRefreshNonce] = useState(0)
   const [detectionControlKnown, setDetectionControlKnown] = useState(false)
+  const [detectionControlActionView, setDetectionControlActionView] = useState(null)
   const [detectionControlView, setDetectionControlView] = useState(
     () => getDetectionControlPresentation({ enabled: false }),
   )
   const [detectionControlBusy, setDetectionControlBusy] = useState(false)
   const [detectionControlError, setDetectionControlError] = useState('')
-  const [detectionControlMessage, setDetectionControlMessage] = useState(
-    'Checking the backend control command.',
-  )
+  const detectionControlMessage = 'Checking the backend control command.'
   const controlCommandVersionRef = useRef(0)
   const controlReadVersionRef = useRef(0)
   const controlCommandPendingRef = useRef(false)
+  const controlActionRef = useRef(null)
   const [pestDirectory, setPestDirectory] = useState({})
   const alertedKeysRef = useRef(getStoredAlertedKeys())
 
@@ -179,9 +181,16 @@ function LiveMonitoring() {
             readVersion !== controlReadVersionRef.current
           ) return
           const control = getDetectionControlPresentation(result)
+          const action = controlActionRef.current
+          if (action) {
+            if (!matchesDetectionControlAction(action, result)) return
+            setDetectionControlActionView(
+              getRequestedDetectionControlPresentation(action.enabled, result),
+            )
+          } else {
+            setDetectionControlKnown(true)
+          }
           setDetectionControlView(control)
-          setDetectionControlKnown(true)
-          setDetectionControlMessage(control.message)
           setDetectionControlError('')
         })
         .catch((controlError) => {
@@ -190,7 +199,9 @@ function LiveMonitoring() {
             commandVersion !== controlCommandVersionRef.current ||
             readVersion !== controlReadVersionRef.current
           ) return
-          setDetectionControlKnown(false)
+          if (!controlActionRef.current) {
+            setDetectionControlKnown(false)
+          }
           setDetectionControlError(`Unable to read backend control command: ${controlError.message}`)
         })
     }
@@ -205,9 +216,21 @@ function LiveMonitoring() {
   }, [deviceId, controlRefreshNonce])
 
   const handleDetectionControl = async (enabled) => {
-    controlCommandVersionRef.current += 1
+    const commandVersion = ++controlCommandVersionRef.current
     controlReadVersionRef.current += 1
     controlCommandPendingRef.current = true
+    controlActionRef.current = {
+      enabled,
+      commandId: null,
+      accepted: false,
+      version: commandVersion,
+    }
+    setDetectionControlActionView(
+      getRequestedDetectionControlPresentation(enabled, null, {
+        requestPending: true,
+      }),
+    )
+    setDetectionControlKnown(true)
     setDetectionControlBusy(true)
     setDetectionControlError('')
 
@@ -217,15 +240,31 @@ function LiveMonitoring() {
         enabled,
         setDetectionEnabled,
       )
+      if (commandVersion !== controlCommandVersionRef.current) return
+      controlActionRef.current = {
+        enabled,
+        commandId: control.commandId,
+        accepted: true,
+        version: commandVersion,
+      }
+      setDetectionControlActionView(
+        getRequestedDetectionControlPresentation(enabled, control.response),
+      )
       setDetectionControlView(control)
-      setDetectionControlKnown(true)
-      setDetectionControlMessage(control.message)
       setControlRefreshNonce((nonce) => nonce + 1)
     } catch (controlError) {
+      if (commandVersion !== controlCommandVersionRef.current) return
+      setDetectionControlActionView(
+        getRequestedDetectionControlPresentation(enabled, null, {
+          requestError: controlError.message,
+        }),
+      )
       setDetectionControlError(`Control request failed: ${controlError.message}`)
     } finally {
-      controlCommandPendingRef.current = false
-      setDetectionControlBusy(false)
+      if (commandVersion === controlCommandVersionRef.current) {
+        controlCommandPendingRef.current = false
+        setDetectionControlBusy(false)
+      }
     }
   }
   const deviceTimestamp = liveDevice?.last_seen || liveDevice?.lastSeen
@@ -579,7 +618,9 @@ function LiveMonitoring() {
         <div className="detection-control-copy">
           <p className="monitoring-card-eyebrow">FIELD UNIT CONTROL</p>
           <h2>Detection Control</h2>
-          <p>{detectionControlMessage}</p>
+          <small className="detection-control-message" aria-live="polite">
+            {detectionControlActionView?.message || detectionControlMessage}
+          </small>
           {detectionControlError && (
             <p className="detection-control-error" role="alert">{detectionControlError}</p>
           )}
@@ -587,18 +628,19 @@ function LiveMonitoring() {
         <div className="detection-control-actions">
             <span
               className={`detection-control-state ${
-                detectionControlKnown ? detectionControlView.className : 'is-unknown'
+                detectionControlActionView?.className ||
+                (detectionControlKnown ? detectionControlView.className : 'is-unknown')
               }`}
             >
-              {!detectionControlKnown
+              {detectionControlActionView?.label || (!detectionControlKnown
                 ? 'CONTROL UNKNOWN'
-                : detectionControlView.label}
+                : detectionControlView.label)}
           </span>
           <button
             type="button"
             className="detection-control-button detection-control-start"
             onClick={() => handleDetectionControl(true)}
-            disabled={detectionControlBusy || (detectionControlKnown && detectionControlView.enabled)}
+            disabled={detectionControlBusy}
           >
             {detectionControlBusy ? 'Please wait…' : 'Detect'}
           </button>
@@ -606,7 +648,7 @@ function LiveMonitoring() {
             type="button"
             className="detection-control-button detection-control-stop"
             onClick={() => handleDetectionControl(false)}
-            disabled={detectionControlBusy || (detectionControlKnown && !detectionControlView.enabled)}
+            disabled={detectionControlBusy}
           >
             {detectionControlBusy ? 'Please wait…' : 'Stop'}
           </button>

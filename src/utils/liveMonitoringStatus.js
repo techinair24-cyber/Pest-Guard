@@ -154,5 +154,47 @@ export async function requestDetectionControl(deviceId, enabled, sendCommand) {
   if (control.enabled !== enabled) {
     throw new Error('Backend did not confirm the requested control value.')
   }
-  return control
+  return {
+    ...control,
+    commandId: response.command_id ?? null,
+    response,
+  }
+}
+
+export function getRequestedDetectionControlPresentation(
+  enabled,
+  response,
+  { requestPending = false, requestError = '' } = {},
+) {
+  const confirmed = response?.device_enabled === enabled &&
+    response?.status === (enabled ? 'RUNNING' : 'STOPPED')
+  const label = enabled ? 'DETECTING' : 'DETECTION STOPPED'
+  const message = confirmed
+    ? `The field unit confirmed ${enabled ? 'Detect' : 'Stop'}.`
+    : requestError
+      ? `${enabled ? 'Detect' : 'Stop'} was not accepted; the field-unit state is unconfirmed.`
+      : response?.status === 'DEVICE_OFFLINE' || response?.device_online === false
+        ? 'The requested state is shown; the field unit is offline and has not confirmed it.'
+        : response?.status === 'TIMEOUT'
+          ? 'The requested state is shown; no matching field-unit confirmation arrived before timeout.'
+          : requestPending
+            ? `Sending ${enabled ? 'Detect' : 'Stop'}; field-unit confirmation is pending.`
+            : `The requested state is shown; waiting for the field unit to confirm ${enabled ? 'Detect' : 'Stop'}.`
+
+  return {
+    enabled,
+    status: confirmed ? (enabled ? 'RUNNING' : 'STOPPED') : 'REQUESTED',
+    label,
+    message,
+    className: enabled ? 'is-running' : 'is-stopped',
+    confirmed,
+  }
+}
+
+export function matchesDetectionControlAction(action, response) {
+  if (!action?.accepted) return false
+  return action.commandId
+    ? response?.command_id === action.commandId
+    : response?.enabled === action.enabled &&
+      response?.command_received === true
 }

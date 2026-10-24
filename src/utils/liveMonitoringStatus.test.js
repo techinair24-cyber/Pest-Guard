@@ -5,9 +5,11 @@ import {
   formatDeviceHumidity,
   formatDeviceTemperature,
   getDetectionControlPresentation,
+  getRequestedDetectionControlPresentation,
   getIdentificationLabel,
   getLeadingSpeciesLabel,
   getLeadingSpeciesPrediction,
+  matchesDetectionControlAction,
   requestDetectionControl,
 } from './liveMonitoringStatus.js'
 
@@ -228,4 +230,85 @@ test('offline and timed-out devices are not presented as command acknowledgement
   assert.match(offline.message, /no recent heartbeat/)
   assert.equal(timedOut.label, 'COMMAND TIMED OUT')
   assert.match(timedOut.message, /Check the field unit and firmware/)
+})
+
+test('requested Detect and Stop labels remain visible while device confirmation is pending', () => {
+  const detect = getRequestedDetectionControlPresentation(true, null, {
+    requestPending: true,
+  })
+  const stop = getRequestedDetectionControlPresentation(false, {
+    enabled: false,
+    command_received: true,
+    device_enabled: null,
+    status: 'REQUESTED',
+  })
+
+  assert.equal(detect.label, 'DETECTING')
+  assert.equal(detect.confirmed, false)
+  assert.match(detect.message, /confirmation is pending/)
+  assert.equal(stop.label, 'DETECTION STOPPED')
+  assert.equal(stop.confirmed, false)
+  assert.match(stop.message, /waiting for the field unit/)
+})
+
+test('requested UI states show hardware confirmation only for matching acknowledged state', () => {
+  const confirmed = getRequestedDetectionControlPresentation(true, {
+    enabled: true,
+    device_enabled: true,
+    status: 'RUNNING',
+  })
+  const notConfirmed = getRequestedDetectionControlPresentation(true, {
+    enabled: true,
+    device_enabled: false,
+    status: 'REQUESTED',
+  })
+
+  assert.equal(confirmed.label, 'DETECTING')
+  assert.equal(confirmed.confirmed, true)
+  assert.match(confirmed.message, /field unit confirmed Detect/)
+  assert.equal(notConfirmed.label, 'DETECTING')
+  assert.equal(notConfirmed.confirmed, false)
+})
+
+test('a failed request keeps the selected label but clearly reports unconfirmed device state', () => {
+  const presentation = getRequestedDetectionControlPresentation(false, null, {
+    requestError: 'backend unavailable',
+  })
+
+  assert.equal(presentation.label, 'DETECTION STOPPED')
+  assert.equal(presentation.confirmed, false)
+  assert.match(presentation.message, /was not accepted/)
+  assert.match(presentation.message, /state is unconfirmed/)
+})
+
+test('stale polls cannot reconcile over a newer or unaccepted button action', () => {
+  const currentAction = {
+    enabled: false,
+    commandId: 'latest-command',
+    accepted: true,
+  }
+
+  assert.equal(
+    matchesDetectionControlAction(currentAction, {
+      command_id: 'older-command',
+      enabled: true,
+      command_received: true,
+    }),
+    false,
+  )
+  assert.equal(
+    matchesDetectionControlAction(
+      { ...currentAction, accepted: false },
+      { command_id: 'latest-command', enabled: false, command_received: true },
+    ),
+    false,
+  )
+  assert.equal(
+    matchesDetectionControlAction(currentAction, {
+      command_id: 'latest-command',
+      enabled: false,
+      command_received: true,
+    }),
+    true,
+  )
 })
