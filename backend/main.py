@@ -1569,6 +1569,7 @@ def device_heartbeat(
 
 # PEST_GUARD_DETECTION_CONTROL_ENDPOINTS
 def _detection_control_response(device_id):
+    command_received = device_id in DETECTION_CONTROL_STATE
     requested_enabled = bool(DETECTION_CONTROL_STATE.get(device_id, False))
     report = DETECTION_CONTROL_REPORTS.get(device_id)
     device_enabled = None
@@ -1584,7 +1585,7 @@ def _detection_control_response(device_id):
             reported_at = None
 
     if device_enabled is None:
-        status = "UNKNOWN"
+        status = "REQUESTED" if command_received else "UNKNOWN"
     elif device_enabled != requested_enabled:
         status = "REQUESTED"
     else:
@@ -1593,6 +1594,7 @@ def _detection_control_response(device_id):
     return {
         "device_id": device_id,
         "enabled": requested_enabled,
+        "command_received": command_received,
         "device_enabled": device_enabled,
         "status": status,
         "reported_at": reported_at.isoformat() if reported_at else None,

@@ -55,14 +55,41 @@ test('missing, invalid, or offline device sensor values are unavailable, not zer
   assert.equal(formatDeviceHumidity(0, true), '0%')
 })
 
-test('control presentation distinguishes command requests from device acknowledgements', () => {
-  assert.equal(
+test('control presentation distinguishes unknown, sent, and acknowledged commands', () => {
+  assert.deepEqual(
     getDetectionControlPresentation({
       enabled: true,
+      command_received: false,
       device_enabled: null,
       status: 'UNKNOWN',
-    }).label,
-    'CONTROL UNKNOWN',
+    }).status,
+    'UNKNOWN',
+  )
+  assert.deepEqual(
+    getDetectionControlPresentation({
+      enabled: true,
+      command_received: true,
+      device_enabled: null,
+      status: 'REQUESTED',
+    }),
+    {
+      enabled: true,
+      status: 'REQUESTED',
+      label: 'COMMAND SENT',
+      message: 'The Detect command was accepted; waiting for the field-unit acknowledgement.',
+      className: 'is-requested',
+    },
+  )
+  assert.equal(
+    getDetectionControlPresentation(
+      {
+        enabled: true,
+        device_enabled: null,
+        status: 'UNKNOWN',
+      },
+      { commandAccepted: true },
+    ).label,
+    'COMMAND SENT',
   )
   assert.equal(
     getDetectionControlPresentation({
@@ -70,7 +97,7 @@ test('control presentation distinguishes command requests from device acknowledg
       device_enabled: false,
       status: 'REQUESTED',
     }).label,
-    'DETECT REQUESTED',
+    'COMMAND SENT',
   )
   assert.equal(
     getDetectionControlPresentation({
@@ -78,7 +105,7 @@ test('control presentation distinguishes command requests from device acknowledg
       device_enabled: true,
       status: 'RUNNING',
     }).label,
-    'RUNNING',
+    'DETECTING',
   )
   assert.equal(
     getDetectionControlPresentation({
@@ -86,6 +113,15 @@ test('control presentation distinguishes command requests from device acknowledg
       device_enabled: false,
       status: 'STOPPED',
     }).label,
-    'STOPPED',
+    'DETECTION STOPPED',
+  )
+  assert.equal(
+    getDetectionControlPresentation({
+      enabled: false,
+      command_received: true,
+      device_enabled: true,
+      status: 'REQUESTED',
+    }).label,
+    'COMMAND SENT',
   )
 })

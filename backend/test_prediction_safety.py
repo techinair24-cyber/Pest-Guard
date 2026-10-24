@@ -1095,11 +1095,16 @@ class DeviceHeartbeatAndControlTests(unittest.TestCase):
         self.assertEqual(response["device"]["humidity"], 0)
 
     def test_control_state_waits_for_real_heartbeat_acknowledgement(self):
+        unknown = main.get_detection_control(self.device_id)
+        self.assertEqual(unknown["status"], "UNKNOWN")
+        self.assertFalse(unknown["command_received"])
+
         requested = main.set_detection_control(
             self.device_id,
             {"enabled": True},
         )
-        self.assertEqual(requested["status"], "UNKNOWN")
+        self.assertEqual(requested["status"], "REQUESTED")
+        self.assertTrue(requested["command_received"])
         self.assertIsNone(requested["device_enabled"])
 
         main.device_heartbeat(
@@ -1120,6 +1125,7 @@ class DeviceHeartbeatAndControlTests(unittest.TestCase):
         acknowledged = main.get_detection_control(self.device_id)
         self.assertEqual(acknowledged["status"], "RUNNING")
         self.assertTrue(acknowledged["device_enabled"])
+        self.assertTrue(acknowledged["command_received"])
 
         stopped = main.set_detection_control(
             self.device_id,
@@ -1137,6 +1143,18 @@ class DeviceHeartbeatAndControlTests(unittest.TestCase):
             "STOPPED",
         )
 
+    def test_invalid_control_command_is_rejected_without_changing_state(self):
+        with self.assertRaises(main.HTTPException) as error:
+            main.set_detection_control(
+                self.device_id,
+                {"enabled": "true"},
+            )
+
+        self.assertEqual(error.exception.status_code, 422)
+        response = main.get_detection_control(self.device_id)
+        self.assertEqual(response["status"], "UNKNOWN")
+        self.assertFalse(response["command_received"])
+
     def test_stale_control_heartbeat_is_not_presented_as_acknowledgement(self):
         main.DETECTION_CONTROL_STATE[self.device_id] = True
         main.DETECTION_CONTROL_REPORTS[self.device_id] = {
@@ -1146,7 +1164,8 @@ class DeviceHeartbeatAndControlTests(unittest.TestCase):
 
         response = main.get_detection_control(self.device_id)
 
-        self.assertEqual(response["status"], "UNKNOWN")
+        self.assertEqual(response["status"], "REQUESTED")
+        self.assertTrue(response["command_received"])
         self.assertIsNone(response["device_enabled"])
 
 

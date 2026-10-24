@@ -49,9 +49,15 @@ export function formatDeviceHumidity(value, isOnline) {
   return `${Number(humidity.toFixed(1))}%`
 }
 
-export function getDetectionControlPresentation(response) {
+export function getDetectionControlPresentation(response, { commandAccepted = false } = {}) {
   if (!response || typeof response.enabled !== 'boolean') {
     throw new Error('Backend returned an invalid control command.')
+  }
+  if (
+    response.command_received !== undefined &&
+    typeof response.command_received !== 'boolean'
+  ) {
+    throw new Error('Backend returned an invalid command acknowledgement state.')
   }
   if (
     response.device_enabled !== undefined &&
@@ -63,31 +69,36 @@ export function getDetectionControlPresentation(response) {
 
   const status = response.device_enabled === null ||
     response.device_enabled === undefined
-    ? 'UNKNOWN'
+    ? commandAccepted || response.command_received === true ||
+      response.status === 'REQUESTED'
+      ? 'REQUESTED'
+      : 'UNKNOWN'
     : response.device_enabled !== response.enabled
       ? 'REQUESTED'
       : response.device_enabled
         ? 'RUNNING'
         : 'STOPPED'
-  if (response.status && response.status !== status) {
+  if (
+    response.status &&
+    response.status !== status &&
+    !(commandAccepted && response.status === 'UNKNOWN' && status === 'REQUESTED')
+  ) {
     throw new Error('Backend control status does not match the device acknowledgement.')
   }
 
   const label = status === 'RUNNING'
-    ? 'RUNNING'
+    ? 'DETECTING'
     : status === 'STOPPED'
-      ? 'STOPPED'
+      ? 'DETECTION STOPPED'
       : status === 'REQUESTED'
-        ? response.enabled
-          ? 'DETECT REQUESTED'
-          : 'STOP REQUESTED'
+        ? 'COMMAND SENT'
         : 'CONTROL UNKNOWN'
   const message = status === 'RUNNING'
     ? 'The field unit acknowledged Detect and is monitoring.'
     : status === 'STOPPED'
       ? 'The field unit acknowledged Stop.'
       : status === 'REQUESTED'
-        ? `Backend accepted ${response.enabled ? 'Detect' : 'Stop'}; waiting for the field-unit acknowledgement.`
+        ? `The ${response.enabled ? 'Detect' : 'Stop'} command was accepted; waiting for the field-unit acknowledgement.`
         : 'No recent field-unit acknowledgement is available.'
 
   return {

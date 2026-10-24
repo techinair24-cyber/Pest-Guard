@@ -194,7 +194,9 @@ function LiveMonitoring() {
 
     try {
       const result = await setDetectionEnabled(deviceId, enabled)
-      const control = getDetectionControlPresentation(result)
+      const control = getDetectionControlPresentation(result, {
+        commandAccepted: true,
+      })
       if (control.enabled !== enabled) {
         throw new Error('Backend did not confirm the requested control value.')
       }
@@ -202,7 +204,6 @@ function LiveMonitoring() {
       setDetectionControlKnown(true)
       setDetectionControlMessage(control.message)
     } catch (controlError) {
-      setDetectionControlKnown(false)
       setDetectionControlError(`Control request failed: ${controlError.message}`)
     } finally {
       setDetectionControlBusy(false)
