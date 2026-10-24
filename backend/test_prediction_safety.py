@@ -1036,7 +1036,15 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
 class DeviceHeartbeatAndControlTests(unittest.TestCase):
     def setUp(self):
         self.device_id = "TEST-CONTROL-UNIT"
-        self.device = SimpleNamespace(
+        self.engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        main.Base.metadata.create_all(bind=self.engine)
+        self.session_factory = sessionmaker(bind=self.engine)
+        self.db = self.session_factory()
+        self.device = main.Device(
             device_id=self.device_id,
             name="Test field unit",
             status="ONLINE",
@@ -1045,17 +1053,24 @@ class DeviceHeartbeatAndControlTests(unittest.TestCase):
             temperature=0.0,
             humidity=0.0,
         )
-        self.db = Mock()
-        self.db.query.return_value.filter.return_value.first.return_value = self.device
-        self.db.refresh.side_effect = lambda device: None
-        main.DETECTION_CONTROL_STATE.pop(self.device_id, None)
-        main.DETECTION_CONTROL_REPORTS.pop(self.device_id, None)
+        self.db.add(self.device)
+        self.db.commit()
         main.DEVICE_SENSOR_REPORTS.pop(self.device_id, None)
 
     def tearDown(self):
-        main.DETECTION_CONTROL_STATE.pop(self.device_id, None)
-        main.DETECTION_CONTROL_REPORTS.pop(self.device_id, None)
         main.DEVICE_SENSOR_REPORTS.pop(self.device_id, None)
+        self.db.close()
+        self.engine.dispose()
+
+    def get_control(self):
+        return main.get_detection_control(self.device_id, self.db)
+
+    def send_command(self, enabled):
+        return main.set_detection_control(
+            self.device_id,
+            {"enabled": enabled},
+            self.db,
+        )
 
     def test_heartbeat_clears_unreported_sensor_values(self):
         response = main.device_heartbeat(
@@ -1095,76 +1110,191 @@ class DeviceHeartbeatAndControlTests(unittest.TestCase):
         self.assertEqual(response["device"]["humidity"], 0)
 
     def test_control_state_waits_for_real_heartbeat_acknowledgement(self):
-        unknown = main.get_detection_control(self.device_id)
+        unknown = self.get_control()
         self.assertEqual(unknown["status"], "UNKNOWN")
         self.assertFalse(unknown["command_received"])
 
-        requested = main.set_detection_control(
-            self.device_id,
-            {"enabled": True},
-        )
+        requested = self.send_command(True)
         self.assertEqual(requested["status"], "REQUESTED")
         self.assertTrue(requested["command_received"])
+        self.assertTrue(requested["device_online"])
         self.assertIsNone(requested["device_enabled"])
+        command_id = requested["command_id"]
 
         main.device_heartbeat(
             self.device_id,
-            main.DeviceHeartbeat(detection_enabled=False),
+            main.DeviceHeartbeat(
+                detection_enabled=False,
+            ),
+            self.db,
+        )
+        self.assertEqual(self.get_control()["status"], "REQUESTED")
+
+        main.device_heartbeat(
+            self.device_id,
+            main.DeviceHeartbeat(
+                detection_enabled=False,
+                control_command_id="stale-command-id",
+            ),
             self.db,
         )
         self.assertEqual(
-            main.get_detection_control(self.device_id)["status"],
+            self.get_control()["status"],
             "REQUESTED",
         )
 
         main.device_heartbeat(
             self.device_id,
-            main.DeviceHeartbeat(detection_enabled=True),
+            main.DeviceHeartbeat(
+                detection_enabled=False,
+                control_command_id=command_id,
+            ),
             self.db,
         )
-        acknowledged = main.get_detection_control(self.device_id)
-        self.assertEqual(acknowledged["status"], "RUNNING")
-        self.assertTrue(acknowledged["device_enabled"])
-        self.assertTrue(acknowledged["command_received"])
-
-        stopped = main.set_detection_control(
-            self.device_id,
-            {"enabled": False},
-        )
-        self.assertEqual(stopped["status"], "REQUESTED")
+        self.assertEqual(self.get_control()["status"], "REQUESTED")
 
         main.device_heartbeat(
             self.device_id,
-            main.DeviceHeartbeat(detection_enabled=False),
+            main.DeviceHeartbeat(
+                detection_enabled=True,
+                control_command_id=command_id,
+            ),
+            self.db,
+        )
+        acknowledged = self.get_control()
+        self.assertEqual(acknowledged["status"], "RUNNING")
+        self.assertTrue(acknowledged["device_enabled"])
+        self.assertTrue(acknowledged["command_received"])
+        other_session = self.session_factory()
+        try:
+            self.assertEqual(
+                main.get_detection_control(self.device_id, other_session)["status"],
+                "RUNNING",
+            )
+        finally:
+            other_session.close()
+
+        stopped = self.send_command(False)
+        self.assertEqual(stopped["status"], "REQUESTED")
+        self.assertNotEqual(stopped["command_id"], command_id)
+        self.assertIsNone(stopped["device_enabled"])
+
+        main.device_heartbeat(
+            self.device_id,
+            main.DeviceHeartbeat(
+                detection_enabled=False,
+                control_command_id=command_id,
+            ),
             self.db,
         )
         self.assertEqual(
-            main.get_detection_control(self.device_id)["status"],
+            self.get_control()["status"],
+            "REQUESTED",
+        )
+        main.device_heartbeat(
+            self.device_id,
+            main.DeviceHeartbeat(
+                detection_enabled=False,
+                control_command_id=stopped["command_id"],
+            ),
+            self.db,
+        )
+        self.assertEqual(
+            self.get_control()["status"],
             "STOPPED",
         )
 
     def test_invalid_control_command_is_rejected_without_changing_state(self):
         with self.assertRaises(main.HTTPException) as error:
-            main.set_detection_control(
-                self.device_id,
-                {"enabled": "true"},
-            )
+            self.send_command("true")
 
         self.assertEqual(error.exception.status_code, 422)
-        response = main.get_detection_control(self.device_id)
+        response = self.get_control()
         self.assertEqual(response["status"], "UNKNOWN")
         self.assertFalse(response["command_received"])
 
-    def test_stale_control_heartbeat_is_not_presented_as_acknowledgement(self):
-        main.DETECTION_CONTROL_STATE[self.device_id] = True
-        main.DETECTION_CONTROL_REPORTS[self.device_id] = {
-            "enabled": True,
-            "reported_at": datetime.now(timezone.utc) - timedelta(minutes=2),
-        }
+    def test_command_is_delivered_from_persistent_storage_to_another_session(self):
+        created = self.send_command(True)
+        other_session = self.session_factory()
+        try:
+            delivered = main.get_detection_control(self.device_id, other_session)
+        finally:
+            other_session.close()
 
-        response = main.get_detection_control(self.device_id)
+        self.assertEqual(delivered["command_id"], created["command_id"])
+        self.assertTrue(delivered["enabled"])
+        self.assertEqual(delivered["status"], "REQUESTED")
 
+    def test_matching_but_stale_acknowledgement_times_out(self):
+        command = self.send_command(True)
+        main.device_heartbeat(
+            self.device_id,
+            main.DeviceHeartbeat(
+                detection_enabled=True,
+                control_command_id=command["command_id"],
+            ),
+            self.db,
+        )
+        saved_command = (
+            self.db.query(main.DetectionControlCommand)
+            .filter_by(device_id=self.device_id)
+            .first()
+        )
+        saved_command.created_at = datetime.now(timezone.utc).replace(
+            tzinfo=None
+        ) - timedelta(seconds=main.CONTROL_COMMAND_TIMEOUT_SECONDS + 1)
+        saved_command.acknowledged_at = datetime.now(timezone.utc).replace(
+            tzinfo=None
+        ) - timedelta(seconds=main.DEVICE_STALE_SECONDS + 1)
+        self.db.commit()
+
+        response = self.get_control()
+        self.assertEqual(response["status"], "TIMEOUT")
+        self.assertIsNone(response["device_enabled"])
+
+    def test_matching_command_id_with_wrong_device_state_never_confirms(self):
+        command = self.send_command(True)
+        main.device_heartbeat(
+            self.device_id,
+            main.DeviceHeartbeat(
+                detection_enabled=False,
+                control_command_id=command["command_id"],
+            ),
+            self.db,
+        )
+
+        response = self.get_control()
         self.assertEqual(response["status"], "REQUESTED")
+        self.assertFalse(response["device_enabled"])
+
+    def test_pending_command_times_out_while_device_remains_online(self):
+        self.send_command(False)
+        command = (
+            self.db.query(main.DetectionControlCommand)
+            .filter_by(device_id=self.device_id)
+            .first()
+        )
+        command.created_at = datetime.now(timezone.utc).replace(
+            tzinfo=None
+        ) - timedelta(seconds=main.CONTROL_COMMAND_TIMEOUT_SECONDS + 1)
+        self.db.commit()
+
+        response = self.get_control()
+        self.assertTrue(response["device_online"])
+        self.assertEqual(response["status"], "TIMEOUT")
+        self.assertIsNone(response["device_enabled"])
+
+    def test_command_for_an_offline_device_is_not_reported_as_acknowledged(self):
+        self.send_command(False)
+        self.device.last_seen = datetime.now(timezone.utc).replace(
+            tzinfo=None
+        ) - timedelta(seconds=main.DEVICE_STALE_SECONDS + 1)
+        self.db.commit()
+
+        response = self.get_control()
+        self.assertEqual(response["status"], "DEVICE_OFFLINE")
+        self.assertFalse(response["device_online"])
+        self.assertIsNone(response["device_enabled"])
         self.assertTrue(response["command_received"])
         self.assertIsNone(response["device_enabled"])
 

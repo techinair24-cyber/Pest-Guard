@@ -14,6 +14,21 @@ uvicorn main:app --reload --port 8000
 
 Run the command from the `backend` directory. The service creates `pest_guard.db` on first start and seeds pest and solution reference catalogs. Detection records are created by `POST /api/device/detection`.
 
+## Field-unit detection control
+
+The dashboard's existing `POST` and `GET /api/devices/{device_id}/detection-control`
+routes keep command state in the database so separate API workers see the same
+request. Each command has a `command_id`; the ESP32 must poll the GET route, apply
+`enabled`, and send both `detection_enabled` and that `control_command_id` in its
+heartbeat. Only a heartbeat whose command ID matches the latest request can confirm
+`RUNNING` or `STOPPED`. Heartbeats without the command ID remain valid device
+heartbeats but do not acknowledge a control request.
+
+An online device with no matching report is `REQUESTED` for up to 60 seconds, then
+`TIMEOUT`; a missing or stale device heartbeat is `DEVICE_OFFLINE`. The firmware
+source is `..\p1_oct1a.ino`; flash the updated firmware before expecting acknowledgements
+from a physical device. Build and hardware-test it with the ESP32 board toolchain.
+
 ## Hardware event
 
 `POST /api/device/detection` accepts `device_id`, `status`, and optional pest, confidence, risk, temperature, and humidity fields. Unvalidated `HARMFUL_PEST` claims are recorded as `UNKNOWN`, then broadcast on `/api/ws/detections`.

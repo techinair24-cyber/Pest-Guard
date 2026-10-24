@@ -26,6 +26,18 @@ class Device(Base):
     )
 
 
+class DetectionControlCommand(Base):
+    __tablename__ = "detection_control_commands"
+
+    device_id = Column(String(100), primary_key=True, nullable=False)
+    enabled = Column(Boolean, nullable=False, default=False)
+    command_id = Column(String(64), nullable=False, unique=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    acknowledged_enabled = Column(Boolean, nullable=True)
+    acknowledged_command_id = Column(String(64), nullable=True)
+    acknowledged_at = Column(DateTime, nullable=True)
+
+
 class Detection(Base):
     __tablename__ = "detections"
 

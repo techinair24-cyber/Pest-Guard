@@ -15,6 +15,7 @@ class DeviceHeartbeat(BaseModel):
     temperature: Optional[float] = None
     humidity: Optional[float] = None
     detection_enabled: Optional[bool] = None
+    control_command_id: Optional[str] = Field(default=None, max_length=64)
 
 
 class DeviceResponse(BaseModel):

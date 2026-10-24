@@ -8,6 +8,7 @@
 
 #include <esp_heap_caps.h>
 #include <math.h>
+#include <string.h>
 
 // =====================================================
 
@@ -42,6 +43,8 @@ const char* heartbeatURL =
 // The field unit starts stopped until the website enables detection.
 
 volatile bool detectionEnabled = false;
+char appliedControlCommandId[65] = {0};
+portMUX_TYPE detectionControlMux = portMUX_INITIALIZER_UNLOCKED;
 
 unsigned long lastControlPollMs = 0;
 
@@ -85,9 +88,19 @@ void sendDeviceHeartbeat() {
 
   heartbeatHttp.addHeader("Content-Type", "application/json");
 
+  bool reportedDetectionEnabled;
+  char reportedCommandId[sizeof(appliedControlCommandId)];
+  portENTER_CRITICAL(&detectionControlMux);
+  reportedDetectionEnabled = detectionEnabled;
+  memcpy(reportedCommandId, appliedControlCommandId, sizeof(reportedCommandId));
+  portEXIT_CRITICAL(&detectionControlMux);
+
   String heartbeatPayload =
     "{\"status\":\"ONLINE\",\"connection\":\"CONNECTED\",\"detection_enabled\":";
-  heartbeatPayload += detectionEnabled ? "true" : "false";
+  heartbeatPayload += reportedDetectionEnabled ? "true" : "false";
+  heartbeatPayload += ",\"control_command_id\":\"";
+  heartbeatPayload += reportedCommandId;
+  heartbeatPayload += "\"";
   heartbeatPayload += "}";
 
   int heartbeatCode = heartbeatHttp.POST(heartbeatPayload);
@@ -1122,9 +1135,39 @@ Serial.println("-----------------------------------");
 
 // PEST_GUARD_REMOTE_DETECTION_CONTROL
 
+bool parseControlCommandId(const String& body, char* commandId, size_t capacity) {
+  const int keyPosition = body.indexOf("\"command_id\"");
+  const int colonPosition = keyPosition >= 0
+    ? body.indexOf(':', keyPosition)
+    : -1;
+  const int valueStart = colonPosition >= 0
+    ? body.indexOf('"', colonPosition + 1)
+    : -1;
+  const int valueEnd = valueStart >= 0
+    ? body.indexOf('"', valueStart + 1)
+    : -1;
+  if (valueStart < 0 || valueEnd <= valueStart + 1) {
+    return false;
+  }
+
+  const size_t length = static_cast<size_t>(valueEnd - valueStart - 1);
+  if (length >= capacity) {
+    return false;
+  }
+
+  memcpy(commandId, body.c_str() + valueStart + 1, length);
+  commandId[length] = '\0';
+  return true;
+}
+
 bool pollDetectionControl() {
 
-  bool previousState = detectionEnabled;
+  bool previousState;
+  char previousCommandId[sizeof(appliedControlCommandId)];
+  portENTER_CRITICAL(&detectionControlMux);
+  previousState = detectionEnabled;
+  memcpy(previousCommandId, appliedControlCommandId, sizeof(previousCommandId));
+  portEXIT_CRITICAL(&detectionControlMux);
 
   WiFiClientSecure controlClient;
 
@@ -1136,7 +1179,9 @@ bool pollDetectionControl() {
 
   if (!controlHttp.begin(controlClient, controlURL)) {
 
+    portENTER_CRITICAL(&detectionControlMux);
     detectionEnabled = false;
+    portEXIT_CRITICAL(&detectionControlMux);
 
     Serial.println("Detection control unavailable. Failing safe to STOPPED.");
 
@@ -1153,18 +1198,30 @@ bool pollDetectionControl() {
     int keyPosition = body.indexOf("\"enabled\"");
 
     int colonPosition = keyPosition >= 0 ? body.indexOf(':', keyPosition) : -1;
+    char receivedCommandId[sizeof(appliedControlCommandId)] = {0};
 
-    if (colonPosition >= 0) {
+    if (colonPosition >= 0 &&
+        parseControlCommandId(body, receivedCommandId, sizeof(receivedCommandId))) {
 
       String value = body.substring(colonPosition + 1);
 
       value.trim();
 
+      portENTER_CRITICAL(&detectionControlMux);
       detectionEnabled = value.startsWith("true");
+      strlcpy(
+        appliedControlCommandId,
+        receivedCommandId,
+        sizeof(appliedControlCommandId)
+      );
+      portEXIT_CRITICAL(&detectionControlMux);
 
     } else {
 
+      portENTER_CRITICAL(&detectionControlMux);
       detectionEnabled = false;
+      portEXIT_CRITICAL(&detectionControlMux);
+      Serial.println("Control response missing enabled state or command ID.");
 
     }
 
@@ -1184,21 +1241,31 @@ bool pollDetectionControl() {
 
     );
 
+    portENTER_CRITICAL(&detectionControlMux);
     detectionEnabled = false;
+    portEXIT_CRITICAL(&detectionControlMux);
 
   }
 
+  bool currentState;
+  char currentCommandId[sizeof(appliedControlCommandId)];
+  portENTER_CRITICAL(&detectionControlMux);
+  currentState = detectionEnabled;
+  memcpy(currentCommandId, appliedControlCommandId, sizeof(currentCommandId));
+  portEXIT_CRITICAL(&detectionControlMux);
+  const bool commandChanged = strcmp(previousCommandId, currentCommandId) != 0;
+
   controlHttp.end();
 
-  if (previousState != detectionEnabled) {
+  if (previousState != currentState || commandChanged) {
 
-    if (detectionEnabled) {
+    if (currentState) {
       // A new Detect session starts ready to recognize its first sound event.
       soundEventLocked = false;
       quietWindowsAfterEvent = 0;
     }
 
-    Serial.println(detectionEnabled
+    Serial.println(currentState
 
       ? "Remote command: DETECT enabled"
 
@@ -1208,7 +1275,7 @@ bool pollDetectionControl() {
 
   }
 
-  return detectionEnabled;
+  return currentState;
 
 }
 

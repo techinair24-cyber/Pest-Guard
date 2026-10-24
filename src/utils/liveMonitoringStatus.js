@@ -66,18 +66,40 @@ export function getDetectionControlPresentation(response, { commandAccepted = fa
   ) {
     throw new Error('Backend returned an invalid device acknowledgement.')
   }
+  if (
+    response.device_online !== undefined &&
+    typeof response.device_online !== 'boolean'
+  ) {
+    throw new Error('Backend returned an invalid device connection state.')
+  }
 
-  const status = response.device_enabled === null ||
-    response.device_enabled === undefined
-    ? commandAccepted || response.command_received === true ||
-      response.status === 'REQUESTED'
-      ? 'REQUESTED'
-      : 'UNKNOWN'
-    : response.device_enabled !== response.enabled
+  const knownStatuses = new Set([
+    'UNKNOWN',
+    'REQUESTED',
+    'RUNNING',
+    'STOPPED',
+    'DEVICE_OFFLINE',
+    'TIMEOUT',
+  ])
+  if (response.status && !knownStatuses.has(response.status)) {
+    throw new Error('Backend returned an unknown control status.')
+  }
+
+  const hasDeviceAcknowledgement =
+    response.device_enabled !== null &&
+    response.device_enabled !== undefined
+  const status = hasDeviceAcknowledgement
+    ? response.device_enabled !== response.enabled
       ? 'REQUESTED'
       : response.device_enabled
         ? 'RUNNING'
         : 'STOPPED'
+    : response.status === 'DEVICE_OFFLINE' || response.status === 'TIMEOUT'
+      ? response.status
+      : commandAccepted || response.command_received === true ||
+          response.status === 'REQUESTED'
+        ? 'REQUESTED'
+        : 'UNKNOWN'
   if (
     response.status &&
     response.status !== status &&
@@ -91,15 +113,23 @@ export function getDetectionControlPresentation(response, { commandAccepted = fa
     : status === 'STOPPED'
       ? 'DETECTION STOPPED'
       : status === 'REQUESTED'
-        ? 'COMMAND SENT'
-        : 'CONTROL UNKNOWN'
+        ? 'WAITING FOR DEVICE'
+        : status === 'DEVICE_OFFLINE'
+          ? 'DEVICE OFFLINE'
+          : status === 'TIMEOUT'
+            ? 'COMMAND TIMED OUT'
+            : 'CONTROL UNKNOWN'
   const message = status === 'RUNNING'
     ? 'The field unit acknowledged Detect and is monitoring.'
     : status === 'STOPPED'
       ? 'The field unit acknowledged Stop.'
       : status === 'REQUESTED'
-        ? `The ${response.enabled ? 'Detect' : 'Stop'} command was accepted; waiting for the field-unit acknowledgement.`
-        : 'No recent field-unit acknowledgement is available.'
+        ? 'The command is saved; waiting for the field unit to fetch and acknowledge it.'
+        : status === 'DEVICE_OFFLINE'
+          ? 'The command is saved, but the field unit has no recent heartbeat. No device acknowledgement is available.'
+          : status === 'TIMEOUT'
+            ? 'The command received no matching acknowledgement before it timed out. Check the field unit and firmware.'
+            : 'No detection command or recent field-unit acknowledgement is available.'
 
   return {
     enabled: response.enabled,

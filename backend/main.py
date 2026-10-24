@@ -11,6 +11,8 @@ import urllib.request
 
 import time
 
+import uuid
+
 from twilio.rest import Client
 
 import json
@@ -40,8 +42,8 @@ from database import Base, engine, get_db
 from models import (
 
     Device,
-
     Detection,
+    DetectionControlCommand,
 
     Pest,
 
@@ -1160,10 +1162,6 @@ async def lifespan(_: FastAPI):
     yield
 
 
-# PEST_GUARD_DETECTION_CONTROL_STATE
-# Default to stopped after backend restart for fail-safe behavior.
-DETECTION_CONTROL_STATE = {}
-DETECTION_CONTROL_REPORTS = {}
 DEVICE_SENSOR_REPORTS = {}
 
 app = FastAPI(
@@ -1549,16 +1547,19 @@ def device_heartbeat(
         "reported_at": heartbeat_time,
     }
 
-    if "detection_enabled" in payload.model_fields_set:
-        if payload.detection_enabled is None:
-            DETECTION_CONTROL_REPORTS.pop(device_id, None)
-        else:
-            DETECTION_CONTROL_REPORTS[device_id] = {
-                "enabled": payload.detection_enabled,
-                "reported_at": heartbeat_time,
-            }
-    else:
-        DETECTION_CONTROL_REPORTS.pop(device_id, None)
+    if (
+        payload.detection_enabled is not None
+        and payload.control_command_id
+    ):
+        command = (
+            db.query(DetectionControlCommand)
+            .filter(DetectionControlCommand.device_id == device_id)
+            .first()
+        )
+        if command and payload.control_command_id == command.command_id:
+            command.acknowledged_enabled = payload.detection_enabled
+            command.acknowledged_command_id = payload.control_command_id
+            command.acknowledged_at = heartbeat_time.replace(tzinfo=None)
 
     db.commit()
     db.refresh(device)
@@ -1568,33 +1569,75 @@ def device_heartbeat(
     }
 
 # PEST_GUARD_DETECTION_CONTROL_ENDPOINTS
-def _detection_control_response(device_id):
-    command_received = device_id in DETECTION_CONTROL_STATE
-    requested_enabled = bool(DETECTION_CONTROL_STATE.get(device_id, False))
-    report = DETECTION_CONTROL_REPORTS.get(device_id)
+CONTROL_COMMAND_TIMEOUT_SECONDS = 60
+
+
+def _as_utc(value):
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _detection_control_response(device_id, db):
+    command = (
+        db.query(DetectionControlCommand)
+        .filter(DetectionControlCommand.device_id == device_id)
+        .first()
+    )
+    device = db.query(Device).filter(Device.device_id == device_id).first()
+    requested_enabled = bool(command.enabled) if command else False
+    command_received = command is not None
+    command_id = command.command_id if command else None
+    now = datetime.now(timezone.utc)
+    device_online = False
+    if device and device.last_seen:
+        age_seconds = (now - _as_utc(device.last_seen)).total_seconds()
+        device_online = 0 <= age_seconds <= DEVICE_STALE_SECONDS
+
     device_enabled = None
     reported_at = None
-    if report:
-        reported_at = report["reported_at"]
-        age_seconds = (
-            datetime.now(timezone.utc) - reported_at
-        ).total_seconds()
-        if 0 <= age_seconds <= DEVICE_STALE_SECONDS:
-            device_enabled = report["enabled"]
-        else:
-            reported_at = None
+    if command:
+        acknowledged_at = command.acknowledged_at
+        if (
+            acknowledged_at is not None
+            and command.acknowledged_command_id == command_id
+        ):
+            age_seconds = (now - _as_utc(acknowledged_at)).total_seconds()
+            if 0 <= age_seconds <= DEVICE_STALE_SECONDS and device_online:
+                device_enabled = command.acknowledged_enabled
+                reported_at = acknowledged_at
 
-    if device_enabled is None:
-        status = "REQUESTED" if command_received else "UNKNOWN"
-    elif device_enabled != requested_enabled:
-        status = "REQUESTED"
+    command_age = (
+        (now - _as_utc(command.created_at)).total_seconds()
+        if command_received
+        else None
+    )
+    if not command_received:
+        status = "UNKNOWN"
+    elif not device_online:
+        status = "DEVICE_OFFLINE"
+    elif device_enabled is not None:
+        if device_enabled == requested_enabled:
+            status = "RUNNING" if device_enabled else "STOPPED"
+        else:
+            status = (
+                "TIMEOUT"
+                if command_age > CONTROL_COMMAND_TIMEOUT_SECONDS
+                else "REQUESTED"
+            )
     else:
-        status = "RUNNING" if device_enabled else "STOPPED"
+        status = (
+            "TIMEOUT"
+            if command_age > CONTROL_COMMAND_TIMEOUT_SECONDS
+            else "REQUESTED"
+        )
 
     return {
         "device_id": device_id,
         "enabled": requested_enabled,
         "command_received": command_received,
+        "command_id": command_id,
+        "device_online": device_online,
         "device_enabled": device_enabled,
         "status": status,
         "reported_at": reported_at.isoformat() if reported_at else None,
@@ -1602,12 +1645,16 @@ def _detection_control_response(device_id):
 
 
 @app.get("/api/devices/{device_id}/detection-control")
-def get_detection_control(device_id: str):
-    return _detection_control_response(device_id)
+def get_detection_control(device_id: str, db: Session = Depends(get_db)):
+    return _detection_control_response(device_id, db)
 
 
 @app.post("/api/devices/{device_id}/detection-control")
-def set_detection_control(device_id: str, payload: dict):
+def set_detection_control(
+    device_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+):
     enabled = payload.get("enabled")
     if not isinstance(enabled, bool):
         raise HTTPException(
@@ -1615,8 +1662,29 @@ def set_detection_control(device_id: str, payload: dict):
             detail="Field 'enabled' must be true or false",
         )
 
-    DETECTION_CONTROL_STATE[device_id] = enabled
-    return _detection_control_response(device_id)
+    command = (
+        db.query(DetectionControlCommand)
+        .filter(DetectionControlCommand.device_id == device_id)
+        .first()
+    )
+    if command is None:
+        command = DetectionControlCommand(
+            device_id=device_id,
+            enabled=enabled,
+            command_id=str(uuid.uuid4()),
+            created_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        )
+        db.add(command)
+    else:
+        command.enabled = enabled
+        command.command_id = str(uuid.uuid4())
+        command.created_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        command.acknowledged_enabled = None
+        command.acknowledged_command_id = None
+        command.acknowledged_at = None
+    db.commit()
+    db.refresh(command)
+    return _detection_control_response(device_id, db)
 
 
 @app.post("/api/ai/predict")

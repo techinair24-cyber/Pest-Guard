@@ -76,8 +76,8 @@ test('control presentation distinguishes unknown, sent, and acknowledged command
     {
       enabled: true,
       status: 'REQUESTED',
-      label: 'COMMAND SENT',
-      message: 'The Detect command was accepted; waiting for the field-unit acknowledgement.',
+      label: 'WAITING FOR DEVICE',
+      message: 'The command is saved; waiting for the field unit to fetch and acknowledge it.',
       className: 'is-requested',
     },
   )
@@ -90,7 +90,7 @@ test('control presentation distinguishes unknown, sent, and acknowledged command
       },
       { commandAccepted: true },
     ).label,
-    'COMMAND SENT',
+    'WAITING FOR DEVICE',
   )
   assert.equal(
     getDetectionControlPresentation({
@@ -98,7 +98,7 @@ test('control presentation distinguishes unknown, sent, and acknowledged command
       device_enabled: false,
       status: 'REQUESTED',
     }).label,
-    'COMMAND SENT',
+    'WAITING FOR DEVICE',
   )
   assert.equal(
     getDetectionControlPresentation({
@@ -123,7 +123,7 @@ test('control presentation distinguishes unknown, sent, and acknowledged command
       device_enabled: true,
       status: 'REQUESTED',
     }).label,
-    'COMMAND SENT',
+    'WAITING FOR DEVICE',
   )
 })
 
@@ -145,8 +145,8 @@ test('Detect is shown as sent until the field unit acknowledges it', async () =>
   )
 
   assert.deepEqual(calls, [['FIELD-UNIT-01', true]])
-  assert.equal(control.label, 'COMMAND SENT')
-  assert.match(control.message, /waiting for the field-unit acknowledgement/)
+  assert.equal(control.label, 'WAITING FOR DEVICE')
+  assert.match(control.message, /waiting for the field unit to fetch and acknowledge/)
 })
 
 test('Stop is shown as sent until the field unit acknowledges it', async () => {
@@ -162,8 +162,8 @@ test('Stop is shown as sent until the field unit acknowledges it', async () => {
     }),
   )
 
-  assert.equal(control.label, 'COMMAND SENT')
-  assert.match(control.message, /Stop command was accepted/)
+  assert.equal(control.label, 'WAITING FOR DEVICE')
+  assert.match(control.message, /waiting for the field unit to fetch and acknowledge/)
 })
 
 test('accepted commands show confirmed labels only with matching device acknowledgement', async () => {
@@ -204,4 +204,28 @@ test('a response that does not accept the requested state is rejected', async ()
     })),
     /Backend did not confirm the requested control value/,
   )
+})
+
+test('offline and timed-out devices are not presented as command acknowledgements', () => {
+  const offline = getDetectionControlPresentation({
+    enabled: false,
+    command_received: true,
+    command_id: 'control-1',
+    device_online: false,
+    device_enabled: null,
+    status: 'DEVICE_OFFLINE',
+  })
+  const timedOut = getDetectionControlPresentation({
+    enabled: true,
+    command_received: true,
+    command_id: 'control-2',
+    device_online: true,
+    device_enabled: null,
+    status: 'TIMEOUT',
+  })
+
+  assert.equal(offline.label, 'DEVICE OFFLINE')
+  assert.match(offline.message, /no recent heartbeat/)
+  assert.equal(timedOut.label, 'COMMAND TIMED OUT')
+  assert.match(timedOut.message, /Check the field unit and firmware/)
 })
