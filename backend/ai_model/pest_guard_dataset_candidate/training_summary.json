@@ -1,0 +1,18 @@
+{
+  "dataset_path": "C:\\Users\\Deepthi MG\\Desktop\\Pest Guard Dataset",
+  "labels": [
+    "Beetles",
+    "Cicada",
+    "Crickets",
+    "Flies",
+    "Grasshopper",
+    "Katydid",
+    "Termite"
+  ],
+  "train_count": 2332,
+  "validation_count": 582,
+  "validation_loss": 0.28972935676574707,
+  "validation_accuracy": 0.8951889872550964,
+  "epochs_completed": 30,
+  "warning": "Broad seven-folder classifier only; not integrated into backend and not a species-level model."
+}

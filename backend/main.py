@@ -93,6 +93,33 @@ if PEST_MODEL != "new_dataset_candidate":
     )
 
 AI_DIR = Path(__file__).resolve().parent / "ai_model"
+
+# Separate seven-group classifier trained on the new dataset.
+GROUP_MODEL_DIR = AI_DIR / "pest_guard_dataset_candidate"
+GROUP_MODEL_PATH = GROUP_MODEL_DIR / "pest_guard_7_group_candidate.keras"
+GROUP_LABELS_PATH = GROUP_MODEL_DIR / "class_names.json"
+_GROUP_CLASS_NAMES_EXPECTED = [
+    "Beetles", "Cicada", "Crickets", "Flies",
+    "Grasshopper", "Katydid", "Termite",
+]
+if not GROUP_MODEL_PATH.is_file() or not GROUP_LABELS_PATH.is_file():
+    raise FileNotFoundError(
+        f"Seven-group model files are missing from {GROUP_MODEL_DIR.resolve()}"
+    )
+with open(GROUP_LABELS_PATH, "r", encoding="utf-8") as f:
+    GROUP_CLASS_NAMES = json.load(f)
+if GROUP_CLASS_NAMES != _GROUP_CLASS_NAMES_EXPECTED:
+    raise RuntimeError(
+        f"Unexpected seven-group labels: {GROUP_CLASS_NAMES!r}"
+    )
+GROUP_MODEL = tf.keras.models.load_model(GROUP_MODEL_PATH, compile=False)
+if GROUP_MODEL.input_shape != (None, 155, 128, 1):
+    raise RuntimeError(
+        f"Unexpected seven-group model input shape: {GROUP_MODEL.input_shape}"
+    )
+if GROUP_MODEL.output_shape[-1] != len(GROUP_CLASS_NAMES):
+    raise RuntimeError("Seven-group model output does not match its labels.")
+print(f"Loaded seven-group classifier: {len(GROUP_CLASS_NAMES)} groups")
 CANDIDATE_DIR = AI_DIR / "pest_new_dataset_candidate"
 ai_model = tf.keras.models.load_model(
     CANDIDATE_DIR / "best_candidate.keras",
@@ -553,6 +580,29 @@ def predict_pest(audio):
     features = prepare_audio(waveform)
     model_input = tf.expand_dims(features, 0)
 
+    # Independent broad-group prediction from the seven-group dataset model.
+    broad_group_probs = np.asarray(
+        GROUP_MODEL(model_input, training=False), dtype=np.float64
+    ).reshape(-1)
+    if (
+        broad_group_probs.shape != (len(GROUP_CLASS_NAMES),)
+        or not np.all(np.isfinite(broad_group_probs))
+        or np.any((broad_group_probs < 0.0) | (broad_group_probs > 1.0))
+        or float(np.sum(broad_group_probs)) <= 0.0
+    ):
+        raise RuntimeError("Seven-group model returned invalid probabilities.")
+    broad_group_probs /= float(np.sum(broad_group_probs))
+    broad_group_index = int(np.argmax(broad_group_probs))
+    broad_group_prediction = GROUP_CLASS_NAMES[broad_group_index]
+    broad_group_confidence = float(broad_group_probs[broad_group_index])
+    broad_group_top_predictions = [
+        {
+            "group": GROUP_CLASS_NAMES[int(i)],
+            "confidence": float(broad_group_probs[int(i)]),
+        }
+        for i in np.argsort(broad_group_probs)[::-1][:3]
+    ]
+
     if _HIERARCHICAL_BUNDLE is not None and _HIERARCHICAL_INFERENCE_MODEL is not None:
         embedding_batch, _ = _HIERARCHICAL_INFERENCE_MODEL(model_input, training=False)
         embedding = np.asarray(embedding_batch, dtype=np.float32).reshape(1, -1)
@@ -594,19 +644,25 @@ def predict_pest(audio):
             raise RuntimeError("Hierarchical classifier returned invalid class scores.")
         class_scores /= score_sum
         index = int(np.argmax(class_scores))
+        predicted_species = class_names[index]
         group_scores = aggregate_group_scores(
             class_names,
             class_scores,
             MODEL_SPECIES_GROUPS,
         )
-        if group_scores is None:
-            insect_group = UNKNOWN_INSECT_GROUP
+        insect_group = get_species_group(
+            predicted_species,
+            MODEL_SPECIES_GROUPS,
+        )
+
+        if insect_group == UNKNOWN_INSECT_GROUP:
             group_score = None
         else:
-            insect_group = max(group_scores, key=group_scores.get)
-            group_score = float(group_scores[insect_group])
+            group_score = float(
+                group_scores.get(insect_group, 0.0)
+            )
         return {
-            "pest": class_names[index],
+            "pest": predicted_species,
             "confidence": float(class_scores[index]),
             "insect_group": insect_group,
             "group_score": group_score,
@@ -615,6 +671,9 @@ def predict_pest(audio):
                 class_scores,
                 common_names,
             ),
+            "broad_group_prediction": broad_group_prediction,
+            "broad_group_confidence": broad_group_confidence,
+            "broad_group_top_predictions": broad_group_top_predictions,
         }
 
     raise RuntimeError("Required hierarchical classifier was not initialized.")
@@ -1811,6 +1870,9 @@ async def ai_predict(
             "insect_group": insect_group,
             "group_score": group_score,
             "top_predictions": top_predictions,
+            "broad_group_prediction": result.get("broad_group_prediction"),
+            "broad_group_confidence": result.get("broad_group_confidence"),
+            "broad_group_top_predictions": result.get("broad_group_top_predictions", []),
 
             "risk": resolved_risk,
             "risk_rationale": (
