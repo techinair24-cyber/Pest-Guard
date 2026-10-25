@@ -639,7 +639,9 @@ function LiveMonitoring() {
             onClick={() => handleDetectionControl(true)}
             disabled={detectionControlBusy}
           >
-            {detectionControlBusy ? 'Please wait…' : 'Detect'}
+            {detectionControlBusy && detectionControlActionView?.enabled
+              ? 'Starting…'
+              : 'Detect'}
           </button>
           <button
             type="button"
@@ -647,7 +649,9 @@ function LiveMonitoring() {
             onClick={() => handleDetectionControl(false)}
             disabled={detectionControlBusy}
           >
-            {detectionControlBusy ? 'Please wait…' : 'Stop'}
+            {detectionControlBusy && detectionControlActionView?.enabled === false
+              ? 'Stopping…'
+              : 'Stop'}
           </button>
         </div>
       </section>
