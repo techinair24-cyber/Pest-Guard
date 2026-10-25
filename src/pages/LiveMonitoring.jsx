@@ -180,6 +180,12 @@ function LiveMonitoring() {
           ) return
           const control = getDetectionControlPresentation(result)
           const action = controlActionRef.current
+          if (action && action.accepted) {
+            setDetectionControlKnown(true)
+            setDetectionControlView(control)
+            setDetectionControlError('')
+            return
+          }
           if (action) {
             if (!matchesDetectionControlAction(action, result)) return
             setDetectionControlActionView(
