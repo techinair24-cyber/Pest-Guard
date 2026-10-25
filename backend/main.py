@@ -890,6 +890,25 @@ def _serialize_detection(detection: Detection, db: Session | None) -> dict:
         if stored_risk in {"LOW", "MEDIUM", "HIGH"}
         else resolved["risk"]
     )
+    stored_predictions = []
+    stored_broad_group = None
+    stored_broad_group_confidence = None
+    stored_broad_group_top_predictions = []
+    if detection.top_predictions:
+        try:
+            parsed_predictions = json.loads(detection.top_predictions)
+            if isinstance(parsed_predictions, dict):
+                stored_predictions = parsed_predictions.get("species", [])
+                stored_broad_group = parsed_predictions.get("broad_group_prediction")
+                stored_broad_group_confidence = parsed_predictions.get("broad_group_confidence")
+                stored_broad_group_top_predictions = parsed_predictions.get(
+                    "broad_group_top_predictions", []
+                )
+            elif isinstance(parsed_predictions, list):
+                stored_predictions = parsed_predictions
+        except (json.JSONDecodeError, TypeError):
+            stored_predictions = []
+
     response = {
         "id": detection.id,
         "device_id": detection.device_id,
@@ -900,10 +919,11 @@ def _serialize_detection(detection: Detection, db: Session | None) -> dict:
         "confidence": detection.confidence,
         "insect_group": None,
         "group_score": None,
+        "broad_group_prediction": stored_broad_group,
+        "broad_group_confidence": stored_broad_group_confidence,
+        "broad_group_top_predictions": stored_broad_group_top_predictions,
         "top_predictions": enrich_top_predictions(
-            json.loads(detection.top_predictions)
-            if detection.top_predictions
-            else [],
+            stored_predictions,
             MODEL_COMMON_NAMES,
         ),
         "risk": risk,
@@ -1906,7 +1926,12 @@ async def ai_predict(
             ),
             common_name=common_name,
             confidence=model_confidence,
-            top_predictions=json.dumps(top_predictions),
+            top_predictions=json.dumps({
+                "species": top_predictions,
+                "broad_group_prediction": result.get("broad_group_prediction"),
+                "broad_group_confidence": result.get("broad_group_confidence"),
+                "broad_group_top_predictions": result.get("broad_group_top_predictions", []),
+            }),
             insect_group=insect_group,
             group_score=group_score,
             risk=resolved_risk,
