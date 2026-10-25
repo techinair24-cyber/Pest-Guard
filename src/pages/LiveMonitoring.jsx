@@ -29,8 +29,6 @@ import {
   getTopSpeciesPredictions,
 } from '../utils/insectPredictions'
 import {
-  formatDeviceHumidity,
-  formatDeviceTemperature,
   getDetectionControlPresentation,
   matchesDetectionControlAction,
   getRequestedDetectionControlPresentation,
@@ -434,14 +432,13 @@ function LiveMonitoring() {
     }
   }, [])
 
-  const displayTemperature = formatDeviceTemperature(
-    liveDevice?.temperature,
-    connectionState === 'Online',
-  )
-  const displayHumidity = formatDeviceHumidity(
-    liveDevice?.humidity,
-    connectionState === 'Online',
-  )
+  const displayTemperature = onlineWeather?.temperature != null
+    ? `${Number(onlineWeather.temperature).toFixed(1)} °C`
+    : 'Unavailable'
+
+  const displayHumidity = onlineWeather?.humidity != null
+    ? `${Number(onlineWeather.humidity).toFixed(1)}%`
+    : 'Unavailable'
 
   useEffect(() => {
     let active = true
@@ -706,7 +703,7 @@ function LiveMonitoring() {
                   {getCandidateDisplayName(leadingSpeciesPrediction)}
                   {' · '}
                   {formatModelScore(leadingSpeciesPrediction.score)}
-                  {' (uncalibrated score)'}
+                  
                 </small>
               )}
             </div>
@@ -746,7 +743,7 @@ function LiveMonitoring() {
           )}
           <div className="detection-details">
             <div>
-              <span>Group-level model score (uncalibrated)</span>
+             <span>Group-level model score</span>
               <strong>{formatModelScore(displayDetection?.group_score)}</strong>
             </div>
             <div className={`latest-risk latest-risk-${riskEstimate.toLowerCase()}`}>
