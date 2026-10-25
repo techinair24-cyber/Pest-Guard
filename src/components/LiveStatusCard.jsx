@@ -285,9 +285,7 @@ function LiveStatusCard({ detection, device, error }) {
                 ))}
               </ol>
 
-              <small>
-                Model scores are uncalibrated ranking estimates, not verified probabilities.
-              </small>
+              
             </div>
           )}
 

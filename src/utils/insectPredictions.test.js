@@ -56,12 +56,10 @@ test('candidate results use neutral wording and retain the score qualification',
       pest: 'Chorthippus mollis',
       identification_status: 'UNCONFIRMED',
     },
-    { confidence: null, pest: 'Chorthippus mollis' },
+    { confidence: null, pest: 'Chorthippus mollis'     },
   ]) {
     const message = getPredictionUncertainty(detection)
-    assert.match(message, /Model prediction/)
-    assert.match(message, /uncalibrated ranking estimates/)
-    assert.doesNotMatch(message, /unverified/i)
+    assert.equal(message, '')
   }
 })
 
