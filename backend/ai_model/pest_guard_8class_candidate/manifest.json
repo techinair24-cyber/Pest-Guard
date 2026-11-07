@@ -1,0 +1,244 @@
+{
+  "format_version": 2,
+  "candidate_status": "experimental_not_active",
+  "dataset_root": "C:\\Users\\Deepthi MG\\Desktop\\Pest guard\\Pest Guard Dataset",
+  "feature_config": {
+    "sample_rate": 16000,
+    "clip_seconds": 5,
+    "samples": 80000,
+    "frame_length": 1024,
+    "frame_step": 512,
+    "fft_length": 1024,
+    "mel_bins": 128,
+    "mel_low_hz": 50.0,
+    "mel_high_hz": 8000.0,
+    "normalization": "peak normalization then per-recording standardized log-mel",
+    "feature_shape": [
+      155,
+      128,
+      1
+    ],
+    "crop_policy": "first five seconds, matching backend input convention"
+  },
+  "group_labels": [
+    "Beetles",
+    "Cicada",
+    "Crickets",
+    "Flies",
+    "Grasshopper",
+    "Katydid",
+    "Mole Crickets",
+    "Termite"
+  ],
+  "group_model": {
+    "output_file": "group_model.keras",
+    "labels": [
+      "Beetles",
+      "Cicada",
+      "Crickets",
+      "Flies",
+      "Grasshopper",
+      "Katydid",
+      "Mole Crickets",
+      "Termite"
+    ],
+    "threshold": {
+      "minimum_confidence": 0.7418383955955505,
+      "validation_precision_at_threshold": 0.9002770083102493,
+      "validation_coverage_at_threshold": 0.600166251039069,
+      "accepted_validation_examples": 722,
+      "validation_examples": 1203,
+      "target_precision": 0.9,
+      "minimum_coverage_constraint": 0.1,
+      "calibration_status": "empirically_calibrated_on_validation_split",
+      "validation_accuracy_without_rejection": 0.7547797173732336,
+      "class_order": [
+        "Beetles",
+        "Cicada",
+        "Crickets",
+        "Flies",
+        "Grasshopper",
+        "Katydid",
+        "Mole Crickets",
+        "Termite"
+      ]
+    },
+    "train_count": 9681,
+    "validation_count": 1203,
+    "test_count": 1213,
+    "validation_accuracy": 0.7547797173732336,
+    "validation_macro_f1": 0.588702791951097,
+    "checkpoint": "C:\\Users\\Deepthi MG\\Desktop\\Pest guard\\training_8class_advanced_20261106\\models\\best_validation_loss.keras"
+  },
+  "subtype_models": {
+    "Beetles": {
+      "model_file": null,
+      "labels": [],
+      "threshold": {
+        "minimum_confidence": 1.01,
+        "calibration_status": "not_trainable"
+      },
+      "validation_accuracy_top1": null,
+      "train_count": 0,
+      "validation_count": 0,
+      "status": "not_trainable_with_current_subtype_data"
+    },
+    "Cicada": {
+      "model_file": "subtype_cicada.keras",
+      "labels": [
+        "Graptopsaltria_nigrofuscata",
+        "Hyalessa_maculaticollis",
+        "Meimuna_opalifera",
+        "Platypleura_kaempferi",
+        "Tanna_japonensis"
+      ],
+      "threshold": {
+        "minimum_confidence": 0.925,
+        "validation_precision_at_threshold": 0.9090909090909091,
+        "validation_coverage_at_threshold": 0.0625,
+        "calibration_status": "empirically_calibrated",
+        "validation_examples": 176
+      },
+      "validation_accuracy_top1": 0.5170454545454546,
+      "train_count": 705,
+      "validation_count": 176,
+      "status": "trained"
+    },
+    "Crickets": {
+      "model_file": "subtype_crickets.keras",
+      "labels": [
+        "European tree cricket",
+        "Field Cricket",
+        "House Cricket",
+        "Mediterranean field cricket",
+        "Two-spotted cricket",
+        "Wood cricket"
+      ],
+      "threshold": {
+        "minimum_confidence": 0.95,
+        "validation_precision_at_threshold": null,
+        "validation_coverage_at_threshold": 0.0,
+        "calibration_status": "insufficient_evidence_or_precision",
+        "validation_examples": 51
+      },
+      "validation_accuracy_top1": 0.3333333333333333,
+      "train_count": 200,
+      "validation_count": 51,
+      "status": "trained"
+    },
+    "Flies": {
+      "model_file": null,
+      "labels": [],
+      "threshold": {
+        "minimum_confidence": 1.01,
+        "calibration_status": "not_trainable"
+      },
+      "validation_accuracy_top1": null,
+      "train_count": 0,
+      "validation_count": 0,
+      "status": "not_trainable_with_current_subtype_data"
+    },
+    "Grasshopper": {
+      "model_file": "subtype_grasshopper.keras",
+      "labels": [
+        "Field Grasshopper",
+        "green grasshopper",
+        "large gold grasshopper",
+        "Large marsh grasshopper",
+        "lesser marsh grasshopper",
+        "Lesser mottled grasshopper",
+        "Meadow grasshopper",
+        "Mottled grasshopper",
+        "Red-legged grasshopper",
+        "Rufous grasshopper",
+        "Steppe grasshopper",
+        "Stripe-winged grasshopper",
+        "Two-striped grasshopper",
+        "Upland Field Grasshopper",
+        "Woodland grasshopper"
+      ],
+      "threshold": {
+        "minimum_confidence": 0.95,
+        "validation_precision_at_threshold": null,
+        "validation_coverage_at_threshold": 0.0,
+        "calibration_status": "insufficient_evidence_or_precision",
+        "validation_examples": 193
+      },
+      "validation_accuracy_top1": 0.40932642487046633,
+      "train_count": 763,
+      "validation_count": 193,
+      "status": "trained"
+    },
+    "Katydid": {
+      "model_file": "subtype_katydid.keras",
+      "labels": [
+        "Alpine bush-cricket",
+        "Coastal bush-cricket",
+        "Common saddle bush-cricket",
+        "Dark bush-cricket",
+        "Grey bush-cricket",
+        "Lily bush-cricket",
+        "Long-winged conehead",
+        "Mediterranean slender bush-cricket",
+        "Roesel's bush-cricket",
+        "Schmidt\u2019s bush-cricket",
+        "Short-winged conehead",
+        "Slender green bush-cricket",
+        "Smooth-faced bush-cricket",
+        "Speckled bush-cricket",
+        "Warbling bush-cricket",
+        "Wart-biter bush-cricket",
+        "Yersin's bush-cricket"
+      ],
+      "threshold": {
+        "minimum_confidence": 0.525,
+        "validation_precision_at_threshold": 0.86,
+        "validation_coverage_at_threshold": 0.3105590062111801,
+        "calibration_status": "empirically_calibrated",
+        "validation_examples": 161
+      },
+      "validation_accuracy_top1": 0.484472049689441,
+      "train_count": 639,
+      "validation_count": 161,
+      "status": "trained"
+    },
+    "Termite": {
+      "model_file": null,
+      "labels": [],
+      "threshold": {
+        "minimum_confidence": 1.01,
+        "calibration_status": "not_trainable"
+      },
+      "validation_accuracy_top1": null,
+      "train_count": 0,
+      "validation_count": 0,
+      "status": "not_trainable_with_current_subtype_data"
+    },
+    "Mole Crickets": {
+      "model_file": null,
+      "labels": [],
+      "threshold": {
+        "minimum_confidence": 1.01,
+        "calibration_status": "group_only_no_validated_subtype_model"
+      },
+      "status": "group_level_only",
+      "note": "No Mole Crickets subtype model is attached in this candidate."
+    }
+  },
+  "training": {
+    "group_model_source": "C:\\Users\\Deepthi MG\\Desktop\\Pest guard\\training_8class_advanced_20261106\\models\\best_validation_loss.keras",
+    "group_model_evaluation_source": "C:\\Users\\Deepthi MG\\Desktop\\Pest guard\\training_8class_advanced_20261106\\reports\\recording_level_evaluation.json",
+    "group_model_validation_accuracy": 0.7547797173732336,
+    "group_model_validation_macro_f1": 0.588702791951097,
+    "subtype_experts_source": "C:\\Users\\Deepthi MG\\Desktop\\Pest guard\\backend\\ai_model\\pest_guard_hierarchical_candidate",
+    "subtype_groups_copied": [
+      "Cicada",
+      "Crickets",
+      "Grasshopper",
+      "Katydid"
+    ],
+    "validation_only_confidence_calibration": true,
+    "test_split_used_for_threshold_selection": false,
+    "note": "Eight-group broad classifier from Advanced V2. Existing subtype experts are copied unchanged from the previous hierarchy. Their species-level quality must be revalidated against the intended dataset before production use. Groups without an expert return a group-level prediction only."
+  }
+}

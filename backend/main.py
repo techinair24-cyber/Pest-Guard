@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
@@ -76,6 +76,13 @@ from schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+try:
+    from pest_guard_hierarchy_inference_8class import PestGuardHierarchy8Class as PestGuardHierarchy
+except ModuleNotFoundError as error:
+    if error.name != "pest_guard_hierarchy_inference_8class":
+        raise
+    PestGuardHierarchy = None
 
 
 def _normalize_pest_label(value: str | None) -> str:
@@ -321,6 +328,61 @@ MODEL_COMMON_NAMES = {
     for label, common_name in zip(class_names, common_names)
 }
 
+# Optional replacement inference path trained from Pest Guard Dataset's
+# <group>/<subtype>/<recording> structure. It takes precedence over the old
+# 47-class species output only when the new trained artifacts are present.
+PEST_GUARD_HIERARCHY_DIR = AI_DIR / "pest_guard_8class_candidate"
+PEST_GUARD_HIERARCHY_MANIFEST = PEST_GUARD_HIERARCHY_DIR / "manifest.json"
+_PEST_GUARD_HIERARCHY = None
+_ACTIVE_HIERARCHICAL_LABELS = set()
+_ACTIVE_HIERARCHICAL_LABEL_GROUPS = {}
+_ACTIVE_HIERARCHICAL_GROUP_NAMES = set()
+if PEST_GUARD_HIERARCHY_MANIFEST.is_file():
+    if PestGuardHierarchy is None:
+        raise RuntimeError(
+            "Pest Guard hierarchy artifacts exist, but backend/pest_guard_hierarchy_inference_8class.py "
+            "is missing. Copy the inference module into the backend folder."
+        )
+    _PEST_GUARD_HIERARCHY = PestGuardHierarchy(PEST_GUARD_HIERARCHY_DIR)
+    _ACTIVE_HIERARCHICAL_GROUP_NAMES = set(_PEST_GUARD_HIERARCHY.groups)
+    for _group_name in _PEST_GUARD_HIERARCHY.groups:
+        _ACTIVE_HIERARCHICAL_LABELS.add(_normalize_pest_label(_group_name))
+        _ACTIVE_HIERARCHICAL_LABEL_GROUPS[_normalize_pest_label(_group_name)] = _group_name
+    for _group_name, _item in _PEST_GUARD_HIERARCHY.subtype_manifest.items():
+        for _subtype_name in (_item.get("labels") or []):
+            _ACTIVE_HIERARCHICAL_LABELS.add(_normalize_pest_label(_subtype_name))
+            _ACTIVE_HIERARCHICAL_LABEL_GROUPS[_normalize_pest_label(_subtype_name)] = _group_name
+    logger.info(
+        "Pest Guard group/subtype classifier loaded: groups=%d, candidate labels=%d, artifact=%s",
+        len(_PEST_GUARD_HIERARCHY.groups),
+        len(_ACTIVE_HIERARCHICAL_LABELS),
+        PEST_GUARD_HIERARCHY_DIR.resolve(),
+    )
+else:
+    logger.warning(
+        "New group/subtype model is not trained yet; existing 47-class classifier remains active. "
+        "Expected manifest: %s",
+        PEST_GUARD_HIERARCHY_MANIFEST,
+    )
+
+
+def _is_active_prediction_label(label) -> bool:
+    if not isinstance(label, str) or not label.strip():
+        return False
+    normalized = _normalize_pest_label(label)
+    if _PEST_GUARD_HIERARCHY is not None:
+        return normalized in _ACTIVE_HIERARCHICAL_LABELS
+    return label in class_names
+
+
+def _active_group_for_label(label):
+    if not isinstance(label, str) or not label.strip():
+        return UNKNOWN_INSECT_GROUP
+    normalized = _normalize_pest_label(label)
+    if _PEST_GUARD_HIERARCHY is not None:
+        return _ACTIVE_HIERARCHICAL_LABEL_GROUPS.get(normalized, UNKNOWN_INSECT_GROUP)
+    return get_species_group(label, MODEL_SPECIES_GROUPS)
+
 
 def decode_audio_samples(audio):
     try:
@@ -438,8 +500,17 @@ def prepare_audio(audio):
 # Compact NumPy + scikit-learn feature gate. No YAMNet/TensorFlow Hub is loaded.
 _PEST_LIGHT_GATE = None
 _PEST_LIGHT_GATE_LOCK = __import__("threading").Lock()
-# The selected production operating point accepts all 412 labeled insect clips.
-_PEST_LIGHT_GATE_THRESHOLD = float(os.getenv("PEST_BACKGROUND_GATE_THRESHOLD", "0.15"))
+_PEST_LIGHT_GATE_THRESHOLD_OVERRIDE = os.getenv("PEST_BACKGROUND_GATE_THRESHOLD")
+try:
+    _PEST_LIGHT_GATE_THRESHOLD = (
+        float(_PEST_LIGHT_GATE_THRESHOLD_OVERRIDE)
+        if _PEST_LIGHT_GATE_THRESHOLD_OVERRIDE is not None
+        else None
+    )
+except ValueError as error:
+    raise RuntimeError("PEST_BACKGROUND_GATE_THRESHOLD must be a number from 0 to 1.") from error
+if _PEST_LIGHT_GATE_THRESHOLD is not None and not 0.0 <= _PEST_LIGHT_GATE_THRESHOLD <= 1.0:
+    raise RuntimeError("PEST_BACKGROUND_GATE_THRESHOLD must be from 0 to 1.")
 _PEST_LIGHT_GATE_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "ai_model", "lightweight_background_gate", "background_gate.joblib",
@@ -530,6 +601,10 @@ def _load_pest_light_gate():
                 raise RuntimeError("Loaded gate does not match the 59-feature training schema.")
             if not isinstance(artifact_threshold, (int, float)) or not 0.0 <= float(artifact_threshold) <= 1.0:
                 raise RuntimeError(f"Invalid saved gate threshold: {artifact_threshold!r}")
+            # Do not silently use a stale hard-coded 0.15 threshold when the
+            # trained gate artifact contains its own calibrated operating point.
+            if _PEST_LIGHT_GATE_THRESHOLD_OVERRIDE is None:
+                _PEST_LIGHT_GATE_THRESHOLD = float(artifact_threshold)
             classes = list(getattr(gate, "classes_", []))
             if 0 not in classes or 1 not in classes:
                 raise RuntimeError(f"Unexpected background-gate classes: {classes}")
@@ -577,6 +652,14 @@ def predict_pest(audio):
         logger.info("Background gate rejected audio (score=%.4f, threshold=%.2f)", gate_score, _PEST_LIGHT_GATE_THRESHOLD)
         raise HTTPException(status_code=422, detail=f"Audio rejected by background-sound filter. Gate score={gate_score:.4f}, threshold={_PEST_LIGHT_GATE_THRESHOLD:.2f}. No detection was saved.")
     logger.info("Background gate accepted audio (score=%.4f, threshold=%.2f)", gate_score, _PEST_LIGHT_GATE_THRESHOLD)
+
+    # This is the final decision path once the dataset-trained candidate exists.
+    # Do not let the older 47-class model overwrite the new group/subtype result.
+    if _PEST_GUARD_HIERARCHY is not None:
+        result = _PEST_GUARD_HIERARCHY.predict(waveform)
+        result["background_gate_score"] = gate_score
+        return result
+
     features = prepare_audio(waveform)
     model_input = tf.expand_dims(features, 0)
 
@@ -947,6 +1030,19 @@ def _serialize_detection(detection: Detection, db: Session | None) -> dict:
         getattr(detection, "group_score", None),
         MODEL_SPECIES_GROUPS,
     )
+    if _PEST_GUARD_HIERARCHY is not None:
+        _stored_pest_group = _ACTIVE_HIERARCHICAL_LABEL_GROUPS.get(
+            _normalize_pest_label(detection.pest)
+        ) if detection.pest else None
+        _stored_group_field = getattr(detection, "insect_group", None)
+        _saved_group = (
+            _stored_group_field
+            if _stored_group_field in _ACTIVE_HIERARCHICAL_GROUP_NAMES
+            else _stored_pest_group
+        )
+        if _saved_group:
+            response["insect_group"] = _saved_group
+            response["group_score"] = getattr(detection, "group_score", None)
     detection_message = str(detection.message or "")
     normalized_message = detection_message.casefold()
     if normalized_message.startswith("inference_error:"):
@@ -1847,25 +1943,40 @@ async def ai_predict(
         # The model score is not a verified probability.
         model_confidence = float(result["confidence"])
         top_predictions = result.get("top_predictions", [])
-        predicted_pest = (
-            result["pest"] if result["pest"] in class_names else None
+        raw_predicted_pest = result.get("pest")
+        predicted_pest = raw_predicted_pest if _is_active_prediction_label(raw_predicted_pest) else None
+        if _PEST_GUARD_HIERARCHY is not None:
+            insect_group = str(result.get("insect_group") or UNKNOWN_INSECT_GROUP)
+            if insect_group not in _ACTIVE_HIERARCHICAL_GROUP_NAMES:
+                insect_group = UNKNOWN_INSECT_GROUP
+            group_score = result.get("group_score") if insect_group != UNKNOWN_INSECT_GROUP else None
+        else:
+            insect_group = (
+                str(result.get("insect_group") or UNKNOWN_INSECT_GROUP)
+                if predicted_pest
+                else UNKNOWN_INSECT_GROUP
+            )
+            group_score = result.get("group_score") if predicted_pest else None
+        rejection_reason = result.get("rejection_reason")
+        prediction_message = (
+            f"Low-confidence model prediction rejected: {rejection_reason}"
+            if _PEST_GUARD_HIERARCHY is not None and rejection_reason
+            else "Unverified model prediction"
         )
-        insect_group = (
-            str(result.get("insect_group") or UNKNOWN_INSECT_GROUP)
-            if predicted_pest
-            else UNKNOWN_INSECT_GROUP
-        )
-        group_score = result.get("group_score") if predicted_pest else None
-        prediction_message = "Unverified model prediction"
         species_metadata = _resolve_species_metadata(predicted_pest, db)
-        common_name = (
-            species_metadata["common_name"] if predicted_pest else None
-        )
-        if (
-            PEST_MODEL == "new_dataset_candidate"
-            and predicted_pest is not None
-        ):
+        common_name = species_metadata["common_name"] if predicted_pest else None
+        if predicted_pest is not None and predicted_pest in class_names:
             common_name = common_names[class_names.index(predicted_pest)]
+        elif predicted_pest is not None and _PEST_GUARD_HIERARCHY is not None:
+            common_name = next(
+                (
+                    str(item.get("common_name") or "").strip()
+                    for item in top_predictions
+                    if _normalize_pest_label(item.get("pest") or item.get("species"))
+                    == _normalize_pest_label(predicted_pest)
+                ),
+                str(predicted_pest),
+            )
         resolved_risk = (
             species_metadata["risk"] if predicted_pest else "UNKNOWN"
         )
@@ -1877,7 +1988,9 @@ async def ai_predict(
 
             "identification_status": "UNCONFIRMED",
             "identification_label": (
-                "Possible match" if predicted_pest else "Unidentified sound"
+                str(result.get("identification_label") or ("Possible match" if predicted_pest else "Unidentified sound"))
+                if _PEST_GUARD_HIERARCHY is not None
+                else ("Possible match" if predicted_pest else "Unidentified sound")
             ),
 
             "pest": predicted_pest,
@@ -1959,8 +2072,17 @@ async def ai_predict(
         prediction_data.update(_serialize_detection(detection, None))
         prediction_data["identification_status"] = "UNCONFIRMED"
         prediction_data["identification_label"] = (
-            "Possible match" if predicted_pest else "Unidentified sound"
+            str(result.get("identification_label") or ("Possible match" if predicted_pest else "Unidentified sound"))
+            if _PEST_GUARD_HIERARCHY is not None
+            else ("Possible match" if predicted_pest else "Unidentified sound")
         )
+        if _PEST_GUARD_HIERARCHY is not None:
+            prediction_data["insect_group"] = insect_group
+            prediction_data["group_score"] = group_score
+            prediction_data["top_predictions"] = top_predictions
+            prediction_data["broad_group_prediction"] = result.get("broad_group_prediction")
+            prediction_data["broad_group_confidence"] = result.get("broad_group_confidence")
+            prediction_data["broad_group_top_predictions"] = result.get("broad_group_top_predictions", [])
         prediction_data["source"] = "AI_MODEL_PREDICTION"
         prediction_data["detected_at"] = detection.detected_at.replace(
             tzinfo=timezone.utc
@@ -2087,9 +2209,9 @@ async def generate_ai_solution(
     payload: AISolutionRequest,
     db: Session = Depends(get_db),
 ):
-    # Only active CNN labels may be used as model candidates. A candidate label
-    # is not proof that the insect was identified correctly.
-    if payload.pest not in class_names:
+    # Only labels produced by the currently active classifier may be used.
+    # A candidate label is never proof that the insect was identified correctly.
+    if not _is_active_prediction_label(payload.pest):
         return _fallback_uncertain_solution(payload)
 
     pest_record = _find_verified_pest_record(
@@ -2106,14 +2228,19 @@ async def generate_ai_solution(
         candidate_symptoms = pest_record.symptoms or payload.pest_symptoms
         candidate_risk = payload.risk
     else:
-        # Some trained model classes have no matching catalogue record. Still
-        # allow Gemini to provide cautious, general IPM advice for the model's
-        # top candidate instead of silently returning the old generic fallback.
-        class_index = class_names.index(payload.pest)
+        # Keep advice available for active labels that do not exist in the old
+        # 47-class metadata (including new subtype-folder labels), but keep their
+        # risk unknown until a catalogue record verifies the identity.
         candidate_pest = payload.pest
+        if payload.pest in class_names:
+            class_index = class_names.index(payload.pest)
+            active_common_name = str(common_names[class_index] or '').strip()
+        else:
+            active_common_name = ''
         candidate_common_name = (
-            str(common_names[class_index] or '').strip()
+            active_common_name
             or payload.common_name
+            or payload.pest
             or 'Unconfirmed insect'
         )
         candidate_pest_id = ''
@@ -2302,7 +2429,7 @@ async def create_detection(
             )
 
     detection_status = payload.status
-    detection_pest = payload.pest if payload.pest in class_names else None
+    detection_pest = payload.pest if _is_active_prediction_label(payload.pest) else None
     if detection_status == "HARMFUL_PEST":
         # Retain a trained class only as an unconfirmed suggestion.
         detection_status = "UNKNOWN"
@@ -2332,7 +2459,7 @@ async def create_detection(
         pest=detection_pest,
 
         confidence=payload.confidence,
-        insect_group=get_species_group(detection_pest, MODEL_SPECIES_GROUPS),
+        insect_group=_active_group_for_label(detection_pest),
         group_score=None,
 
         risk=detection_risk,
