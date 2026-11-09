@@ -1,23 +1,52 @@
 export const UNKNOWN_INSECT_GROUP = 'Unknown insect group'
 
+const INSECT_GROUP_LABELS = new Set([
+  'beetles',
+  'cicada',
+  'crickets',
+  'flies',
+  'grasshopper',
+  'katydid',
+  'mole crickets',
+  'termite',
+])
+
 export function getDetectionInsectGroup(detection) {
   return String(detection?.insect_group || '').trim() || UNKNOWN_INSECT_GROUP
+}
+
+function getCandidateScore(candidate) {
+  for (const value of [candidate?.score, candidate?.probability, candidate?.confidence]) {
+    if (
+      value !== null &&
+      value !== undefined &&
+      value !== '' &&
+      Number.isFinite(Number(value))
+    ) {
+      return Number(value)
+    }
+  }
+
+  return null
 }
 
 export function getTopSpeciesPredictions(predictions) {
   if (!Array.isArray(predictions)) return []
 
   return predictions
+    .map((prediction) => {
+      const score = getCandidateScore(prediction)
+      return score === null ? null : { ...prediction, score }
+    })
     .filter((prediction) => (
-      typeof prediction?.pest === 'string' &&
+      prediction !== null &&
+      typeof prediction.pest === 'string' &&
       prediction.pest.trim() !== '' &&
-      prediction.score !== null &&
-      prediction.score !== undefined &&
-      prediction.score !== '' &&
-      Number.isFinite(Number(prediction.score))
+      prediction.subtype_confidence !== null &&
+      !INSECT_GROUP_LABELS.has(prediction.pest.trim().toLowerCase())
     ))
     .slice()
-    .sort((first, second) => Number(second.score) - Number(first.score))
+    .sort((first, second) => second.score - first.score)
     .slice(0, 3)
 }
 

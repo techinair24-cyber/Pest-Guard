@@ -1,8 +1,7 @@
-"""Eight-group Pest Guard hierarchy inference helper.
+"""Active eight-group Pest Guard hierarchy inference helper.
 
-This is a separate candidate helper. It does not replace or edit the existing
-seven-group inference module. It preserves the production 16 kHz / 80,000
-sample / (155, 128, 1) feature contract and supports group-only branches.
+It uses the 16 kHz / 80,000-sample / (155, 128, 1) feature contract and
+supports group-only branches.
 """
 from __future__ import annotations
 
@@ -92,12 +91,43 @@ class PestGuardHierarchy8Class:
         if unknown_groups:
             raise RuntimeError(f"Subtype manifest contains groups absent from group_labels: {unknown_groups}")
 
+        dataset_provenance = self.manifest.get("dataset_provenance") or {}
+        label_mappings = dataset_provenance.get("subclass_label_mappings") or {}
+        if not isinstance(label_mappings, dict):
+            raise RuntimeError("dataset_provenance.subclass_label_mappings must be a JSON object.")
+        if set(label_mappings) - set(self.groups):
+            raise RuntimeError("Dataset subclass mappings contain a group absent from group_labels.")
+
+        self.verified_subtype_labels: dict[str, set[str]] = {}
         self.experts: dict[str, Any] = {}
         for group, item in self.subtype_manifest.items():
             if not isinstance(item, dict):
                 raise RuntimeError(f"Subtype manifest entry for {group!r} must be an object.")
             filename = item.get("model_file")
             labels = list(item.get("labels") or [])
+            if not labels or any(not isinstance(label, str) or not label.strip() for label in labels):
+                if filename or labels:
+                    raise RuntimeError(
+                        f"Subtype model for {group!r} requires non-empty ordered labels."
+                    )
+            label_mapping = label_mappings.get(group, {})
+            if not isinstance(label_mapping, dict):
+                raise RuntimeError(f"Dataset subclass mapping for {group!r} must be a JSON object.")
+            if set(label_mapping) - set(labels):
+                raise RuntimeError(
+                    f"Dataset subclass mapping for {group!r} contains a label absent from its model."
+                )
+            for model_label, dataset_label in label_mapping.items():
+                if (
+                    not isinstance(dataset_label, str)
+                    or not dataset_label.strip()
+                    or self._normalize_subtype_label(model_label)
+                    != self._normalize_subtype_label(dataset_label)
+                ):
+                    raise RuntimeError(
+                        f"Dataset subclass mapping for {group!r} is not an exact normalized label match."
+                    )
+            self.verified_subtype_labels[group] = set(label_mapping)
             if not filename:
                 if labels:
                     raise RuntimeError(
@@ -106,8 +136,6 @@ class PestGuardHierarchy8Class:
                 continue
             if not isinstance(filename, str) or Path(filename).name != filename:
                 raise RuntimeError(f"Unsafe subtype model filename for group {group!r}: {filename!r}")
-            if not labels or any(not isinstance(label, str) or not label.strip() for label in labels):
-                raise RuntimeError(f"Subtype model for {group!r} requires non-empty ordered labels.")
             if len(set(labels)) != len(labels):
                 raise RuntimeError(f"Subtype labels for {group!r} contain duplicates.")
 
@@ -127,6 +155,10 @@ class PestGuardHierarchy8Class:
             raise RuntimeError(
                 f"{name} input shape must be (None, {FEATURE_SHAPE}), found {input_shape}."
             )
+
+    @staticmethod
+    def _normalize_subtype_label(label: str) -> str:
+        return "".join(character for character in label.casefold() if character.isalnum())
 
     @staticmethod
     def _features(waveform: np.ndarray) -> np.ndarray:
@@ -213,16 +245,26 @@ class PestGuardHierarchy8Class:
 
         if group_score < group_threshold:
             return {
-                "pest": None,
+                "pest": group_name,
                 "confidence": group_score,
-                "insect_group": "UNKNOWN",
+                "insect_group": group_name,
                 "group_score": group_score,
-                "top_predictions": [],
-                "broad_group_prediction": "UNKNOWN",
+                "top_predictions": [
+                    {
+                        "pest": group_name,
+                        "species": group_name,
+                        "scientific_name": group_name,
+                        "common_name": group_name,
+                        "confidence": group_score,
+                        "probability": group_score,
+                        "subtype_confidence": None,
+                    }
+                ],
+                "broad_group_prediction": group_name,
                 "broad_group_confidence": group_score,
                 "broad_group_top_predictions": top_groups,
-                "identification_label": "Unidentified sound",
-                "rejection_reason": "group_confidence_below_validation_threshold",
+                "identification_label": "Possible group match",
+                "rejection_reason": None,
             }
 
         expert = self.experts.get(group_name)
@@ -234,9 +276,15 @@ class PestGuardHierarchy8Class:
                 "confidence": group_score,
                 "insect_group": group_name,
                 "group_score": group_score,
-                "top_predictions": self._top_predictions(
-                    [group_name], np.asarray([1.0]), group_score
-                ),
+                "top_predictions": [{
+                    "pest": group_name,
+                    "species": group_name,
+                    "scientific_name": group_name,
+                    "common_name": group_name,
+                    "confidence": group_score,
+                    "probability": group_score,
+                    "subtype_confidence": None,
+                }],
                 "broad_group_prediction": group_name,
                 "broad_group_confidence": group_score,
                 "broad_group_top_predictions": top_groups,
@@ -252,21 +300,42 @@ class PestGuardHierarchy8Class:
         subtype_score = float(subtype_probabilities[subtype_idx])
         threshold_info = expert_info.get("threshold") or {}
         subtype_threshold = float(threshold_info.get("minimum_confidence", 0.95))
-        top_predictions = self._top_predictions(subtype_labels, subtype_probabilities, group_score)
+        verified_labels = self.verified_subtype_labels.get(group_name, set())
+        top_predictions = [
+            prediction
+            for prediction in self._top_predictions(
+                subtype_labels, subtype_probabilities, group_score
+            )
+            if prediction["pest"] in verified_labels
+        ]
         joint_confidence = float(group_score * subtype_score)
 
-        if subtype_score < subtype_threshold:
+        if subtype_labels[subtype_idx] not in verified_labels:
             return {
-                "pest": None,
-                "confidence": joint_confidence,
+                "pest": group_name,
+                "confidence": group_score,
                 "insect_group": group_name,
                 "group_score": group_score,
-                "top_predictions": [],
+                "top_predictions": top_predictions,
                 "broad_group_prediction": group_name,
                 "broad_group_confidence": group_score,
                 "broad_group_top_predictions": top_groups,
-                "identification_label": "Group detected; subtype uncertain",
-                "rejection_reason": "subtype_confidence_below_validation_threshold",
+                "identification_label": "Possible group match; subtype label unverified",
+                "rejection_reason": None,
+            }
+
+        if subtype_score < subtype_threshold:
+            return {
+                "pest": group_name,
+                "confidence": group_score,
+                "insect_group": group_name,
+                "group_score": group_score,
+                "top_predictions": top_predictions,
+                "broad_group_prediction": group_name,
+                "broad_group_confidence": group_score,
+                "broad_group_top_predictions": top_groups,
+                "identification_label": "Possible group match",
+                "rejection_reason": None,
             }
 
         return {

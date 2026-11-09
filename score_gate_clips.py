@@ -7,9 +7,8 @@ Folder layout:
     test_clips/insect/*.wav       real ESP32 insect recordings
     test_clips/background/*.wav   silence + ordinary noise recorded by the ESP32
 
-It does not import backend/main.py (so TensorFlow and the 47-class model are NOT
-loaded). It extracts the gate code block from main.py and runs that exact code,
-so the features always match what the backend uses.
+It extracts the gate code block from main.py and runs that exact code, so the
+features always match the backend without loading the insect classifier.
 """
 import logging
 import os

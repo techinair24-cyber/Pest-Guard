@@ -166,7 +166,7 @@ PEST_DATA = [
         "pest_id": "katydid",
         "name": "Katydid",
         "scientific_name": "Katydid",
-        "risk": "MEDIUM",
+        "risk": "LOW",
         "description": "Katydids generally cause limited damage, although some species and high populations can damage foliage or fruit.",
         "symptoms": "Check leaf edges for chewing and fruit for shallow scars or distorted growth.",
     },

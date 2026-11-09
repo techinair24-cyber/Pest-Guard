@@ -1,0 +1,15 @@
+{
+  "format_version": 1,
+  "reason": "Exclude these unverified Steppe Grasshopper source components from all experimental training, calibration, and final-test splits without changing their labels.",
+  "recording_ids": [
+    "XC752128",
+    "XC752259",
+    "XC752472",
+    "XC752476",
+    "XC752478",
+    "XC752590",
+    "XC752592",
+    "XC752594",
+    "XC752596"
+  ]
+}

@@ -50,7 +50,7 @@ test('every class has a readable common name and sourced risk assessment', () =>
   for (const entry of metadata) {
     assert.ok(entry.common_name.trim(), entry.model_class)
     assert.ok(
-      ['LOW', 'MEDIUM', 'HIGH', 'UNKNOWN'].includes(entry.risk),
+      ['HIGH', 'MEDIUM', 'LOW', 'NO_RISK'].includes(entry.risk),
       entry.model_class,
     )
     assert.ok(entry.source_name.trim(), entry.model_class)
@@ -58,7 +58,7 @@ test('every class has a readable common name and sourced risk assessment', () =>
     assert.ok(entry.risk_rationale.trim(), entry.model_class)
     assert.ok(Array.isArray(entry.affected_crops), entry.model_class)
 
-    if (entry.risk !== 'UNKNOWN') {
+    if (entry.risk !== 'NO_RISK') {
       assert.ok(entry.affected_crops.length > 0, entry.model_class)
     }
   }
@@ -80,7 +80,6 @@ test('metadata matching ignores capitalization, spaces, and underscores', () => 
 test('API-resolved risk metadata is retained on unverified detections', () => {
   const detection = {
     pest: 'Desert locust',
-    identification_status: 'UNCONFIRMED',
     risk: 'HIGH',
     risk_rationale: 'FAO documents severe swarm impacts.',
     metadata_source_name: 'FAO Locust Watch',
@@ -95,14 +94,13 @@ test('API-resolved risk metadata is retained on unverified detections', () => {
   })
 })
 
-test('unrated metadata preserves its explanation without claiming LOW risk', () => {
+test('unrated metadata uses precautionary LOW', () => {
   const estimate = getDetectionRiskEstimate({
     pest: 'Grasshopper',
-    risk: 'UNKNOWN',
+    risk: 'LOW',
     risk_rationale: 'The model label is too broad to assign a risk tier.',
   })
-
-  assert.equal(estimate.risk, 'UNKNOWN')
+  assert.equal(estimate.risk, 'LOW')
   assert.match(estimate.rationale, /too broad/)
 })
 
@@ -124,7 +122,7 @@ test('catalogue risk remains available for independently verified records', () =
   )
   assert.equal(
     getPestRiskEstimate('Armyworm', directory).risk,
-    'UNKNOWN',
+    'LOW',
   )
 })
 
@@ -132,6 +130,6 @@ test('unknown species do not fail name or risk display', () => {
   assert.equal(getDisplayPestName('Unrecognized insect'), 'Unrecognized insect')
   assert.equal(
     getDetectionRiskEstimate({ pest: 'Unrecognized insect' }).risk,
-    'UNKNOWN',
+    'LOW',
   )
 })

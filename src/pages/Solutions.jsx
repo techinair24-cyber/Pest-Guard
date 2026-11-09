@@ -322,7 +322,7 @@ function Solutions() {
        requestedPest ||
        'Unknown insect',
       common_name: nextPest?.name || 'Unconfirmed insect',
-      risk: 'UNKNOWN',
+      risk: 'LOW',
       confidence: Number.isFinite(detectionConfidence)
        ? detectionConfidence
        : 0,

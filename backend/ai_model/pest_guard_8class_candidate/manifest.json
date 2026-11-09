@@ -1,7 +1,66 @@
 {
   "format_version": 2,
-  "candidate_status": "experimental_not_active",
-  "dataset_root": "C:\\Users\\Deepthi MG\\Desktop\\Pest guard\\Pest Guard Dataset",
+  "candidate_status": "experimental",
+  "runtime_loading_status": "loaded_by_backend_main",
+  "dataset_root": "C:\\Users\\Deepthi MG\\Desktop\\Pest Guard Dataset",
+  "dataset_provenance": {
+    "group_labels_verified_against_dataset_directories": true,
+    "subclass_mapping_method": "case_and_punctuation_normalized_exact_match_to_immediate_subclass_directory",
+    "training_data_identity": "unverified_from_saved_model_artifacts",
+    "subclass_label_mappings": {
+      "Beetles": {},
+      "Cicada": {},
+      "Crickets": {
+        "European tree cricket": "European tree cricket",
+        "Field Cricket": "Field Cricket",
+        "House Cricket": "House Cricket",
+        "Two-spotted cricket": "Two-spotted cricket",
+        "Wood cricket": "Wood cricket"
+      },
+      "Flies": {},
+      "Grasshopper": {
+        "green grasshopper": "green grasshopper",
+        "large gold grasshopper": "large gold grasshopper",
+        "lesser marsh grasshopper": "lesser marsh grasshopper",
+        "Lesser mottled grasshopper": "Lesser mottled grasshopper",
+        "Meadow grasshopper": "Meadow grasshopper",
+        "Mottled grasshopper": "Mottled grasshopper",
+        "Rufous grasshopper": "Rufous grasshopper",
+        "Steppe grasshopper": "Steppe grasshopper",
+        "Stripe-winged grasshopper": "Stripe-winged grasshopper",
+        "Upland Field Grasshopper": "Upland Field Grasshopper",
+        "Woodland grasshopper": "Woodland grasshopper"
+      },
+      "Katydid": {
+        "Dark bush-cricket": "Dark bush-cricket",
+        "Grey bush-cricket": "Grey bush-cricket",
+        "Lily bush-cricket": "Lily bush-cricket",
+        "Long-winged conehead": "Long-winged conehead",
+        "Mediterranean slender bush-cricket": "Mediterranean slender bush-cricket",
+        "Roesel's bush-cricket": "Roesel's bush-cricket",
+        "Schmidt’s bush-cricket": "Schmidt’s bush-cricket",
+        "Short-winged conehead": "Short-winged conehead",
+        "Slender green bush-cricket": "Slender green bush-cricket",
+        "Speckled bush-cricket": "Speckled bush-cricket",
+        "Wart-biter bush-cricket": "Wart-biter bush-cricket"
+      },
+      "Mole Crickets": {},
+      "Termite": {}
+    }
+  },
+  "training_provenance": {
+    "group_model_checkpoint": "training_8class_advanced_20261106/models/best_validation_loss.keras",
+    "group_model_split_manifest_sha256_associated_with_cache": "8dceff7cb9321e97e3050b3ddc14d110b7b157fa3a8d28de86713560baf28534",
+    "group_model_dataset_signature_associated_with_cache": "41e54980914fe8c1150b1854c7e86a9638af4e13b5969e03a3ac7fc9178ab782",
+    "group_model_checkpoint_split_lineage": "unresolved_checkpoint_does_not_embed_or_reference_a_verified_split_signature",
+    "subtype_expert_source": "backend/ai_model/pest_guard_hierarchical_candidate",
+    "subtype_expert_training_data_identity": "unverified_previous_hierarchy"
+  },
+  "validation_status": {
+    "status": "experimental_not_validated_for_production",
+    "group_metrics": "reported in manifest; not independently re-evaluated in this compatibility phase",
+    "subtype_metrics": "copied from prior hierarchy; not validated against the new dataset"
+  },
   "feature_config": {
     "sample_rate": 16000,
     "clip_seconds": 5,

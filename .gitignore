@@ -41,3 +41,6 @@ backend/.venv311/
 # Python cache
 __pycache__/
 *.py[cod]
+
+# Generated AI feature cache
+backend/ai_model/_feature_cache/

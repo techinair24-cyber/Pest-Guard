@@ -3,13 +3,14 @@
 Run from the Pest guard project root:
     python .\\train_lightweight_background_gate.py
 
-Reads the existing combined manifest and downloaded ESC-50 background WAVs.
-Writes only a model and report under backend/ai_model/lightweight_background_gate/.
+Reads an explicitly supplied, verified eight-group split manifest and
+downloaded ESC-50 background WAVs. Writes only to a new output directory.
 Does not edit backend/main.py, the active insect model, or ESP32 firmware.
 """
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
 import random
@@ -28,9 +29,21 @@ from sklearn.metrics import accuracy_score, confusion_matrix
 SAMPLE_RATE = 16000
 TARGET_SAMPLES = 5 * SAMPLE_RATE
 SEED = 459
-MANIFEST_REL = Path("backend/ai_model/combined_split_manifest.json")
+GROUP_LABELS = (
+    "Beetles",
+    "Cicada",
+    "Crickets",
+    "Flies",
+    "Grasshopper",
+    "Katydid",
+    "Mole Crickets",
+    "Termite",
+)
+SUPPORTED_AUDIO_EXTENSIONS = {
+    ".wav", ".flac", ".ogg", ".aiff", ".aif", ".mp3",
+    ".m4a", ".mp4", ".aac", ".wma",
+}
 BACKGROUND_DIR = Path.home() / "Desktop" / "InsectSound1000_Training" / "ESC50_background_pilot"
-OUTPUT_DIR_REL = Path("backend/ai_model/lightweight_background_gate")
 METADATA_URL = "https://raw.githubusercontent.com/karolpiczak/ESC-50/master/meta/esc50.csv"
 
 
@@ -41,13 +54,116 @@ def project_root() -> Path:
     raise RuntimeError("Run this script from the Pest guard project root (the folder containing backend\\main.py).")
 
 
-def load_manifest(path: Path) -> dict:
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as audio_file:
+        for chunk in iter(lambda: audio_file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def load_manifest(path: Path, dataset_root: Path) -> dict:
     if not path.is_file():
         raise FileNotFoundError(f"Required manifest missing: {path}")
-    data = json.loads(path.read_text(encoding="utf-8-sig"))
-    if not isinstance(data, dict) or not isinstance(data.get("train"), list) or not isinstance(data.get("validation"), list):
-        raise ValueError("Manifest must contain 'train' and 'validation' lists. Run prepare_background_gate_data_v2.py first.")
-    return data
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            "Split manifest must be the versioned eight-group JSON manifest "
+            "with recording provenance; CSV and legacy 47-class manifests "
+            "are not accepted."
+        ) from exc
+    if not isinstance(data, dict) or data.get("format_version") != 1:
+        raise ValueError(
+            "Unsupported split manifest format; expected versioned eight-group JSON."
+        )
+    if Path(data.get("dataset_root", "")).resolve() != dataset_root.resolve():
+        raise ValueError("Split manifest dataset_root does not match --dataset.")
+    if data.get("group_labels") != list(GROUP_LABELS):
+        raise ValueError("Split manifest group labels do not match the approved eight groups.")
+
+    expected_subclasses = {
+        group: sorted(
+            child.name
+            for child in (dataset_root / group).iterdir()
+            if child.is_dir()
+        )
+        for group in GROUP_LABELS
+    }
+    if data.get("subclass_labels") != expected_subclasses:
+        raise ValueError("Split manifest subclass labels do not match the dataset folders.")
+
+    expected_paths = {
+        path.relative_to(dataset_root).as_posix()
+        for group in GROUP_LABELS
+        for path in (dataset_root / group).rglob("*")
+        if path.is_file() and path.suffix.casefold() in SUPPORTED_AUDIO_EXTENSIONS
+    }
+    rows = data.get("recordings")
+    if not isinstance(rows, list) or len(rows) != len(expected_paths):
+        raise ValueError("Split manifest recording count does not match the dataset.")
+
+    seen_paths: set[str] = set()
+    component_splits: dict[str, set[str]] = defaultdict(set)
+    hash_splits: dict[str, set[str]] = defaultdict(set)
+    source_splits: dict[str, set[str]] = defaultdict(set)
+    train: list[dict] = []
+    validation: list[dict] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("Split manifest contains an invalid recording row.")
+        relative = Path(str(row.get("path", "")))
+        if relative.is_absolute() or ".." in relative.parts or len(relative.parts) < 1:
+            raise ValueError("Split manifest contains a path outside the dataset.")
+        relative_text = relative.as_posix()
+        if relative_text in seen_paths or relative_text not in expected_paths:
+            raise ValueError(f"Split manifest path is duplicated or absent from the dataset: {relative_text}")
+        seen_paths.add(relative_text)
+        audio_path = dataset_root / relative
+        group = row.get("group")
+        expected_group = relative.parts[0]
+        expected_subclass = relative.parts[1] if len(relative.parts) > 2 else None
+        if group != expected_group or group not in GROUP_LABELS:
+            raise ValueError(f"Split manifest group does not match its path: {relative_text}")
+        if row.get("subtype") != expected_subclass:
+            raise ValueError(f"Split manifest subclass does not match its path: {relative_text}")
+        if row.get("sha256") != sha256_file(audio_path):
+            raise ValueError(f"Dataset content differs from the split manifest: {relative_text}")
+        component_id = row.get("component_id")
+        split = row.get("split")
+        if not isinstance(component_id, str) or not component_id or split not in {
+            "train", "validation", "test", "excluded_group_label_conflict"
+        }:
+            raise ValueError(f"Invalid component or split assignment: {relative_text}")
+        component_splits[component_id].add(split)
+        content_hash = str(row["sha256"]).lower()
+        hash_splits[content_hash].add(split)
+        source_ids = row.get("source_ids")
+        if not isinstance(source_ids, list) or any(not isinstance(value, str) for value in source_ids):
+            raise ValueError(f"Invalid source recording IDs: {relative_text}")
+        for source_id in source_ids:
+            source_splits[source_id].add(split)
+        if split in ("train", "validation"):
+            selected = {
+                "path": str(audio_path),
+                "label_index": GROUP_LABELS.index(group),
+            }
+            (train if split == "train" else validation).append(selected)
+
+    if seen_paths != expected_paths:
+        raise ValueError("Split manifest does not cover every supported dataset recording.")
+    if any(len(splits) != 1 for splits in component_splits.values()):
+        raise ValueError("A source component crosses splits in the manifest.")
+    if any(len(splits) != 1 for splits in hash_splits.values()):
+        raise ValueError("An exact duplicate hash crosses splits in the manifest.")
+    if any(len(splits) != 1 for splits in source_splits.values()):
+        raise ValueError("A source recording ID crosses splits in the manifest.")
+    return {
+        "train": train,
+        "validation": validation,
+        "manifest_sha256": sha256_file(path),
+        "dataset_root": str(dataset_root.resolve()),
+    }
 
 
 def sample_per_class(rows: list[dict], limit: int) -> list[dict]:
@@ -216,8 +332,28 @@ def metrics(y_true: np.ndarray, prob: np.ndarray, threshold: float) -> dict:
 
 
 def main() -> int:
-    root = project_root()
-    manifest = load_manifest(root / MANIFEST_REL)
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--dataset", required=True, type=Path)
+    parser.add_argument("--split-manifest", required=True, type=Path)
+    parser.add_argument(
+        "--output-dir",
+        required=True,
+        type=Path,
+        help="New, non-existing output directory; the active gate bundle is never overwritten.",
+    )
+    args = parser.parse_args()
+
+    project_root()
+    dataset_root = args.dataset.resolve()
+    split_manifest = args.split_manifest.resolve()
+    output_dir = args.output_dir.resolve()
+    if not dataset_root.is_dir():
+        raise FileNotFoundError(f"Dataset directory missing: {dataset_root}")
+    if output_dir.exists():
+        raise FileExistsError(f"Refusing to overwrite an existing gate output directory: {output_dir}")
+    manifest = load_manifest(split_manifest, dataset_root)
     insect_train = sample_per_class(manifest["train"], 5)
     insect_val = sample_per_class(manifest["validation"], 2)
     if len(insect_train) < 50 or len(insect_val) < 20:
@@ -270,6 +406,10 @@ def main() -> int:
         "clip_seconds": 5,
         "feature_count": int(x_train.shape[1]),
         "sklearn_version_training": sklearn.__version__,
+        "dataset": str(dataset_root),
+        "split_manifest": str(split_manifest),
+        "split_manifest_sha256": manifest["manifest_sha256"],
+        "insect_training_provenance": "verified_eight_group_dataset_manifest",
         "insect_training_clips": len(x_it),
         "background_training_clips": len(x_bt),
         "insect_validation_clips": len(x_iv),
@@ -280,8 +420,8 @@ def main() -> int:
         "candidate_for_backend_integration": deploy_candidate,
         "caution": "ESC-50 categories are a limited proxy, and these validation files do not establish field performance. Test raw ESP32 microphone recordings before enabling live requests.",
     }
-    outdir = root / OUTPUT_DIR_REL
-    outdir.mkdir(parents=True, exist_ok=True)
+    outdir = output_dir
+    outdir.mkdir(parents=True, exist_ok=False)
     joblib.dump({"model": model, "threshold": float(best["threshold"]), "feature_count": int(x_train.shape[1]), "sklearn_version": sklearn.__version__}, outdir / "background_gate.joblib", compress=3)
     (outdir / "results.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     print("\n--- LIGHTWEIGHT GATE RESULTS ---")

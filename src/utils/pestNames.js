@@ -5,6 +5,18 @@ export function normalizePestName(value) {
     .replace(/[^a-z0-9]/g, '')
 }
 
+const VALID_RISKS = ['HIGH', 'MEDIUM', 'LOW', 'NO_RISK']
+
+function precautionaryRisk() {
+  return {
+    risk: 'LOW',
+    source: null,
+    sourceUrl: null,
+    rationale:
+      'Please verify the insect identification before treatment. LOW is a precautionary default.',
+  }
+}
+
 export function buildPestDirectory(items) {
   const directory = {}
 
@@ -29,7 +41,7 @@ export function buildPestDirectory(items) {
       pestId: String(item?.pest_id || '').trim(),
       description: item?.description || '',
       symptoms: item?.symptoms || '',
-      risk: item?.risk || '',
+      risk: String(item?.risk || '').toUpperCase(),
     }
 
     ;[name, scientificName, entry.pestId].forEach(
@@ -43,25 +55,16 @@ export function buildPestDirectory(items) {
   return directory
 }
 
-export function getPestRiskEstimate(
-  pest,
-  directory = {},
-) {
+export function getPestRiskEstimate(pest, directory = {}) {
   const key = normalizePestName(pest)
 
-  if (!key) {
-    return {
-      risk: 'UNKNOWN',
-      source: null,
-      rationale: '',
-    }
-  }
+  if (!key) return precautionaryRisk()
 
   const catalogRisk = String(
     directory[key]?.risk || '',
   ).toUpperCase()
 
-  if (['LOW', 'MEDIUM', 'HIGH'].includes(catalogRisk)) {
+  if (VALID_RISKS.includes(catalogRisk)) {
     return {
       risk: catalogRisk,
       source: 'Pest Guard pest catalogue',
@@ -70,19 +73,18 @@ export function getPestRiskEstimate(
     }
   }
 
-  return {
-    risk: 'UNKNOWN',
-    source: null,
-    rationale: '',
-  }
+  return precautionaryRisk()
 }
 
 export function getDetectionRiskEstimate(
   detection,
   directory = {},
 ) {
-  const resolvedRisk = String(detection?.risk || '').toUpperCase()
-  if (['LOW', 'MEDIUM', 'HIGH'].includes(resolvedRisk)) {
+  const resolvedRisk = String(
+    detection?.risk || '',
+  ).toUpperCase()
+
+  if (VALID_RISKS.includes(resolvedRisk)) {
     return {
       risk: resolvedRisk,
       source: detection?.metadata_source_name || null,
@@ -90,27 +92,18 @@ export function getDetectionRiskEstimate(
       rationale: detection?.risk_rationale || '',
     }
   }
-  if (resolvedRisk === 'UNKNOWN' && detection?.risk_rationale) {
-    return {
-      risk: 'UNKNOWN',
-      source: null,
-      sourceUrl: null,
-      rationale: detection.risk_rationale,
-    }
-  }
 
-  const pestRecord = directory[normalizePestName(detection?.pest)]
+  const pestRecord = directory[
+    normalizePestName(detection?.pest)
+  ]
+
   const independentlyVerified =
     detection?.pest_verified === true &&
     Boolean(detection?.pest_id) &&
     detection.pest_id === pestRecord?.pestId
 
   if (!independentlyVerified) {
-    return {
-      risk: 'UNKNOWN',
-      source: null,
-      rationale: '',
-    }
+    return precautionaryRisk()
   }
 
   return getPestRiskEstimate(detection.pest, directory)
@@ -150,9 +143,7 @@ export function getDisplayPestName(
     metadata?.scientific_name || entry?.scientificName || '',
   ).trim()
 
-  if (!scientificName) {
-    return commonName
-  }
+  if (!scientificName) return commonName
 
   if (
     normalizePestName(commonName) ===

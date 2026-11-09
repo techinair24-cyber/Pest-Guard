@@ -1,6 +1,15 @@
 {
   "model": "scikit-learn RandomForest on compact spectral/audio features",
   "purpose": "Experimental low-memory insect-versus-background gate",
+  "insect_training_provenance": {
+    "status": "unverified_legacy_47_class_manifest",
+    "source_manifest": "backend/ai_model/combined_split_manifest.json",
+    "manifest_recordings": 2011,
+    "manifest_class_count": 47,
+    "source_paths_currently_available": false,
+    "compatible_with_current_eight_group_dataset": false,
+    "note": "The original training run is not independently attested by the model artifact; the active trainer configuration uses this stale manifest, whose source audio paths no longer exist. Do not retrain from it or claim current-dataset provenance."
+  },
   "seed": 459,
   "sample_rate": 16000,
   "clip_seconds": 5,
