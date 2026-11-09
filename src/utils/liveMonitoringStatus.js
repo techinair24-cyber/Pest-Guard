@@ -1,5 +1,6 @@
 import {
   getCandidateDisplayName,
+  isInsectGroupLabel,
   getTopSpeciesPredictions,
 } from './insectPredictions.js'
 
@@ -8,7 +9,7 @@ export function getLeadingSpeciesPrediction(detection) {
   if (candidate) return candidate
 
   const pest = String(detection?.pest || '').trim()
-  if (!pest) return null
+  if (!pest || isInsectGroupLabel(pest)) return null
 
   return {
     pest,

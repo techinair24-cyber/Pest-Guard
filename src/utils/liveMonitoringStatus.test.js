@@ -32,6 +32,32 @@ test('latest detection highlights the highest-scoring returned species, not only
   )
 })
 
+test('primary species follows the highest-confidence candidate and group-only results stay group-only', () => {
+  const detection = {
+    pest: 'Grasshopper',
+    insect_group: 'Grasshopper',
+    confidence: 0.9,
+    top_predictions: [
+      { pest: 'Lower candidate', confidence: 0.27 },
+      { pest: 'Highest candidate', confidence: 0.64 },
+      { pest: 'Middle candidate', confidence: 0.41 },
+      { pest: 'Fourth candidate', confidence: 0.12 },
+    ],
+  }
+
+  assert.equal(getLeadingSpeciesPrediction(detection).pest, 'Highest candidate')
+  assert.equal(getLeadingSpeciesPrediction(detection).score, 0.64)
+  assert.equal(getLeadingSpeciesLabel(detection), 'Highest candidate')
+  assert.equal(
+    getLeadingSpeciesPrediction({
+      pest: 'Grasshopper',
+      insect_group: 'Grasshopper',
+      confidence: 0.9,
+    }),
+    null,
+  )
+})
+
 test('confirmation is shown only for the explicit backend CONFIRMED status', () => {
   assert.equal(
     getIdentificationLabel({ identification_status: 'CONFIRMED' }),

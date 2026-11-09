@@ -690,7 +690,7 @@ function LiveMonitoring() {
               )}
               <strong>
                 {predictedPestName
-                  ? insectGroup
+                  ? getCandidateDisplayName(leadingSpeciesPrediction)
                   : displayDetection
                     ? displayDetectionLabel === 'Inference error'
                       ? displayDetectionLabel
@@ -707,13 +707,9 @@ function LiveMonitoring() {
                             ? 'Checking for detections…'
                             : 'No detection received'}
               </strong>
-              {predictedPestName && (
+              {displayDetection && insectGroup && (
                 <small className="latest-species-candidate">
-                  Leading species candidate:{' '}
-                  {getCandidateDisplayName(leadingSpeciesPrediction)}
-                  {' · '}
-                  {formatModelScore(leadingSpeciesPrediction.score)}
-                  
+                  Main insect group: {insectGroup}
                 </small>
               )}
             </div>
@@ -899,6 +895,7 @@ function LiveMonitoring() {
             <div className="history-list">
               {filteredHistory.map((item) => {
                 const scientificName = String(item.pest || '').trim()
+                const leadingHistoryPrediction = getLeadingSpeciesPrediction(item)
                 const topCandidates = getTopSpeciesPredictions(item.top_predictions)
 
                 return (
@@ -906,20 +903,19 @@ function LiveMonitoring() {
                     <div className="history-main">
                       <span className="history-time">{formatDate(getDetectionTime(item))}</span>
                       <strong>
-                        {scientificName
-                          ? getDetectionInsectGroup(item)
-                          : getDetectionDisplayStatus(item) === 'Inference error'
-                            ? 'Inference error'
-                            : getDetectionDisplayStatus(item) === 'Non-pest sound'
-                              ? 'Non-pest sound'
-                              : 'Unidentified sound'}
+                        {leadingHistoryPrediction
+                          ? getCandidateDisplayName(leadingHistoryPrediction)
+                          : scientificName
+                            ? getDetectionInsectGroup(item)
+                            : getDetectionDisplayStatus(item) === 'Inference error'
+                              ? 'Inference error'
+                              : getDetectionDisplayStatus(item) === 'Non-pest sound'
+                                ? 'Non-pest sound'
+                                : 'Unidentified sound'}
                       </strong>
-                      {scientificName && (
+                      {leadingHistoryPrediction && (
                         <small>
-                          Top species candidate: {getCandidateDisplayName({
-                            pest: scientificName,
-                            common_name: item.common_name,
-                          })}
+                          Main insect group: {getDetectionInsectGroup(item)}
                         </small>
                       )}
                       {topCandidates.length > 0 && (

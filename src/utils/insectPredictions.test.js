@@ -10,7 +10,7 @@ import {
   UNKNOWN_INSECT_GROUP,
 } from './insectPredictions.js'
 
-test('the broad group, not a species, is the primary display value', () => {
+test('the broad group is available as a separate display value', () => {
   assert.equal(
     getDetectionInsectGroup({
       pest: 'Chorthippus mollis',

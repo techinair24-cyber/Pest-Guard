@@ -15,6 +15,10 @@ export function getDetectionInsectGroup(detection) {
   return String(detection?.insect_group || '').trim() || UNKNOWN_INSECT_GROUP
 }
 
+export function isInsectGroupLabel(label) {
+  return INSECT_GROUP_LABELS.has(String(label || '').trim().toLowerCase())
+}
+
 function getCandidateScore(candidate) {
   for (const value of [candidate?.score, candidate?.probability, candidate?.confidence]) {
     if (

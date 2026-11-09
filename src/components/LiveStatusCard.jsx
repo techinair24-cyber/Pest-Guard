@@ -8,6 +8,7 @@ import {
   getPredictionUncertainty,
   getTopSpeciesPredictions,
 } from '../utils/insectPredictions'
+import { getLeadingSpeciesPrediction } from '../utils/liveMonitoringStatus'
 
 function formatDateTime(timestamp) {
   if (!timestamp) {
@@ -156,6 +157,7 @@ function LiveStatusCard({ detection, device, error }) {
 
   const insectGroup = getDetectionInsectGroup(detection)
   const topPredictions = getTopSpeciesPredictions(detection?.top_predictions)
+  const leadingPrediction = getLeadingSpeciesPrediction(detection)
 
   const risk =
     detection?.risk ||
@@ -211,11 +213,18 @@ function LiveStatusCard({ detection, device, error }) {
             </div>
 
             <div>
-              <span>Broad insect group</span>
+              <span>Primary predicted pest</span>
 
               <strong>
-                {pestName ? insectGroup : statusLabel}
+                {leadingPrediction
+                  ? getCandidateDisplayName(leadingPrediction)
+                  : statusLabel}
               </strong>
+              {leadingPrediction && (
+                <small>{formatModelScore(leadingPrediction.score)}</small>
+              )}
+              <span>Main insect group</span>
+              <strong>{pestName ? insectGroup : statusLabel}</strong>
             </div>
           </div>
 
