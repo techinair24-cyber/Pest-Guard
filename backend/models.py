@@ -201,6 +201,11 @@ class HighRiskSolutionHistory(Base):
         nullable=True,
     )
 
+    solution_source = Column(
+        String(20),
+        nullable=True,
+    )
+
     solution_description = Column(
         Text,
         nullable=True,

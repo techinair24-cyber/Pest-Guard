@@ -242,7 +242,8 @@
 .risk-block .risk-high { color: #b36c4e; }
 .risk-block .risk-medium { color: #b28a4d; }
 .risk-block .risk-low { color: #53765b; }
-.risk-block .risk-unknown { color: #77827c; }
+.risk-block .risk-unknown,
+.risk-block .risk-unconfirmed { color: #77827c; }
 
 .identification-note {
   margin: 10px 0 0;
@@ -276,7 +277,8 @@
   color: #527b5e;
 }
 
-.history-risk.risk-unknown {
+.history-risk.risk-unknown,
+.history-risk.risk-unconfirmed {
   background: #ecefeb;
   color: #77827c;
 }
@@ -380,6 +382,13 @@
 .solution-steps li::marker {
   color: #6f9276;
   font-weight: 700;
+}
+
+.solution-unavailable {
+  margin: 0;
+  color: var(--solutions-muted);
+  font-size: 14px;
+  line-height: 1.75;
 }
 
 .solutions-button {

@@ -155,7 +155,10 @@ export const getHighRiskSolutionHistory = async (
     }`,
   )
 
-  return data.history || []
+  return {
+    history: data.history || [],
+    total: data.total,
+  }
 }
 
 export const sendDetection = (payload) =>

@@ -62,45 +62,40 @@ async function requestPestSolution(payload) {
 
  }
 
+ const requiredFields = [
+  'about',
+  'recommended_action',
+  'prevention',
+ ]
+ if (
+  !data ||
+  requiredFields.some((field) => typeof data[field] !== 'string' || !data[field].trim()) ||
+  data.pest !== payload.pest ||
+  data.common_name !== payload.common_name ||
+  data.pest_id !== payload.pest_id ||
+  data.risk !== payload.risk ||
+  !Number.isFinite(data.confidence)
+ ) {
+  throw new Error('The solution service returned incomplete or mismatched data.')
+ }
+
  return data
 }
 
 function toSteps(value) {
- return String(value || '')
+ return (typeof value === 'string' ? value : '')
   .split(/\r?\n/)
   .map((step) => step.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').trim())
   .filter(Boolean)
 }
 
-function SolutionSections({ solution, pest, uncertain }) {
- const damageSteps = toSteps(
-  solution?.about || solution?.description ||
-   (uncertain
-    ? 'The pest identification is uncertain. Confirm the insect before choosing pest-specific treatment.'
-    : pest?.description || pest?.symptoms || 'Pest and crop damage details are not available.'),
- )
- const protectSteps = toSteps(
-  solution?.recommended_action ||
-   'Inspect the affected crop and seek crop-specific advice before selecting a treatment.',
- )
- const pesticideSteps = toSteps(
-  solution?.pesticide_recommendation ||
-   'No verified product label or crop-specific dose is available. Do not guess a product or dose; consult the registered label and a qualified local agricultural expert.',
- )
- const safeApplicationSteps = toSteps(
-  solution?.precautions ||
-   'Use a pesticide only after confirming the product is registered for this crop and pest. Follow the product label for protective equipment, application, re-entry, storage, disposal, and pre-harvest intervals.',
- )
- const preventionSteps = toSteps(
-  solution?.prevention || pest?.prevention ||
-   'Monitor affected and nearby plants, record any crop damage, and seek local agricultural advice if the damage spreads.',
- )
+function SolutionSections({ solution }) {
  const sections = [
-  ['Pest & Crop Damage', damageSteps],
-  ['How to Protect the Crop', protectSteps],
-  ['Recommended Pesticide/Medicine and Correct Label Dose', pesticideSteps],
-  ['How to Apply It Safely', safeApplicationSteps],
-  ['Prevention and Follow-up Steps', preventionSteps],
+  ['Pest & Crop Damage', solution?.about],
+  ['How to Protect the Crop', solution?.recommended_action],
+  ['Recommended Pesticide/Medicine and Correct Label Dose', solution?.pesticide_recommendation],
+  ['How to Apply It Safely', solution?.precautions],
+  ['Prevention and Follow-up Steps', solution?.prevention],
  ]
 
  return (
@@ -110,12 +105,12 @@ function SolutionSections({ solution, pest, uncertain }) {
      <span className="section-number">{String(index + 1).padStart(2, '0')}</span>
      <div>
       <h3>{heading}</h3>
-      {steps.length ? (
+      {toSteps(steps).length ? (
        <ol className="solution-steps">
-        {steps.map((step, stepIndex) => <li key={`${heading}-${stepIndex}`}>{step}</li>)}
+        {toSteps(steps).map((step, stepIndex) => <li key={`${heading}-${stepIndex}`}>{step}</li>)}
        </ol>
       ) : (
-       <ol className="solution-steps"><li>Not available.</li></ol>
+       <p className="solution-unavailable">No verified information is currently available.</p>
       )}
      </div>
     </section>
@@ -137,12 +132,15 @@ function Solutions() {
  const [loadingSolution, setLoadingSolution] = useState(false)
 
  const [error, setError] = useState('')
+ const [canRetry, setCanRetry] = useState(false)
 
  const [retryKey, setRetryKey] = useState(0)
  const [cropDraft, setCropDraft] = useState('')
  const [selectedCrop, setSelectedCrop] = useState('')
 
  const [highRiskHistory, setHighRiskHistory] = useState([])
+
+ const [highRiskHistoryTotal, setHighRiskHistoryTotal] = useState(null)
 
  const [historyLoading, setHistoryLoading] = useState(true)
 
@@ -166,26 +164,21 @@ function Solutions() {
    ? Number.NaN
    : Number(detection.confidence)
 
- const riskEstimate = getDetectionRiskEstimate(detection, pestDirectory)
-
+ const isNonPest = status === 'NON_PEST'
+ const catalogRisk = String(pest?.risk || '').trim().toUpperCase()
+ const supportedRisk = ['HIGH', 'MEDIUM', 'LOW', 'NO_RISK'].includes(catalogRisk)
  const hasVerifiedCatalogMatch =
   detection?.pest_verified === true &&
   Boolean(detection?.pest_id) &&
-  detection.pest_id === pest?.pest_id
-
+  detection.pest_id === pest?.pest_id &&
+  supportedRisk
+ const queryMatchesDetection =
+  !queryPest ||
+  normalizePestName(queryPest) === normalizePestName(detection?.pest)
  const canShowSpeciesGuidance =
   hasVerifiedCatalogMatch &&
   status === 'HARMFUL_PEST' &&
-  (!queryPest ||
-   normalizePestName(queryPest) === normalizePestName(detection?.pest))
-
- const isNonPest = status === 'NON_PEST'
-
- const solutionRisk = canShowSpeciesGuidance
-  ? riskEstimate.risk
-  : 'UNKNOWN'
-
- const canShowGuidance = !isNonPest
+  queryMatchesDetection
 
  useEffect(() => {
 
@@ -199,17 +192,21 @@ function Solutions() {
 
    try {
 
-    const history = await getHighRiskSolutionHistory({ limit: 100 })
+    const result = await getHighRiskSolutionHistory({ limit: 100 })
 
     if (!active) return
 
-    setHighRiskHistory(Array.isArray(history) ? history : [])
+    setHighRiskHistory(Array.isArray(result.history) ? result.history : [])
+    setHighRiskHistoryTotal(
+     Number.isInteger(result.total) ? result.total : null,
+    )
 
    } catch (loadError) {
 
     if (!active) return
 
     setHighRiskHistory([])
+    setHighRiskHistoryTotal(null)
 
     setHistoryError(loadError.message || 'Unable to load HIGH-risk solution history.')
 
@@ -254,6 +251,7 @@ function Solutions() {
    setLoadingSolution(true)
 
    setError('')
+   setCanRetry(false)
 
    setSolution(null)
 
@@ -265,19 +263,7 @@ function Solutions() {
 
    try {
 
-    let pests = []
-
-    let directoryError = ''
-
-    try {
-
-     pests = await getPests()
-
-    } catch (loadError) {
-
-     directoryError = loadError.message
-
-    }
+    const pests = await getPests()
 
     const nextDirectory = buildPestDirectory(pests)
 
@@ -305,36 +291,26 @@ function Solutions() {
      return
     }
 
-    const allowSpeciesGuidance =
-     canShowSpeciesGuidance && Boolean(nextPest?.pest_id)
+    const matchingPest =
+     nextPest &&
+     detection?.pest_verified === true &&
+     Boolean(detection?.pest_id) &&
+     detection.pest_id === nextPest.pest_id &&
+     status === 'HARMFUL_PEST' &&
+     queryMatchesDetection &&
+     ['HIGH', 'MEDIUM', 'LOW', 'NO_RISK'].includes(
+      String(nextPest.risk || '').trim().toUpperCase(),
+     )
 
-    if (!allowSpeciesGuidance) {
-     if (directoryError) {
-      setError(
-       `Unable to verify the pest catalog; showing general guidance instead: ${directoryError}`,
-      )
-     }
+    if (!matchingPest) {
+     setError(
+      'A verified species-level detection with a matching catalogue risk is required before a pest-specific solution can be generated.',
+     )
+     return
+    }
 
-     const uncertainSolution = await requestPestSolution({
-      pest:
-       nextPest?.scientific_name ||
-       nextPest?.name ||
-       requestedPest ||
-       'Unknown insect',
-      common_name: nextPest?.name || 'Unconfirmed insect',
-      risk: 'LOW',
-      confidence: Number.isFinite(detectionConfidence)
-       ? detectionConfidence
-       : 0,
-      pest_id: nextPest?.pest_id || '',
-      pest_description: nextPest?.description || '',
-      pest_symptoms: nextPest?.symptoms || '',
-      crop: selectedCrop,
-     })
-
-     if (!active) return
-
-     setSolution(uncertainSolution)
+    if (!Number.isFinite(detectionConfidence)) {
+     setError('The model score is unavailable. A solution cannot be requested without the prediction data.')
      return
     }
 
@@ -350,9 +326,9 @@ function Solutions() {
 
       common_name: commonName,
 
-      risk: solutionRisk,
+      risk: String(nextPest.risk).trim().toUpperCase(),
 
-      confidence: Number.isFinite(detectionConfidence) ? detectionConfidence : 0,
+      confidence: detectionConfidence,
 
       pest_id: nextPest?.pest_id || '',
 
@@ -377,6 +353,7 @@ function Solutions() {
       `Gemini solution generation failed: ${aiError.message}`,
 
      )
+     setCanRetry(true)
 
     }
 
@@ -389,6 +366,7 @@ function Solutions() {
      setPest(null)
 
      setError(`Unable to load pest information: ${loadError.message}`)
+     setCanRetry(true)
 
     }
 
@@ -415,10 +393,12 @@ function Solutions() {
  }, [
   requestedPest,
   status,
-  canShowSpeciesGuidance,
-  solutionRisk,
+  detection?.pest,
+  detection?.pest_id,
+  detection?.pest_verified,
   detectionConfidence,
   isNonPest,
+  queryMatchesDetection,
   retryKey,
   historyLoading,
   selectedCrop,
@@ -426,7 +406,7 @@ function Solutions() {
 
  const isLoading = detectionLoading || loadingSolution
 
- const hasLiveDetection = Boolean(detection?.pest)
+ const hasLiveDetection = Boolean(detection?.pest) || isNonPest
 
  const confidence = detectionConfidence
 
@@ -442,7 +422,7 @@ function Solutions() {
   ? getDisplayPestName(requestedPest, pestDirectory, detection)
   : 'No pest class available'
 
- const riskLabel = riskEstimate.risk
+ const riskLabel = canShowSpeciesGuidance ? catalogRisk : 'UNCONFIRMED'
 
  const handleClearHistory = async () => {
 
@@ -489,6 +469,7 @@ function Solutions() {
    }
 
    setHighRiskHistory([])
+   setHighRiskHistoryTotal(0)
    setConfirmClearHistory(false)
 
   } catch (clearError) {
@@ -543,20 +524,6 @@ function Solutions() {
 
      <img src={solutionsField} alt="Farmer inspecting tomato crops" />
 
-     <div className="smart-response-card">
-
-      <span className="response-dot" />
-
-      <div>
-
-       <strong>Live response</strong>
-
-       <small>Following the latest AI detection</small>
-
-      </div>
-
-     </div>
-
     </div>
 
    </section>
@@ -592,10 +559,35 @@ function Solutions() {
       </Link>
 
      </article>
-
     )}
 
-    {!isLoading && hasLiveDetection && (
+    {!isLoading && hasLiveDetection && !canShowSpeciesGuidance && (
+     <article className="empty-solution-card">
+      <div className="empty-solution-icon"><LeafIcon size={25} /></div>
+      <p className="card-eyebrow">Live detection status</p>
+      <h2>{isNonPest ? 'No Pest-specific Guidance' : 'Verified Species Identification Unavailable'}</h2>
+      <p>
+       {isNonPest
+        ? 'The latest backend record is classified as a non-pest sound. No pest solution is available for this result.'
+        : 'A verified species-level detection and matching catalogue risk are required before pest-specific guidance can be shown.'}
+      </p>
+      {error && <div className="solution-error"><p>{error}</p></div>}
+      {canRetry && (
+       <button
+        type="button"
+        className="solutions-button"
+        onClick={() => setRetryKey((value) => value + 1)}
+       >
+        Try again
+       </button>
+      )}
+      <Link className="solutions-button" to="/live-monitoring">
+       Open Live Monitoring <ArrowIcon size={15} />
+      </Link>
+     </article>
+    )}
+
+    {!isLoading && hasLiveDetection && canShowSpeciesGuidance && (
 
      <article className="active-solution-card">
 
@@ -613,21 +605,23 @@ function Solutions() {
            : `Scientific name unavailable; model class: ${requestedPest}`}
          </p>
         )}
-        <p className="identification-note">AI Detection</p>
+        <p className="identification-note">
+         Verified catalogue match
+        </p>
 
-       </div>
+        </div>
 
-       <div className="risk-block">
+        <div className="risk-block">
 
-        <span>Risk Level</span>
+         <span>Risk Level</span>
 
-        <strong className={`risk-${String(riskLabel).toLowerCase()}`}>
+         <strong className={`risk-${String(riskLabel).toLowerCase()}`}>
 
-         {riskLabel}
+          {riskLabel}
 
-        </strong>
+         </strong>
 
-       </div>
+        </div>
 
       </div>
 
@@ -639,8 +633,7 @@ function Solutions() {
 
       </div>
 
-      {!isNonPest && (
-       <form
+      <form
         className="solution-crop-form"
         onSubmit={(event) => {
          event.preventDefault()
@@ -668,7 +661,7 @@ function Solutions() {
           maxLength={100}
           value={cropDraft}
           onChange={(event) => setCropDraft(event.target.value)}
-          placeholder="Enter crop, e.g. rice or tomato"
+          placeholder="Enter crop name"
           style={{
            boxSizing: 'border-box',
            width: '100%',
@@ -680,7 +673,7 @@ function Solutions() {
           }}
          />
          <p style={{ margin: '7px 0 0', fontSize: '0.8rem', lineHeight: 1.45 }}>
-          A crop name helps tailor guidance. Exact pesticide doses still require a verified applicable product label.
+          This is user-provided context, not a crop detection. No verified pesticide products or doses are available.
          </p>
         </div>
         <button
@@ -690,26 +683,13 @@ function Solutions() {
         >
          {selectedCrop ? 'Regenerate Solution' : 'Generate Solution'}
         </button>
-       </form>
-      )}
+        </form>
 
-      {isNonPest ? (
-
-       <div className="solution-error">
-
-        <p>No pest-specific guidance is needed because the latest event was classified as a non-pest sound.</p>
-
-        {error && <p>{error}</p>}
-
-       </div>
-
-      ) : canShowGuidance && solution ? (
+      {solution ? (
 
        <>
         <SolutionSections
          solution={solution}
-         pest={pest}
-         uncertain={!canShowSpeciesGuidance}
         />
        </>
 
@@ -718,14 +698,15 @@ function Solutions() {
        <div className="solution-error">
 
         <p>{error}</p>
+        {canRetry && (
+         <button type="button" onClick={() => setRetryKey((value) => value + 1)}>
+          Try again
+         </button>
+        )}
 
        </div>
 
-      ) : (
-
-       null
-
-      )}
+      ) : null}
 
       <Link className="solutions-button" to="/live-monitoring">
 
@@ -753,11 +734,11 @@ function Solutions() {
 
       <p>{error}</p>
 
-      <button type="button" onClick={() => setRetryKey((value) => value + 1)}>
-
-       Try again
-
-      </button>
+      {canRetry && (
+       <button type="button" onClick={() => setRetryKey((value) => value + 1)}>
+        Try again
+       </button>
+      )}
 
      </div>
 
@@ -781,7 +762,11 @@ function Solutions() {
 
         <span>Saved</span>
 
-        <strong>{highRiskHistory.length}</strong>
+        <strong>
+         {historyLoading || historyError || highRiskHistoryTotal === null
+          ? '—'
+          : highRiskHistoryTotal}
+        </strong>
 
        </div>
 
@@ -857,7 +842,13 @@ function Solutions() {
 
      </div>
 
-     {historyLoading ? (
+      {clearHistoryError && (
+       <div className="solution-error">
+        <p>{clearHistoryError}</p>
+       </div>
+      )}
+
+      {historyLoading ? (
 
       <div className="solution-loading">Loading saved HIGH-risk solutions...</div>
 
@@ -867,11 +858,11 @@ function Solutions() {
 
        <p>{historyError}</p>
 
-       <button type="button" onClick={() => setRetryKey((value) => value + 1)}>
-
-        Try again
-
-       </button>
+       {canRetry && (
+        <button type="button" onClick={() => setRetryKey((value) => value + 1)}>
+         Try again
+        </button>
+       )}
 
       </div>
 
@@ -929,13 +920,15 @@ function Solutions() {
          item.pest_verified === true &&
          Boolean(item.pest_id) &&
          item.pest_id === historyPestRecord?.pestId
+        const hasVerifiedHistorySolution =
+         verifiedHistoryPest &&
+         ['CATALOG', 'GEMINI'].includes(item.solution_source)
 
         const historyRisk = getDetectionRiskEstimate(item, pestDirectory)
 
         const historyConfidenceLabel = Number.isFinite(historyConfidence)
-
+         && verifiedHistoryPest
          ? `${(historyConfidence * 100).toFixed(1)}%`
-
          : 'N/A'
 
         const detectedLabel = item.detected_at
@@ -1008,7 +1001,9 @@ function Solutions() {
 
              >
 
-              AI DETECTION
+              {verifiedHistoryPest
+               ? 'VERIFIED CATALOGUE MATCH'
+               : 'UNCONFIRMED MODEL PREDICTION'}
 
              </p>
 
@@ -1026,7 +1021,7 @@ function Solutions() {
 
              >
 
-              {historyName}
+              {verifiedHistoryPest ? historyName : 'Unconfirmed model prediction'}
 
              </h3>
 
@@ -1109,7 +1104,7 @@ function Solutions() {
 
              >
 
-              {item.device_id || 'Field Unit'}
+              {item.device_id || 'Unavailable'}
 
              </strong>
 
@@ -1118,25 +1113,17 @@ function Solutions() {
            </div>
 
            <div
-
             style={{
-
              marginTop: '18px',
-
              paddingTop: '15px',
-
              borderTop: '1px solid rgba(20, 70, 57, 0.10)',
-
              fontSize: '0.78rem',
-
              fontWeight: 700,
-
             }}
-
            >
-
-            View saved solution ↓
-
+            {hasVerifiedHistorySolution
+             ? 'View saved solution'
+             : 'View persisted detection record'}
            </div>
 
           </summary>
@@ -1153,19 +1140,19 @@ function Solutions() {
 
           >
 
-           <SolutionSections
-            solution={verifiedHistoryPest ? {
-             about: item.solution_description,
-             recommended_action: item.recommended_action,
-             prevention: item.prevention,
-             precautions: item.precautions,
-            } : null}
-            pest={verifiedHistoryPest ? historyPestRecord || {
-             description: item.pest_description,
-             symptoms: item.pest_symptoms,
-            } : null}
-            uncertain={!verifiedHistoryPest}
-           />
+           {hasVerifiedHistorySolution ? (
+            <SolutionSections
+             solution={{
+              about: item.solution_description,
+              recommended_action: item.recommended_action,
+              prevention: item.prevention,
+             }}
+            />
+           ) : (
+            <p className="solution-unavailable">
+             No verified solution content is available for this saved detection.
+            </p>
+           )}
 
           </div>
 

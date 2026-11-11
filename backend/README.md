@@ -50,6 +50,12 @@ The endpoint returns `status: "UNKNOWN"` and `identification_status: "UNCONFIRME
 
 AI detections also include `insect_group` and `group_score`. Group-only and uncertain subtype results retain the predicted group without claiming a species identification. Confidence values and scores are model outputs and are not calibrated probabilities; do not use them alone for species-specific treatment.
 
+## Solution guidance
+
+`POST /api/ai/solution` requires a species prediction that matches an exact pest catalogue record and its supported risk category. It returns validated Gemini text for the `about`, `recommended_action`, and `prevention` fields. If Gemini is unavailable or returns incomplete data, the API returns an error instead of fallback guidance. Pesticide products, doses, and application precautions remain unavailable until a verified applicable source is integrated.
+
+`GET /api/solutions/history/high-risk` returns persisted history records and a `total` count. Guidance is exposed only when the record has a verified catalogue or Gemini source; legacy history without source metadata remains available as a detection record but does not display its unverified solution text.
+
 Run the focused safety tests from this directory:
 
 ```powershell

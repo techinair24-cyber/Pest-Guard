@@ -393,6 +393,8 @@ class AISolutionResponse(BaseModel):
 
     common_name: str
 
+    pest_id: str
+
     risk: Literal["HIGH", "MEDIUM", "LOW", "NO_RISK"]
 
     confidence: float
@@ -403,48 +405,11 @@ class AISolutionResponse(BaseModel):
 
     recommended_action: str
 
-    pesticide_recommendation: str
+    pesticide_recommendation: str | None = None
 
     prevention: str
 
-    precautions: str
-
-
-def _pesticide_recommendation(crop: str, uncertain: bool = False) -> str:
-    if uncertain:
-        return (
-            "The pest identification is uncertain. Do not choose or apply a "
-            "pest-specific pesticide. Confirm the pest and crop with a local "
-            "agricultural officer first."
-        )
-
-    crop = crop.strip()
-    if not crop:
-        return (
-            "No crop-specific product label is verified. Select your crop "
-            "and check locally registered product labels before treatment. "
-            "Pest Guard has no verified product or crop-specific dose for "
-            "this pest."
-        )
-
-    return (
-        f"Pest Guard has no verified locally registered product or "
-        f"crop-specific label dose for this pest on {crop}. Do not guess a "
-        "product or dose. Ask a local agricultural officer to confirm a "
-        "registered product and its label rate."
-    )
-
-
-def _safe_application_instructions() -> str:
-    return (
-        "1. Do not apply a pesticide until a locally registered product and "
-        "its label are confirmed for this pest and crop.\n"
-        "2. If an officer recommends a product, wear the protective equipment "
-        "listed on its label. Follow label instructions for mixing, spraying, "
-        "re-entry, storage, and disposal. Never mix products.\n"
-        "3. Follow the label's pre-harvest waiting period. Pest Guard has no "
-        "verified product label or waiting period for this case."
-    )
+    precautions: str | None = None
 
 
 def _find_verified_pest_record(db: Session, pest_name: str, pest_id: str = ""):
@@ -753,27 +718,18 @@ def _request_gemini_solution(payload: AISolutionRequest) -> dict:
         f"Pest ID: {payload.pest_id or 'unavailable'}\n"
         f"Known description: {payload.pest_description or 'unavailable'}\n"
         f"Known symptoms: {payload.pest_symptoms or 'unavailable'}\n\n"
-        "Return exactly these five non-empty JSON string fields: about, recommended_action, "
-        "pesticide_recommendation, precautions, prevention.\n"
+        "Return exactly these three non-empty JSON string fields: about, recommended_action, "
+        "prevention.\n"
         "about: explain the likely crop damage and observable symptoms for this accepted model "
         "prediction; do not claim independent human confirmation or require it before displaying "
         "the prediction.\n"
         "recommended_action: give practical crop-protection measures, prioritizing integrated "
         "pest management and suitable non-chemical controls.\n"
-        "pesticide_recommendation: discuss a registered pesticide or medicine only when reliable "
-        "information applicable to this exact pest and crop is available. Never invent a product, "
-        "registration status, or dose. Give an exact dose only when supported by a verified product "
-        "label applicable to this crop and pest. If no such label is provided or verified, say that "
-        "the exact product and dose cannot be verified and advise checking the registered label or "
-        "consulting a qualified local agricultural expert.\n"
-        "precautions: describe label-based protective equipment and application precautions, "
-        "prohibition on unsafe mixing, and following the product label for storage, disposal, "
-        "re-entry, and pre-harvest intervals. Do not invent label intervals.\n"
         "prevention: give practical monitoring, sanitation, prevention, and follow-up steps.\n\n"
         "Use only the supplied model-predicted pest; do not substitute another species. The model "
         "score is uncalibrated. Do not claim independent confirmation. "
-        "Do not recommend applying a pest-specific pesticide until a locally registered product "
-        "and its applicable label are verified. "
+        "Do not mention pesticide products, application rates, label intervals, or chemical "
+        "treatments; Pest Guard has no verified product-label source for this request. "
         "If crop information is missing, say that crop-specific treatment cannot be confirmed. "
         "Do not invent facts, label details, or treatment claims."
     )
@@ -933,13 +889,7 @@ def _request_gemini_solution(payload: AISolutionRequest) -> dict:
 
 
 
-    required_fields = (
-        "about",
-        "recommended_action",
-        "pesticide_recommendation",
-        "precautions",
-        "prevention",
-    )
+    required_fields = ("about", "recommended_action", "prevention")
 
     if not isinstance(generated, dict) or any(
         not isinstance(generated.get(field), str) or not generated[field].strip()
@@ -991,6 +941,25 @@ def _migrate_detection_metadata_columns():
 
 
 _migrate_detection_metadata_columns()
+
+def _migrate_solution_history_source_column():
+    with engine.begin() as connection:
+        existing_columns = {
+            column["name"]
+            for column in inspect(connection).get_columns(
+                "high_risk_solution_history"
+            )
+        }
+        if "solution_source" not in existing_columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE high_risk_solution_history "
+                    "ADD COLUMN solution_source VARCHAR(20)"
+                )
+            )
+
+
+_migrate_solution_history_source_column()
 
 # -------------------------------------------------------------------
 
@@ -1071,6 +1040,7 @@ def get_high_risk_solution_history(
     ).limit(limit).all()
 
     return {
+        "total": db.query(HighRiskSolutionHistory).count(),
         "history": [
             _high_risk_solution_history_response(item, db)
             for item in history
@@ -1699,104 +1669,31 @@ async def ai_predict(
 
         )
 
-def _fallback_ai_solution(payload: AISolutionRequest) -> dict:
-    return {
-        "pest": payload.pest,
-        "common_name": payload.common_name,
-        "risk": payload.risk,
-        "confidence": payload.confidence,
-        "crop": payload.crop,
-        "about": (
-            f"The Pest Guard catalog identifies this as {payload.common_name} "
-            f"({payload.pest}). Signs to check: {payload.pest_symptoms or 'compare the insect and crop damage with the field.'}"
-        ),
-        "recommended_action": (
-            f"1. Inspect affected and nearby plants for "
-            f"{payload.pest_symptoms or 'the damage described above'}.\n"
-            "2. Mark where the damage is present and record what you see.\n"
-            "3. Ask a local agricultural officer which non-chemical steps fit this pest and crop, especially if damage spreads."
-        ),
-        "prevention": (
-            "1. Check the affected and nearby plants again in 2–3 days.\n"
-            "2. Keep a simple note or photo record so you can see whether damage is spreading.\n"
-            "3. Ask a local agricultural officer for a crop-specific prevention plan."
-        ),
-        "pesticide_recommendation": _pesticide_recommendation(payload.crop),
-        "precautions": _safe_application_instructions(),
-    }
-
-
-def _fallback_uncertain_solution(payload: AISolutionRequest) -> dict:
-    return {
-        "pest": "Unconfirmed insect",
-        "common_name": "Uncertain identification",
-        "risk": "LOW",
-        "confidence": payload.confidence,
-        "crop": payload.crop,
-        "about": (
-            "The audio result is not a verified species identification. "
-            "Treat the model output as an uncertain candidate, not a confirmed pest."
-        ),
-        "recommended_action": (
-            "Inspect the crop and document visible damage, affected plants, and where it occurs. "
-            "Seek identification from a local agricultural extension service or qualified adviser "
-            "before choosing any species-specific treatment."
-        ),
-        "prevention": (
-            "Continue regular field monitoring and use general integrated pest-management "
-            "practices appropriate to the crop."
-        ),
-        "pesticide_recommendation": _pesticide_recommendation(
-            payload.crop,
-            uncertain=True,
-        ),
-        "precautions": (
-            "1. Do not apply a pesticide based on this uncertain audio result.\n"
-            "2. If a product is later recommended by a local agricultural "
-            "officer, wear the label-required protective equipment and follow "
-            "all label instructions.\n"
-            "3. Follow the product label's pre-harvest waiting period; no "
-            "product-specific waiting period is verified here."
-        ),
-    }
-
-
 def _high_risk_solution_history_response(item, db: Session) -> dict:
-    pest_name = str(getattr(item, "pest", None) or "Unidentified sound")
-    pest_record = _find_pest_record_normalized(db, pest_name)
+    pest_name = getattr(item, "pest", None)
+    stored_pest_id = str(getattr(item, "pest_id", None) or "").strip()
+    pest_record = (
+        _find_verified_pest_record(db, pest_name, stored_pest_id)
+        if pest_name and stored_pest_id
+        else None
+    )
     common_name = (
         str(getattr(item, "common_name", None) or "").strip()
         or str(getattr(pest_record, "name", None) or "").strip()
-        or pest_name
+        or str(pest_name or "").strip()
+        or None
     )
     risk_value = str(getattr(pest_record, "risk", None) or "").strip().upper()
     if risk_value not in {"HIGH", "MEDIUM", "LOW", "NO_RISK"}:
         risk_value = str(getattr(item, "risk", None) or "").strip().upper()
-    risk = (
-        risk_value
-        if risk_value in {"HIGH", "MEDIUM", "LOW", "NO_RISK"}
-        else "LOW"
-    )
-    fallback = _fallback_ai_solution(
-        AISolutionRequest(
-            pest=(
-                str(getattr(pest_record, "scientific_name", None) or "").strip()
-                or pest_name
-            ),
-            common_name=common_name,
-            risk=risk,
-            confidence=getattr(item, "confidence", None) or 0.0,
-            pest_description=getattr(pest_record, "description", None) or "",
-            pest_symptoms=getattr(pest_record, "symptoms", None) or "",
-        )
-    )
-    stored_pest_id = str(getattr(item, "pest_id", None) or "").strip()
+    risk = risk_value if risk_value in {"HIGH", "MEDIUM", "LOW", "NO_RISK"} else None
     pest_verified = bool(
         pest_record
-        and stored_pest_id
-        and _normalize_pest_label(stored_pest_id)
-        == _normalize_pest_label(pest_record.pest_id)
         and _is_active_species_label(pest_name)
+    )
+    solution_source = getattr(item, "solution_source", None)
+    has_verified_solution_source = bool(
+        pest_verified and solution_source in {"CATALOG", "GEMINI"}
     )
     return {
         "id": getattr(item, "id", None),
@@ -1815,16 +1712,26 @@ def _high_risk_solution_history_response(item, db: Session) -> dict:
         "humidity": getattr(item, "humidity", None),
         "solution_title": (
             f"{common_name} ({risk}) Integrated Pest Management Guidance"
+            if has_verified_solution_source and risk
+            else None
+        ),
+        "solution_source": (
+            solution_source if has_verified_solution_source else None
         ),
         "solution_description": (
-            getattr(item, "solution_description", None) or fallback["about"]
+            getattr(item, "solution_description", None)
+            if has_verified_solution_source
+            else None
         ),
         "recommended_action": (
             getattr(item, "recommended_action", None)
-            or fallback["recommended_action"]
+            if has_verified_solution_source
+            else None
         ),
         "prevention": (
-            getattr(item, "prevention", None) or fallback["prevention"]
+            getattr(item, "prevention", None)
+            if has_verified_solution_source
+            else None
         ),
         "detected_at": getattr(item, "detected_at", None),
         "created_at": getattr(item, "created_at", None),
@@ -1836,6 +1743,15 @@ async def generate_ai_solution(
     payload: AISolutionRequest,
     db: Session = Depends(get_db),
 ):
+    if not payload.pest_id.strip():
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "A verified species-level prediction and its exact catalogue "
+                "pest_id are required for solution guidance."
+            ),
+        )
+
     pest_record = _find_verified_pest_record(
         db,
         payload.pest,
@@ -1851,13 +1767,25 @@ async def generate_ai_solution(
                     "a species-specific solution cannot be returned."
                 ),
             )
-        return _fallback_uncertain_solution(payload)
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "A verified species-level prediction is required to request "
+                "pest-specific solution guidance."
+            ),
+        )
 
     if not (
         _is_active_species_label(payload.pest)
         or _is_active_species_label(pest_record.name)
     ):
-        return _fallback_uncertain_solution(payload)
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "A verified species-level prediction is required to request "
+                "pest-specific solution guidance."
+            ),
+        )
 
     candidate_pest = pest_record.scientific_name or pest_record.name
     candidate_common_name = pest_record.name
@@ -1866,7 +1794,13 @@ async def generate_ai_solution(
     candidate_symptoms = pest_record.symptoms or payload.pest_symptoms
     candidate_risk = str(getattr(pest_record, "risk", None) or "").strip().upper()
     if candidate_risk not in {"HIGH", "MEDIUM", "LOW", "NO_RISK"}:
-        candidate_risk = "LOW"
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "The matching pest catalogue record has no valid risk category; "
+                "a solution cannot be generated."
+            ),
+        )
 
     gemini_payload = AISolutionRequest(
         pest=candidate_pest,
@@ -1886,45 +1820,39 @@ async def generate_ai_solution(
             "Gemini solution generation failed for model_class=%s",
             payload.pest,
         )
-        generated = _fallback_ai_solution(gemini_payload)
-    if not isinstance(generated, dict):
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Gemini could not generate a solution. No guidance was returned; "
+                "please retry."
+            ),
+        ) from error
+    required_fields = ("about", "recommended_action", "prevention")
+    if not isinstance(generated, dict) or any(
+        not isinstance(generated.get(field), str)
+        or not generated[field].strip()
+        for field in required_fields
+    ):
         logger.error(
-            "Gemini solution generation returned a non-object for model_class=%s",
+            "Gemini solution generation returned incomplete guidance for model_class=%s",
             payload.pest,
         )
-        generated = _fallback_ai_solution(gemini_payload)
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Gemini returned incomplete solution data. No guidance was returned; "
+                "please retry."
+            ),
+        )
 
-    uncertain_identification = False
     generated["pest"] = candidate_pest
     generated["common_name"] = candidate_common_name
+    generated["pest_id"] = candidate_pest_id
     generated["risk"] = candidate_risk
     generated["confidence"] = payload.confidence
     generated["crop"] = payload.crop
-    catalog_details = " ".join(
-        value for value in (candidate_description, candidate_symptoms) if value
-    )
-    generated["about"] = (
-        f"Model prediction: {candidate_common_name} ({candidate_pest}). "
-        f"Catalogue risk: {candidate_risk}."
-        + (f" {catalog_details}" if catalog_details else "")
-    )
-    generated["recommended_action"] = (
-        "1. Inspect affected plants and document visible damage.\n"
-        "2. Monitor nearby plants for signs of spreading damage.\n"
-        "3. Use non-chemical integrated pest-management measures suited to "
-        "the crop; consult a qualified local agricultural officer before "
-        "choosing a pesticide."
-    )
-    generated["prevention"] = (
-        "Monitor crops regularly, record new damage, keep field edges and "
-        "equipment clean, and follow integrated pest-management guidance "
-        "appropriate to the crop."
-    )
-    generated["pesticide_recommendation"] = _pesticide_recommendation(
-        payload.crop,
-        uncertain=uncertain_identification,
-    )
-    generated["precautions"] = _safe_application_instructions()
+    generated["pesticide_recommendation"] = None
+    generated["precautions"] = None
     return generated
 
 
@@ -2163,40 +2091,33 @@ async def create_detection(
 
             solution_record = db.query(Solution).filter(Solution.pest_id == pest_id).first()
 
-        safe_guidance = _fallback_ai_solution(
-            AISolutionRequest(
-                pest=pest_record.scientific_name or pest_record.name,
-                common_name=common_name,
-                risk=detection.risk,
-                confidence=payload.confidence or 0.0,
-                pest_id=pest_record.pest_id,
-                pest_description=pest_record.description or "",
-                pest_symptoms=pest_record.symptoms or "",
-            )
-        )
-        solution_title = (
-            f"{common_name} ({detection.risk}) Integrated Pest Management Guidance"
-        )
-        solution_description = safe_guidance["about"]
-        recommended_action = safe_guidance["recommended_action"]
-        prevention = safe_guidance["prevention"]
+        solution_title = None
+        solution_source = None
+        solution_description = None
+        recommended_action = None
+        prevention = None
 
         if solution_record:
-
+            solution_source = "CATALOG"
+            solution_title = solution_record.title
             solution_description = (
-                solution_record.description or solution_description
+                solution_record.description
             )
             recommended_action = (
-                solution_record.recommended_action or recommended_action
+                solution_record.recommended_action
             )
-            prevention = solution_record.prevention or prevention
-        else:
+            prevention = solution_record.prevention
+        elif (
+            payload.confidence is not None
+            and np.isfinite(payload.confidence)
+            and 0 <= payload.confidence <= 1
+        ):
             try:
                 ai_solution_payload = AISolutionRequest(
                     pest=pest_record.scientific_name or pest_record.name,
                     common_name=common_name,
                     risk=detection.risk,
-                    confidence=payload.confidence or 0.0,
+                    confidence=payload.confidence,
                     pest_id=pest_record.pest_id,
                     pest_description=pest_record.description or "",
                     pest_symptoms=pest_record.symptoms or "",
@@ -2205,18 +2126,35 @@ async def create_detection(
                     _request_gemini_solution,
                     ai_solution_payload,
                 )
-                solution_title = (
-                    f"{common_name} ({detection.risk}) AI Solution"
+                required_solution_fields = (
+                    "about",
+                    "recommended_action",
+                    "prevention",
                 )
-                solution_description = (
-                    str(generated_solution.get("about") or "").strip()
-                    or safe_guidance["about"]
-                )
+                if not isinstance(generated_solution, dict) or any(
+                    not isinstance(generated_solution.get(field), str)
+                    or not generated_solution[field].strip()
+                    for field in required_solution_fields
+                ):
+                    raise ValueError(
+                        "Gemini returned incomplete solution data."
+                    )
+                solution_source = "GEMINI"
+                solution_title = f"{common_name} ({detection.risk}) AI Solution"
+                solution_description = generated_solution["about"]
+                recommended_action = generated_solution["recommended_action"]
+                prevention = generated_solution["prevention"]
             except Exception:
                 logger.exception(
                     "HIGH-risk solution generation failed for pest_id=%s",
                     pest_id,
                 )
+        else:
+            logger.warning(
+                "HIGH-risk solution generation skipped for pest_id=%s: "
+                "prediction confidence is unavailable or invalid",
+                pest_id,
+            )
 
         db.add(HighRiskSolutionHistory(
 
@@ -2227,6 +2165,8 @@ async def create_detection(
             confidence=payload.confidence, temperature=payload.temperature,
 
             humidity=payload.humidity, solution_title=solution_title,
+
+            solution_source=solution_source,
 
             solution_description=solution_description, recommended_action=recommended_action,
 
