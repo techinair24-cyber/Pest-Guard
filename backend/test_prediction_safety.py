@@ -964,7 +964,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
 
     def test_harmful_device_detection_status_is_preserved(self):
         database = Mock()
-        database.query.return_value.filter.return_value.first.return_value = None
+        database.query.return_value.all.return_value = []
         payload = main.DetectionCreate(
             device_id="FIELD-UNIT-01",
             status="HARMFUL_PEST",

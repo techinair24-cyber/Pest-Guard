@@ -1980,7 +1980,7 @@ async def create_detection(
         # Keep the persisted risk consistent with the matching model metadata;
         # ignore any risk sent by the device for model predictions.
         detection_risk = (
-            _resolve_species_metadata(detection_pest)["risk"]
+            _resolve_species_metadata(detection_pest, db)["risk"]
             if detection_pest
             else "LOW"
         )
