@@ -8,6 +8,7 @@ import { ArrowIcon, SparkIcon } from '../components/Icons'
 import { getDetectionHistory, getPests } from '../services/api'
 import {
   buildPestDirectory,
+  getCandidateRiskEstimate,
   getDisplayPestName,
   getDetectionRiskEstimate,
 } from '../utils/pestNames'
@@ -279,7 +280,11 @@ function LiveMonitoring() {
   const topSpeciesPredictions = getTopSpeciesPredictions(
     displayDetection?.top_predictions,
   )
-  const riskDetails = getDetectionRiskEstimate(displayDetection, pestDirectory)
+  const riskDetails = getCandidateRiskEstimate(
+    leadingSpeciesPrediction,
+    displayDetection,
+    pestDirectory,
+  )
   const riskEstimate = riskDetails.risk
   const reportingDeviceId =
     displayDetection?.device_id || device?.device_id || 'N/A'

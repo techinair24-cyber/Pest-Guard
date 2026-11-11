@@ -17,6 +17,15 @@ function precautionaryRisk() {
   }
 }
 
+function unconfirmedRisk() {
+  return {
+    risk: 'UNCONFIRMED',
+    source: null,
+    sourceUrl: null,
+    rationale: 'Risk is not assigned to an unverified species candidate.',
+  }
+}
+
 export function buildPestDirectory(items) {
   const directory = {}
 
@@ -80,33 +89,54 @@ export function getDetectionRiskEstimate(
   detection,
   directory = {},
 ) {
-  const resolvedRisk = String(
-    detection?.risk || '',
-  ).toUpperCase()
+  return getCandidateRiskEstimate(detection?.pest, detection, directory)
+}
 
-  if (VALID_RISKS.includes(resolvedRisk)) {
-    return {
-      risk: resolvedRisk,
-      source: detection?.metadata_source_name || null,
-      sourceUrl: detection?.metadata_source_url || null,
-      rationale: detection?.risk_rationale || '',
-    }
+export function getCandidateRiskEstimate(
+  candidate,
+  detection,
+  directory = {},
+) {
+  const candidateName = typeof candidate === 'string'
+    ? candidate
+    : String(candidate?.pest || '').trim()
+  const pestId = String(detection?.pest_id || '')
+
+  if (
+    !candidateName ||
+    detection?.status !== 'HARMFUL_PEST' ||
+    detection?.pest_verified !== true ||
+    !pestId
+  ) {
+    return unconfirmedRisk()
   }
 
-  const pestRecord = directory[
+  const catalogRecord = directory[normalizePestName(pestId)]
+  const detectionRecord = directory[
     normalizePestName(detection?.pest)
   ]
+  const candidateRecord = directory[normalizePestName(candidateName)]
 
-  const independentlyVerified =
-    detection?.pest_verified === true &&
-    Boolean(detection?.pest_id) &&
-    detection.pest_id === pestRecord?.pestId
-
-  if (!independentlyVerified) {
-    return precautionaryRisk()
+  if (
+    !catalogRecord ||
+    catalogRecord.pestId !== pestId ||
+    detectionRecord?.pestId !== pestId ||
+    candidateRecord?.pestId !== pestId
+  ) {
+    return unconfirmedRisk()
   }
 
-  return getPestRiskEstimate(detection.pest, directory)
+  const catalogRisk = String(catalogRecord.risk || '').toUpperCase()
+  if (!VALID_RISKS.includes(catalogRisk)) {
+    return unconfirmedRisk()
+  }
+
+  return {
+    risk: catalogRisk,
+    source: 'Pest Guard pest catalogue',
+    rationale:
+      'Risk category recorded in the matching pest catalogue entry.',
+  }
 }
 
 export function getCommonPestName(

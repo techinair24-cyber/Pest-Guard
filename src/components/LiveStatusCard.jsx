@@ -9,6 +9,7 @@ import {
   getTopSpeciesPredictions,
 } from '../utils/insectPredictions'
 import { getLeadingSpeciesPrediction } from '../utils/liveMonitoringStatus'
+import { getCandidateRiskEstimate } from '../utils/pestNames'
 
 function formatDateTime(timestamp) {
   if (!timestamp) {
@@ -56,7 +57,12 @@ function getConnectionClass(connection) {
     : 'offline-dot'
 }
 
-function LiveStatusCard({ detection, device, error }) {
+function LiveStatusCard({
+  detection,
+  device,
+  error,
+  pestDirectory = {},
+}) {
   /*
     IMPORTANT:
     This component does not create fake detection data.
@@ -159,9 +165,11 @@ function LiveStatusCard({ detection, device, error }) {
   const topPredictions = getTopSpeciesPredictions(detection?.top_predictions)
   const leadingPrediction = getLeadingSpeciesPrediction(detection)
 
-  const risk =
-    detection?.risk ||
-    'UNKNOWN'
+  const risk = getCandidateRiskEstimate(
+    leadingPrediction,
+    detection,
+    pestDirectory,
+  ).risk
 
   const timestamp =
     detection?.detected_at ||
