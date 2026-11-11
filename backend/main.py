@@ -94,6 +94,10 @@ _ACTIVE_HIERARCHICAL_LABELS = set()
 _ACTIVE_HIERARCHICAL_LABEL_GROUPS = {}
 MODEL_COMMON_NAMES = {}
 _ACTIVE_HIERARCHICAL_GROUP_NAMES = set(_PEST_GUARD_HIERARCHY.groups)
+_ACTIVE_HIERARCHICAL_GROUP_LABELS = {
+    _normalize_pest_label(group_name)
+    for group_name in _PEST_GUARD_HIERARCHY.groups
+}
 
 for _group_name in _PEST_GUARD_HIERARCHY.groups:
     _normalized_group = _normalize_pest_label(_group_name)
@@ -131,6 +135,13 @@ def _is_active_prediction_label(label) -> bool:
     if not isinstance(label, str) or not label.strip():
         return False
     return _normalize_pest_label(label) in _ACTIVE_HIERARCHICAL_LABELS
+
+
+def _is_active_species_label(label) -> bool:
+    return (
+        _is_active_prediction_label(label)
+        and _normalize_pest_label(label) not in _ACTIVE_HIERARCHICAL_GROUP_LABELS
+    )
 
 
 def _active_group_for_label(label):
@@ -410,12 +421,10 @@ def _pesticide_recommendation(crop: str, uncertain: bool = False) -> str:
     crop = crop.strip()
     if not crop:
         return (
-            "Please verify the pest identification before treatment. "
-            "Do not choose or apply a pest-specific pesticide. "
-            "Select your crop before seeking crop-specific pesticide advice. "
-            "Pest Guard has no verified locally registered product or "
-            "crop-specific label dose for this pest. Ask a local agricultural "
-            "officer to confirm both."
+            "No crop-specific product label is verified. Select your crop "
+            "and check locally registered product labels before treatment. "
+            "Pest Guard has no verified product or crop-specific dose for "
+            "this pest."
         )
 
     return (
@@ -458,11 +467,7 @@ def _find_verified_pest_record(db: Session, pest_name: str, pest_id: str = ""):
             else None
         )
 
-    return db.query(Pest).filter(
-        (Pest.pest_id == pest_name)
-        | (Pest.name == pest_name)
-        | (Pest.scientific_name == pest_name)
-    ).first()
+    return _find_pest_record_normalized(db, pest_name)
 
 
 def _find_pest_record_normalized(db: Session, pest_name: str | None):
@@ -509,7 +514,10 @@ def _resolve_species_metadata(
     return {
         "scientific_name": scientific_name,
         "common_name": common_name,
+        "pest_id": getattr(pest_record, "pest_id", None),
         "risk": risk,
+        "catalog_record_found": pest_record is not None,
+        "catalog_risk_is_valid": catalog_risk_is_valid,
         "risk_rationale": (
             "Risk category recorded in the matching pest catalogue entry."
             if catalog_risk_is_valid
@@ -523,7 +531,6 @@ def _resolve_species_metadata(
             else None
         ),
         "metadata_source_url": None,
-        "metadata_is_model_authoritative": False,
     }
 
 
@@ -537,13 +544,65 @@ def _serialize_detection(detection: Detection, db: Session | None) -> dict:
         except json.JSONDecodeError:
             stored_crops = []
 
-    risk = (
-        resolved["risk"]
-        if resolved["metadata_is_model_authoritative"]
-        else stored_risk
-        if stored_risk in {"HIGH", "MEDIUM", "LOW", "NO_RISK"}
-        else resolved["risk"]
+    expected_group = _active_group_for_label(detection.pest)
+    stored_group = str(getattr(detection, "insect_group", None) or "").strip()
+    accepted_prediction = bool(
+        detection.status == "HARMFUL_PEST"
+        and _is_active_species_label(detection.pest)
+        and expected_group in _ACTIVE_HIERARCHICAL_GROUP_NAMES
+        and (not stored_group or stored_group == expected_group)
+        and resolved["catalog_record_found"]
     )
+    status = (
+        "HARMFUL_PEST"
+        if accepted_prediction
+        else "NON_PEST"
+        if detection.status == "NON_PEST"
+        else "UNKNOWN"
+    )
+    if status == "NON_PEST":
+        risk = "LOW"
+        serialized_pest = None
+        scientific_name = None
+        common_name = "Unidentified sound"
+        risk_rationale = "No pest was identified."
+        metadata_source_name = None
+        metadata_source_url = None
+    elif accepted_prediction:
+        risk = resolved["risk"]
+        serialized_pest = MODEL_COMMON_NAMES.get(
+            _normalize_pest_label(detection.pest),
+            detection.pest,
+        )
+        scientific_name = resolved["scientific_name"]
+        common_name = resolved["common_name"]
+        risk_rationale = resolved["risk_rationale"]
+        metadata_source_name = resolved["metadata_source_name"]
+        metadata_source_url = resolved["metadata_source_url"]
+    else:
+        risk = (
+            stored_risk
+            if stored_risk in {"HIGH", "MEDIUM", "LOW", "NO_RISK"}
+            else resolved["risk"]
+        )
+        serialized_pest = detection.pest
+        scientific_name = (
+            detection.scientific_name or resolved["scientific_name"]
+        )
+        common_name = (
+            resolved["common_name"]
+            if resolved["catalog_record_found"]
+            else detection.common_name or resolved["common_name"]
+        )
+        risk_rationale = (
+            detection.risk_rationale or resolved["risk_rationale"]
+        )
+        metadata_source_name = (
+            detection.metadata_source_name or resolved["metadata_source_name"]
+        )
+        metadata_source_url = (
+            detection.metadata_source_url or resolved["metadata_source_url"]
+        )
     stored_predictions = []
     stored_broad_group = None
     stored_broad_group_confidence = None
@@ -566,10 +625,10 @@ def _serialize_detection(detection: Detection, db: Session | None) -> dict:
     response = {
         "id": detection.id,
         "device_id": detection.device_id,
-        "status": detection.status,
-        "pest": detection.pest,
-        "scientific_name": detection.scientific_name or resolved["scientific_name"],
-        "common_name": detection.common_name or resolved["common_name"],
+        "status": status,
+        "pest": serialized_pest,
+        "scientific_name": scientific_name,
+        "common_name": common_name,
         "confidence": detection.confidence,
         "insect_group": None,
         "group_score": None,
@@ -581,14 +640,12 @@ def _serialize_detection(detection: Detection, db: Session | None) -> dict:
             MODEL_COMMON_NAMES,
         ),
         "risk": risk,
-        "risk_rationale": detection.risk_rationale or resolved["risk_rationale"],
+        "risk_rationale": risk_rationale,
         "affected_crops": stored_crops or resolved["affected_crops"],
-        "metadata_source_name": (
-            detection.metadata_source_name or resolved["metadata_source_name"]
-        ),
-        "metadata_source_url": (
-            detection.metadata_source_url or resolved["metadata_source_url"]
-        ),
+        "metadata_source_name": metadata_source_name,
+        "metadata_source_url": metadata_source_url,
+        "pest_id": resolved["pest_id"] if accepted_prediction else None,
+        "pest_verified": accepted_prediction,
         "temperature": detection.temperature,
         "humidity": detection.humidity,
         "audio_file": detection.audio_file,
@@ -596,34 +653,58 @@ def _serialize_detection(detection: Detection, db: Session | None) -> dict:
         "detected_at": detection.detected_at,
     }
     response["insect_group"], response["group_score"] = resolve_saved_group_prediction(
-        detection.pest,
-        getattr(detection, "insect_group", None),
-        getattr(detection, "group_score", None),
+        None if status == "NON_PEST" else detection.pest,
+        None
+        if status == "NON_PEST"
+        else getattr(detection, "insect_group", None),
+        None
+        if status == "NON_PEST"
+        else getattr(detection, "group_score", None),
         MODEL_SPECIES_GROUPS,
     )
     detection_message = str(detection.message or "")
     normalized_message = detection_message.casefold()
     if normalized_message.startswith("inference_error:"):
-        response.update(
-            {
-                "identification_status": "ERROR",
-                "identification_label": "Inference error",
-                "source": "DEVICE_INFERENCE_ERROR",
-            }
+        identification_status = "ERROR"
+        identification_label = "Inference error"
+    elif status == "NON_PEST":
+        identification_status = "NON_PEST"
+        identification_label = "No pest detected"
+    elif accepted_prediction:
+        identification_status = "MODEL_PREDICTED"
+        identification_label = response["common_name"]
+    else:
+        identification_status = "UNCONFIRMED"
+        identification_label = (
+            "Possible match"
+            if _is_active_species_label(detection.pest)
+            else "Possible group match"
+            if (
+                expected_group in _ACTIVE_HIERARCHICAL_GROUP_NAMES
+                or stored_group in _ACTIVE_HIERARCHICAL_GROUP_NAMES
+            )
+            else "Unidentified sound"
         )
-    elif (
-        "unverified model prediction" in normalized_message
-        or "low-confidence model prediction rejected" in normalized_message
-    ):
-        response.update(
-            {
-                "identification_status": "UNCONFIRMED",
-                "identification_label": (
-                    "Possible match" if detection.pest else "Unidentified sound"
-                ),
-                "source": "AI_MODEL_PREDICTION",
-            }
-        )
+    response.update(
+        {
+            "identification_status": identification_status,
+            "identification_label": identification_label,
+            "source": (
+                "AI_MODEL_PREDICTION"
+                if (
+                    detection.top_predictions
+                    or normalized_message.startswith(
+                        (
+                            "unverified model prediction",
+                            "low-confidence model prediction rejected",
+                            "model-predicted harmful pest",
+                        )
+                    )
+                )
+                else "DEVICE_DETECTION"
+            ),
+        }
+    )
     return response
 
 
@@ -648,8 +729,9 @@ def _request_gemini_solution(payload: AISolutionRequest) -> dict:
         f"Known symptoms: {payload.pest_symptoms or 'unavailable'}\n\n"
         "Return exactly these five non-empty JSON string fields: about, recommended_action, "
         "pesticide_recommendation, precautions, prevention.\n"
-        "about: explain likely pest and crop damage and observable symptoms; be explicit that "
-        "this is a candidate identification, not confirmation.\n"
+        "about: explain the likely crop damage and observable symptoms for this accepted model "
+        "prediction; do not claim independent human confirmation or require it before displaying "
+        "the prediction.\n"
         "recommended_action: give practical crop-protection measures, prioritizing integrated "
         "pest management and suitable non-chemical controls.\n"
         "pesticide_recommendation: discuss a registered pesticide or medicine only when reliable "
@@ -662,9 +744,10 @@ def _request_gemini_solution(payload: AISolutionRequest) -> dict:
         "prohibition on unsafe mixing, and following the product label for storage, disposal, "
         "re-entry, and pre-harvest intervals. Do not invent label intervals.\n"
         "prevention: give practical monitoring, sanitation, prevention, and follow-up steps.\n\n"
-        "Use only the supplied pest candidate; do not substitute another species. The model score is "
-        "uncalibrated and does not prove identification. If identification is otherwise "
-        "uncertain, do not recommend applying a pest-specific pesticide until the pest is confirmed. "
+        "Use only the supplied model-predicted pest; do not substitute another species. The model "
+        "score is uncalibrated. Do not claim independent confirmation. "
+        "Do not recommend applying a pest-specific pesticide until a locally registered product "
+        "and its applicable label are verified. "
         "If crop information is missing, say that crop-specific treatment cannot be confirmed. "
         "Do not invent facts, label details, or treatment claims."
     )
@@ -1031,47 +1114,40 @@ manager = ConnectionManager()
 # -------------------------------------------------------------------
 
 def seed_pest_data(db: Session):
-
     """
-
-    Add curated pest and solution information only when the
-
-    corresponding records do not already exist.
-
+    Insert new pest records and update existing pest records
+    using pest_data.py as the source of truth.
+    Existing solution records are preserved.
     """
+    pest_columns = {column.name for column in Pest.__table__.columns}
 
     for item in PEST_DATA:
-
+        pest_values = {
+            key: value
+            for key, value in item.items()
+            if key in pest_columns
+        }
         existing = (
-
             db.query(Pest)
-
             .filter(Pest.pest_id == item["pest_id"])
-
             .first()
-
         )
 
-        if not existing:
-
-            db.add(Pest(**item))
+        if existing:
+            for key, value in pest_values.items():
+                setattr(existing, key, value)
+        else:
+            db.add(Pest(**pest_values))
 
     for item in SOLUTION_DATA:
-
         existing = (
-
             db.query(Solution)
-
             .filter(Solution.pest_id == item["pest_id"])
-
             .first()
-
         )
 
         if not existing:
-
             db.add(Solution(**item))
-
     db.commit()
 
 def startup_event():
@@ -1491,94 +1567,48 @@ async def ai_predict(
 
         result = await asyncio.to_thread(predict_pest, audio)
 
-        # Preserve the model's top trained class for display.
-        # The model score is not a verified probability.
+        # Preserve a subtype candidate for display, but only accept it when
+        # the hierarchy, active catalog, and rejection state all agree.
         model_confidence = float(result["confidence"])
         top_predictions = result.get("top_predictions", [])
         raw_predicted_pest = result.get("pest")
-        predicted_pest = raw_predicted_pest if _is_active_prediction_label(raw_predicted_pest) else None
+        predicted_pest = (
+            raw_predicted_pest
+            if _is_active_species_label(raw_predicted_pest)
+            else None
+        )
+        expected_group = _active_group_for_label(predicted_pest)
         insect_group = str(result.get("insect_group") or UNKNOWN_INSECT_GROUP)
         if insect_group not in _ACTIVE_HIERARCHICAL_GROUP_NAMES:
             insect_group = UNKNOWN_INSECT_GROUP
         group_score = result.get("group_score") if insect_group != UNKNOWN_INSECT_GROUP else None
         rejection_reason = result.get("rejection_reason")
-        prediction_message = (
-            f"Low-confidence model prediction rejected: {rejection_reason}"
-            if rejection_reason
-            else "Unverified model prediction"
-        )
         species_metadata = _resolve_species_metadata(predicted_pest, db)
         common_name = species_metadata["common_name"] if predicted_pest else None
-        if predicted_pest is not None:
-            common_name = next(
-                (
-                    str(item.get("common_name") or "").strip()
-                    for item in top_predictions
-                    if _normalize_pest_label(item.get("pest") or item.get("species"))
-                    == _normalize_pest_label(predicted_pest)
-                ),
-                common_name or str(predicted_pest),
-            )
         resolved_risk = (
             species_metadata["risk"] if predicted_pest else "LOW"
         )
         prediction_is_accepted = bool(
             predicted_pest
-            and insect_group != UNKNOWN_INSECT_GROUP
+            and expected_group in _ACTIVE_HIERARCHICAL_GROUP_NAMES
+            and insect_group == expected_group
             and not rejection_reason
+            and species_metadata["catalog_record_found"]
         )
         prediction_status = (
             "HARMFUL_PEST" if prediction_is_accepted else "UNKNOWN"
         )
-        identification_status = (
-            "MODEL_PREDICTED" if prediction_is_accepted else "UNCONFIRMED"
-        )
+        if prediction_is_accepted:
+            prediction_message = "Model-predicted harmful pest"
+        elif rejection_reason:
+            prediction_message = (
+                f"Low-confidence model prediction rejected: {rejection_reason}"
+            )
+        else:
+            prediction_message = "Unverified model prediction"
 
-        # The top-scoring class is only a candidate, not a verified identity.
-        prediction_data = {
-
-            "status": prediction_status,
-
-            "identification_status": identification_status,
-            "identification_label": (
-                str(result.get("identification_label") or ("Possible match" if predicted_pest else "Unidentified sound"))
-            ),
-
-            "pest": predicted_pest,
-            "common_name": common_name,
-            "scientific_name": (
-                species_metadata["scientific_name"] if predicted_pest else None
-            ),
-
-            "confidence": model_confidence,
-            "insect_group": insect_group,
-            "group_score": group_score,
-            "top_predictions": top_predictions,
-            "broad_group_prediction": result.get("broad_group_prediction"),
-            "broad_group_confidence": result.get("broad_group_confidence"),
-            "broad_group_top_predictions": result.get("broad_group_top_predictions", []),
-
-            "risk": resolved_risk,
-            "risk_rationale": (
-                species_metadata["risk_rationale"] if predicted_pest else None
-            ),
-            "affected_crops": (
-                species_metadata["affected_crops"] if predicted_pest else []
-            ),
-            "metadata_source_name": (
-                species_metadata["metadata_source_name"] if predicted_pest else None
-            ),
-            "metadata_source_url": (
-                species_metadata["metadata_source_url"] if predicted_pest else None
-            ),
-
-            "message": prediction_message,
-            "source": "AI_MODEL_PREDICTION",
-            "detected_at": datetime.now(timezone.utc).isoformat(),
-
-        }
-
-        # Persist the AI result as an unconfirmed detection.
+        # Persist the model decision so all response surfaces can derive the
+        # same accepted or unconfirmed status from structured detection data.
         detected_time = datetime.now(timezone.utc).replace(tzinfo=None)
 
         detection = Detection(
@@ -1620,21 +1650,7 @@ async def ai_predict(
         db.refresh(detection)
 
         # Send the saved record to the live website.
-        prediction_data.update(_serialize_detection(detection, None))
-        prediction_data["status"] = prediction_status
-        prediction_data["identification_status"] = identification_status
-        prediction_data["identification_label"] = (
-            str(result.get("identification_label") or ("Possible match" if predicted_pest else "Unidentified sound"))
-        )
-        prediction_data["insect_group"] = insect_group
-        prediction_data["group_score"] = group_score
-        prediction_data["top_predictions"] = top_predictions
-        prediction_data["broad_group_prediction"] = result.get("broad_group_prediction")
-        prediction_data["broad_group_confidence"] = result.get("broad_group_confidence")
-        prediction_data["broad_group_top_predictions"] = result.get(
-            "broad_group_top_predictions", []
-        )
-        prediction_data["source"] = "AI_MODEL_PREDICTION"
+        prediction_data = _serialize_detection(detection, db)
         prediction_data["detected_at"] = detection.detected_at.replace(
             tzinfo=timezone.utc
         ).isoformat()
@@ -1720,35 +1736,71 @@ def _fallback_uncertain_solution(payload: AISolutionRequest) -> dict:
 
 
 def _high_risk_solution_history_response(item, db: Session) -> dict:
-    fallback = _fallback_uncertain_solution(
+    pest_name = str(getattr(item, "pest", None) or "Unidentified sound")
+    pest_record = _find_pest_record_normalized(db, pest_name)
+    common_name = (
+        str(getattr(item, "common_name", None) or "").strip()
+        or str(getattr(pest_record, "name", None) or "").strip()
+        or pest_name
+    )
+    risk_value = str(getattr(item, "risk", None) or "").strip().upper()
+    risk = (
+        risk_value
+        if risk_value in {"HIGH", "MEDIUM", "LOW", "NO_RISK"}
+        else "HIGH"
+    )
+    fallback = _fallback_ai_solution(
         AISolutionRequest(
-            pest=item.pest or "Unconfirmed insect",
-            common_name="Unconfirmed insect",
-            risk="HIGH",
-            confidence=item.confidence or 0.0,
+            pest=(
+                str(getattr(pest_record, "scientific_name", None) or "").strip()
+                or pest_name
+            ),
+            common_name=common_name,
+            risk=risk,
+            confidence=getattr(item, "confidence", None) or 0.0,
+            pest_description=getattr(pest_record, "description", None) or "",
+            pest_symptoms=getattr(pest_record, "symptoms", None) or "",
         )
     )
+    stored_pest_id = str(getattr(item, "pest_id", None) or "").strip()
+    pest_verified = bool(
+        pest_record
+        and stored_pest_id
+        and _normalize_pest_label(stored_pest_id)
+        == _normalize_pest_label(pest_record.pest_id)
+        and _is_active_species_label(pest_name)
+    )
     return {
-        "id": item.id,
-        "detection_id": item.detection_id,
-        "device_id": item.device_id,
-        "pest_verified": False,
-        "pest_id": item.pest_id,
-        "pest": item.pest,
-        "common_name": "Unconfirmed insect",
-        "pest_description": "",
-        "pest_symptoms": "",
-        "image_url": item.image_url,
-        "risk": "LOW",
-        "confidence": item.confidence,
-        "temperature": item.temperature,
-        "humidity": item.humidity,
-        "solution_title": "General Integrated Pest Management Guidance",
-        "solution_description": fallback["about"],
-        "recommended_action": fallback["recommended_action"],
-        "prevention": fallback["prevention"],
-        "detected_at": item.detected_at,
-        "created_at": item.created_at,
+        "id": getattr(item, "id", None),
+        "detection_id": getattr(item, "detection_id", None),
+        "device_id": getattr(item, "device_id", None),
+        "pest_verified": pest_verified,
+        "pest_id": stored_pest_id or None,
+        "pest": pest_name,
+        "common_name": common_name,
+        "pest_description": getattr(pest_record, "description", None) or "",
+        "pest_symptoms": getattr(pest_record, "symptoms", None) or "",
+        "image_url": getattr(item, "image_url", None),
+        "risk": risk,
+        "confidence": getattr(item, "confidence", None),
+        "temperature": getattr(item, "temperature", None),
+        "humidity": getattr(item, "humidity", None),
+        "solution_title": (
+            getattr(item, "solution_title", None)
+            or f"{common_name} HIGH Risk IPM Guidance"
+        ),
+        "solution_description": (
+            getattr(item, "solution_description", None) or fallback["about"]
+        ),
+        "recommended_action": (
+            getattr(item, "recommended_action", None)
+            or fallback["recommended_action"]
+        ),
+        "prevention": (
+            getattr(item, "prevention", None) or fallback["prevention"]
+        ),
+        "detected_at": getattr(item, "detected_at", None),
+        "created_at": getattr(item, "created_at", None),
     }
 
 
@@ -1757,42 +1809,37 @@ async def generate_ai_solution(
     payload: AISolutionRequest,
     db: Session = Depends(get_db),
 ):
-    # Only labels produced by the currently active classifier may be used.
-    # A candidate label is never proof that the insect was identified correctly.
-    if not _is_active_prediction_label(payload.pest):
-        return _fallback_uncertain_solution(payload)
-
     pest_record = _find_verified_pest_record(
         db,
         payload.pest,
         payload.pest_id,
     )
 
-    if pest_record:
-        candidate_pest = pest_record.scientific_name or pest_record.name
-        candidate_common_name = pest_record.name
-        candidate_pest_id = pest_record.pest_id
-        candidate_description = pest_record.description or payload.pest_description
-        candidate_symptoms = pest_record.symptoms or payload.pest_symptoms
-        candidate_risk = payload.risk
-    else:
-        # Keep general advice available, but use LOW as a precautionary
-        # risk default until the insect identity is verified.
-        candidate_pest = payload.pest
-        active_common_name = MODEL_COMMON_NAMES.get(
-            _normalize_pest_label(payload.pest),
-            "",
-        )
-        candidate_common_name = (
-            active_common_name
-            or payload.common_name
-            or payload.pest
-            or 'Unconfirmed insect'
-        )
-        candidate_pest_id = ''
-        candidate_description = payload.pest_description
-        candidate_symptoms = payload.pest_symptoms
-        candidate_risk = 'LOW'
+    if not pest_record:
+        if _is_active_species_label(payload.pest) or payload.pest_id:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "The active pest prediction has no matching catalogue record; "
+                    "a species-specific solution cannot be returned."
+                ),
+            )
+        return _fallback_uncertain_solution(payload)
+
+    if not (
+        _is_active_species_label(payload.pest)
+        or _is_active_species_label(pest_record.name)
+    ):
+        return _fallback_uncertain_solution(payload)
+
+    candidate_pest = pest_record.scientific_name or pest_record.name
+    candidate_common_name = pest_record.name
+    candidate_pest_id = pest_record.pest_id
+    candidate_description = pest_record.description or payload.pest_description
+    candidate_symptoms = pest_record.symptoms or payload.pest_symptoms
+    candidate_risk = str(getattr(pest_record, "risk", None) or "").strip().upper()
+    if candidate_risk not in {"HIGH", "MEDIUM", "LOW", "NO_RISK"}:
+        candidate_risk = "LOW"
 
     gemini_payload = AISolutionRequest(
         pest=candidate_pest,
@@ -1819,28 +1866,37 @@ async def generate_ai_solution(
             detail="Gemini could not generate the pest solution. Please try again.",
         ) from error
 
-    # No verified pesticide-label data source exists in this backend. Keep the
-    # pesticide/dose field guarded in code rather than trusting an LLM to invent
-    # an exact registered product rate. Low-score or catalogue-unmatched labels
-    # also require confirmation before any pest-specific pesticide is considered.
-    uncertain_identification = (
-        not pest_record
-        or payload.confidence < PEST_IDENTIFICATION_CONFIDENCE
-    )
+    uncertain_identification = False
     generated["pest"] = candidate_pest
     generated["common_name"] = candidate_common_name
-    generated["risk"] = "LOW" if uncertain_identification else candidate_risk
+    generated["risk"] = candidate_risk
     generated["confidence"] = payload.confidence
     generated["crop"] = payload.crop
+    catalog_details = " ".join(
+        value for value in (candidate_description, candidate_symptoms) if value
+    )
+    generated["about"] = (
+        f"Model prediction: {candidate_common_name} ({candidate_pest}). "
+        f"Catalogue risk: {candidate_risk}."
+        + (f" {catalog_details}" if catalog_details else "")
+    )
+    generated["recommended_action"] = (
+        "1. Inspect affected plants and document visible damage.\n"
+        "2. Monitor nearby plants for signs of spreading damage.\n"
+        "3. Use non-chemical integrated pest-management measures suited to "
+        "the crop; consult a qualified local agricultural officer before "
+        "choosing a pesticide."
+    )
+    generated["prevention"] = (
+        "Monitor crops regularly, record new damage, keep field edges and "
+        "equipment clean, and follow integrated pest-management guidance "
+        "appropriate to the crop."
+    )
     generated["pesticide_recommendation"] = _pesticide_recommendation(
         payload.crop,
         uncertain=uncertain_identification,
     )
-    generated["precautions"] = (
-        (generated.get("precautions") or "").strip()
-        + "\n\n"
-        + _safe_application_instructions()
-    ).strip()
+    generated["precautions"] = _safe_application_instructions()
     return generated
 
 
@@ -1858,8 +1914,12 @@ def send_high_risk_sms(detection):
 
     """
 
-    if detection.get("risk") != "HIGH":
-
+    if (
+        detection.get("status") != "HARMFUL_PEST"
+        or detection.get("identification_status") != "MODEL_PREDICTED"
+        or detection.get("pest_verified") is not True
+        or detection.get("risk") != "HIGH"
+    ):
         return
 
     account_sid = os.getenv("TWILIO_ACCOUNT_SID")
@@ -1973,20 +2033,44 @@ async def create_detection(
 
             )
 
-    detection_status = payload.status
-    detection_pest = payload.pest if _is_active_prediction_label(payload.pest) else None
-
-    if detection_status in {"UNKNOWN", "HARMFUL_PEST"}:
-        # Keep the persisted risk consistent with the matching model metadata;
-        # ignore any risk sent by the device for model predictions.
-        detection_risk = (
-            _resolve_species_metadata(detection_pest, db)["risk"]
-            if detection_pest
-            else "LOW"
+    candidate_pest = (
+        payload.pest if _is_active_species_label(payload.pest) else None
+    )
+    if candidate_pest:
+        candidate_pest = MODEL_COMMON_NAMES.get(
+            _normalize_pest_label(candidate_pest),
+            candidate_pest,
         )
-    else:
-        detection_pest = None
-        detection_risk = "LOW"
+    pest_record = (
+        _find_pest_record_normalized(db, candidate_pest)
+        if candidate_pest
+        else None
+    )
+    species_metadata = _resolve_species_metadata(candidate_pest, db)
+    expected_group = _active_group_for_label(candidate_pest)
+    accepted_prediction = bool(
+        payload.status == "HARMFUL_PEST"
+        and candidate_pest
+        and pest_record
+        and expected_group in _ACTIVE_HIERARCHICAL_GROUP_NAMES
+        and payload.confidence is not None
+        and payload.confidence >= PEST_IDENTIFICATION_CONFIDENCE
+    )
+    detection_status = (
+        "HARMFUL_PEST"
+        if accepted_prediction
+        else "UNKNOWN"
+        if payload.status == "HARMFUL_PEST"
+        else payload.status
+    )
+    detection_pest = (
+        candidate_pest
+        if detection_status in {"HARMFUL_PEST", "UNKNOWN"}
+        else None
+    )
+    detection_risk = (
+        species_metadata["risk"] if detection_pest else "LOW"
+    )
 
     detected_time = payload.detected_at or datetime.now(timezone.utc).replace(
         tzinfo=None
@@ -1999,12 +2083,28 @@ async def create_detection(
         status=detection_status,
 
         pest=detection_pest,
+        scientific_name=(
+            species_metadata["scientific_name"] if detection_pest else None
+        ),
+        common_name=species_metadata["common_name"] if detection_pest else None,
 
         confidence=payload.confidence,
         insect_group=_active_group_for_label(detection_pest),
         group_score=None,
 
         risk=detection_risk,
+        risk_rationale=(
+            species_metadata["risk_rationale"] if detection_pest else None
+        ),
+        affected_crops=json.dumps(
+            species_metadata["affected_crops"] if detection_pest else []
+        ),
+        metadata_source_name=(
+            species_metadata["metadata_source_name"] if detection_pest else None
+        ),
+        metadata_source_url=(
+            species_metadata["metadata_source_url"] if detection_pest else None
+        ),
 
         temperature=payload.temperature,
 
@@ -2026,15 +2126,8 @@ async def create_detection(
 
     if detection.status == "HARMFUL_PEST" and detection.risk == "HIGH":
 
-        pest_record = _find_verified_pest_record(db, payload.pest or "")
-
-        common_name = (
-            pest_record.name
-            if pest_record
-            else "Unconfirmed insect"
-        )
-
-        pest_id = pest_record.pest_id if pest_record else None
+        common_name = pest_record.name
+        pest_id = pest_record.pest_id
 
         solution_record = None
 
@@ -2042,13 +2135,21 @@ async def create_detection(
 
             solution_record = db.query(Solution).filter(Solution.pest_id == pest_id).first()
 
-        solution_title = None
-
-        solution_description = None
-
-        recommended_action = None
-
-        prevention = None
+        safe_guidance = _fallback_ai_solution(
+            AISolutionRequest(
+                pest=pest_record.scientific_name or pest_record.name,
+                common_name=common_name,
+                risk=detection.risk,
+                confidence=payload.confidence or 0.0,
+                pest_id=pest_record.pest_id,
+                pest_description=pest_record.description or "",
+                pest_symptoms=pest_record.symptoms or "",
+            )
+        )
+        solution_title = f"{common_name} HIGH Risk IPM Guidance"
+        solution_description = safe_guidance["about"]
+        recommended_action = safe_guidance["recommended_action"]
+        prevention = safe_guidance["prevention"]
 
         if solution_record:
 
@@ -2059,66 +2160,37 @@ async def create_detection(
             recommended_action = solution_record.recommended_action
 
             prevention = solution_record.prevention
-
-        elif pest_record and (
-            payload.confidence is not None
-            and payload.confidence >= PEST_IDENTIFICATION_CONFIDENCE
-        ):
-
-            try:
-
-                ai_solution_payload = AISolutionRequest(
-
-                    pest=pest_record.scientific_name or pest_record.name,
-
-                    common_name=pest_record.name,
-
-                    risk="HIGH",
-
-                    confidence=payload.confidence or 0.0,
-
-                    pest_id=pest_record.pest_id,
-
-                    pest_description=pest_record.description if pest_record else "",
-
-                    pest_symptoms=pest_record.symptoms if pest_record else "",
-
-                )
-
-                generated_solution = await asyncio.to_thread(_request_gemini_solution, ai_solution_payload)
-
-                solution_title = f"{common_name} HIGH Risk AI Solution"
-
-                solution_description = generated_solution.get("about")
-
-                recommended_action = generated_solution.get("recommended_action")
-
-                prevention = generated_solution.get("prevention")
-
-            except Exception as error:
-
-                print("HIGH-risk solution generation failed:", repr(error))
-
         else:
-
-            solution = _fallback_uncertain_solution(
-                AISolutionRequest(
-                    pest=payload.pest or "Unknown insect",
-                    common_name="Unconfirmed insect",
-                    risk="HIGH",
+            try:
+                ai_solution_payload = AISolutionRequest(
+                    pest=pest_record.scientific_name or pest_record.name,
+                    common_name=common_name,
+                    risk=detection.risk,
                     confidence=payload.confidence or 0.0,
+                    pest_id=pest_record.pest_id,
+                    pest_description=pest_record.description or "",
+                    pest_symptoms=pest_record.symptoms or "",
                 )
-            )
-            solution_title = "General Integrated Pest Management Guidance"
-            solution_description = solution["about"]
-            recommended_action = solution["recommended_action"]
-            prevention = solution["prevention"]
+                generated_solution = await asyncio.to_thread(
+                    _request_gemini_solution,
+                    ai_solution_payload,
+                )
+                solution_title = f"{common_name} HIGH Risk AI Solution"
+                solution_description = (
+                    str(generated_solution.get("about") or "").strip()
+                    or safe_guidance["about"]
+                )
+            except Exception:
+                logger.exception(
+                    "HIGH-risk solution generation failed for pest_id=%s",
+                    pest_id,
+                )
 
         db.add(HighRiskSolutionHistory(
 
             detection_id=detection.id, device_id=payload.device_id, pest_id=pest_id,
 
-            pest=payload.pest, common_name=common_name, image_url=None, risk="HIGH",
+            pest=detection_pest, common_name=common_name, image_url=None, risk=detection.risk,
 
             confidence=payload.confidence, temperature=payload.temperature,
 
@@ -2172,7 +2244,7 @@ async def create_detection(
 
     db.refresh(detection)
 
-    detection_data = _serialize_detection(detection, None)
+    detection_data = _serialize_detection(detection, db)
     if detection.detected_at:
         detection_data["detected_at"] = detection.detected_at.isoformat()
 
@@ -2184,7 +2256,7 @@ async def create_detection(
 
     await manager.broadcast(detection_data)
 
-    return detection
+    return detection_data
 
 @app.get(
 
@@ -2272,89 +2344,46 @@ def get_detection_history(
 
 # -------------------------------------------------------------------
 
-@app.get(
-
-    "/api/pests",
-
-)
-
-def get_pests(
-
-    db: Session = Depends(get_db),
-
-):
+@app.get("/api/pests")
+def get_pests(db: Session = Depends(get_db)):
+    active_pest_ids = [item["pest_id"] for item in PEST_DATA]
 
     pests = (
-
         db.query(Pest)
-
+        .filter(Pest.pest_id.in_(active_pest_ids))
         .order_by(Pest.name.asc())
-
         .all()
-
     )
 
     return {
-
         "pests": [
-
             {
-
                 "pest_id": pest.pest_id,
-
                 "name": pest.name,
-
                 "scientific_name": pest.scientific_name,
-
                 "description": pest.description,
-
                 "risk": pest.risk,
-
                 "symptoms": pest.symptoms,
-
             }
-
             for pest in pests
-
         ]
-
     }
 
-@app.get(
+@app.get("/api/pests/{pest_id}", response_model=PestResponse)
+def get_pest(pest_id: str, db: Session = Depends(get_db)):
+    active_pest_ids = {item["pest_id"] for item in PEST_DATA}
 
-    "/api/pests/{pest_id}",
-
-    response_model=PestResponse,
-
-)
-
-def get_pest(
-
-    pest_id: str,
-
-    db: Session = Depends(get_db),
-
-):
+    if pest_id not in active_pest_ids:
+        raise HTTPException(status_code=404, detail="Pest not found")
 
     pest = (
-
         db.query(Pest)
-
         .filter(Pest.pest_id == pest_id)
-
         .first()
-
     )
 
     if not pest:
-
-        raise HTTPException(
-
-            status_code=404,
-
-            detail="Pest not found",
-
-        )
+        raise HTTPException(status_code=404, detail="Pest not found")
 
     return pest
 
@@ -2364,102 +2393,64 @@ def get_pest(
 
 # -------------------------------------------------------------------
 
-@app.get(
-
-    "/api/solutions",
-
-)
-
-def get_solutions(
-
-    db: Session = Depends(get_db),
-
-):
+@app.get("/api/solutions")
+def get_solutions(db: Session = Depends(get_db)):
+    active_solution_ids = [
+        item["pest_id"] for item in SOLUTION_DATA
+    ]
 
     solutions = (
-
         db.query(Solution)
-
+        .filter(Solution.pest_id.in_(active_solution_ids))
         .order_by(Solution.title.asc())
-
         .all()
-
     )
 
     return {
-
         "solutions": [
-
             {
-
                 "pest_id": solution.pest_id,
-
                 "title": solution.title,
-
                 "description": solution.description,
-
                 "recommended_action": solution.recommended_action,
-
                 "prevention": solution.prevention,
-
             }
-
             for solution in solutions
-
         ]
-
     }
 
-@app.get(
+@app.get("/api/solutions/{pest_id}")
+def get_solution(pest_id: str, db: Session = Depends(get_db)):
+    active_solution_ids = {
+        item["pest_id"] for item in SOLUTION_DATA
+    }
 
-    "/api/solutions/{pest_id}",
-
-)
-
-def get_solution(
-
-    pest_id: str,
-
-    db: Session = Depends(get_db),
-
-):
+    if pest_id not in active_solution_ids:
+        raise HTTPException(
+            status_code=404,
+            detail="Solution not found for this pest",
+        )
 
     solution = (
-
         db.query(Solution)
-
         .filter(Solution.pest_id == pest_id)
-
         .first()
-
     )
 
     if not solution:
-
         raise HTTPException(
-
             status_code=404,
-
             detail="Solution not found for this pest",
-
         )
 
     return {
-
         "solution": {
-
             "pest_id": solution.pest_id,
-
             "title": solution.title,
-
             "description": solution.description,
-
             "recommended_action": solution.recommended_action,
-
             "prevention": solution.prevention,
-
         }
-
     }
 
 # -------------------------------------------------------------------

@@ -53,7 +53,12 @@ class DetectionResponse(BaseModel):
     id: int
     device_id: str
     status: str
+    identification_status: Optional[str] = None
+    identification_label: Optional[str] = None
+    source: Optional[str] = None
     pest: Optional[str] = None
+    pest_id: Optional[str] = None
+    pest_verified: bool = False
     scientific_name: Optional[str] = None
     common_name: Optional[str] = None
     confidence: Optional[float] = None
