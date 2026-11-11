@@ -46,8 +46,6 @@ volatile bool detectionEnabled = false;
 char appliedControlCommandId[65] = {0};
 portMUX_TYPE detectionControlMux = portMUX_INITIALIZER_UNLOCKED;
 
-unsigned long lastControlPollMs = 0;
-
 const unsigned long CONTROL_POLL_INTERVAL_MS = 2500;
 
 const unsigned long DEVICE_HEARTBEAT_INTERVAL_MS = 20000;
@@ -61,6 +59,8 @@ const unsigned long DEVICE_HEARTBEAT_INTERVAL_MS = 20000;
 const char* deviceID = "FIELD-UNIT-01";
 
 // =====================================================
+
+bool pollDetectionControl();
 
 void sendDeviceHeartbeat() {
 
@@ -129,16 +129,31 @@ void sendDeviceHeartbeat() {
 
 }
 
-void deviceHeartbeatTask(void*) {
+void deviceControlTask(void*) {
+  unsigned long lastControlPoll = 0;
+  unsigned long lastHeartbeat = 0;
 
   for (;;) {
+    if (WiFi.status() == WL_CONNECTED) {
+      unsigned long now = millis();
 
-    sendDeviceHeartbeat();
+      if (lastControlPoll == 0 ||
+          now - lastControlPoll >= CONTROL_POLL_INTERVAL_MS) {
+        lastControlPoll = now;
+        pollDetectionControl();
+      }
 
-    vTaskDelay(pdMS_TO_TICKS(DEVICE_HEARTBEAT_INTERVAL_MS));
+      now = millis();
 
+      if (lastHeartbeat == 0 ||
+          now - lastHeartbeat >= DEVICE_HEARTBEAT_INTERVAL_MS) {
+        lastHeartbeat = now;
+        sendDeviceHeartbeat();
+      }
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(100));
   }
-
 }
 
 // INMP441
@@ -173,14 +188,9 @@ void deviceHeartbeatTask(void*) {
 
 #define TOTAL_SAMPLES (SAMPLE_RATE * DURATION)
 
-// One AI prediction per sound event.
-// A new event is permitted only after consecutive quiet 5-second windows.
-// Tune AUDIO_ACTIVITY_RMS_THRESHOLD from the serial RMS readings if needed.
+// Continuous audio detection while remote Detect is enabled.
 const double AUDIO_ACTIVITY_RMS_THRESHOLD = 250.0;
-const uint8_t QUIET_WINDOWS_TO_REARM = 2;
 const bool DIAGNOSTIC_ONLY = false;
-bool soundEventLocked = false;
-uint8_t quietWindowsAfterEvent = 0;
 
 // =====================================================
 
@@ -482,11 +492,11 @@ void setup() {
 
   Serial.println("INMP441 ready.");
 
-  BaseType_t heartbeatTaskResult = xTaskCreate(
+  BaseType_t controlTaskResult = xTaskCreate(
 
-    deviceHeartbeatTask,
+    deviceControlTask,
 
-    "deviceHeartbeat",
+    "deviceControl",
 
     8192,
 
@@ -498,9 +508,9 @@ void setup() {
 
   );
 
-  if (heartbeatTaskResult != pdPASS) {
+  if (controlTaskResult != pdPASS) {
 
-    Serial.println("Unable to start device heartbeat task.");
+    Serial.println("Unable to start device control task.");
 
   }
 
@@ -560,6 +570,17 @@ void runDetectionCycle() {
   uint32_t failedReads = 0;
 
   while (totalCaptured < TOTAL_SAMPLES) {
+
+    bool detectionStillEnabled;
+
+    portENTER_CRITICAL(&detectionControlMux);
+    detectionStillEnabled = detectionEnabled;
+    portEXIT_CRITICAL(&detectionControlMux);
+
+    if (!detectionStillEnabled) {
+      Serial.println("Stop command received. Audio recording cancelled.");
+      return;
+    }
 
     size_t bytesRead = 0;
 
@@ -695,35 +716,8 @@ Serial.println("-----------------------------------");
     return;
   }
 
-  // Suppress silent windows and prevent repeat predictions from one continuing sound.
+  // Suppress silent windows before submitting audio.
   const bool audioActive = rms >= AUDIO_ACTIVITY_RMS_THRESHOLD;
-
-  if (soundEventLocked) {
-    if (audioActive) {
-      quietWindowsAfterEvent = 0;
-      Serial.printf(
-        "Sound event remains active (RMS %.2f). Suppressing another AI prediction.\n",
-        rms
-      );
-    } else {
-      quietWindowsAfterEvent++;
-      Serial.printf(
-        "Quiet window %u/%u (RMS %.2f).\n",
-        (unsigned int)quietWindowsAfterEvent,
-        (unsigned int)QUIET_WINDOWS_TO_REARM,
-        rms
-      );
-
-      if (quietWindowsAfterEvent >= QUIET_WINDOWS_TO_REARM) {
-        soundEventLocked = false;
-        quietWindowsAfterEvent = 0;
-        Serial.println("Silence confirmed. Ready for the next sound event.");
-      }
-    }
-
-    Serial.println("Skipping AI request for this audio window.");
-    return;
-  }
 
   if (!audioActive) {
     Serial.printf(
@@ -731,6 +725,17 @@ Serial.println("-----------------------------------");
       rms,
       AUDIO_ACTIVITY_RMS_THRESHOLD
     );
+    return;
+  }
+
+  bool detectionStillEnabled;
+
+  portENTER_CRITICAL(&detectionControlMux);
+  detectionStillEnabled = detectionEnabled;
+  portEXIT_CRITICAL(&detectionControlMux);
+
+  if (!detectionStillEnabled) {
+    Serial.println("Stop command received. AI request cancelled.");
     return;
   }
 
@@ -848,14 +853,6 @@ Serial.println("-----------------------------------");
   }
 
   aiHttp.end();
-
-  if (aiCode >= 200 && aiCode < 300) {
-    soundEventLocked = true;
-    quietWindowsAfterEvent = 0;
-    Serial.println(
-      "Sound event handled. Further predictions paused until two quiet windows are detected."
-    );
-  }
 
   // ===================================================
 
@@ -1178,15 +1175,10 @@ bool pollDetectionControl() {
   controlHttp.setTimeout(8000);
 
   if (!controlHttp.begin(controlClient, controlURL)) {
-
-    portENTER_CRITICAL(&detectionControlMux);
-    detectionEnabled = false;
-    portEXIT_CRITICAL(&detectionControlMux);
-
-    Serial.println("Detection control unavailable. Failing safe to STOPPED.");
-
-    return false;
-
+    Serial.println(
+        "Detection control connection failed. Keeping last confirmed state."
+    );
+    return previousState;
   }
 
   int controlCode = controlHttp.GET();
@@ -1218,10 +1210,10 @@ bool pollDetectionControl() {
 
     } else {
 
-      portENTER_CRITICAL(&detectionControlMux);
-      detectionEnabled = false;
-      portEXIT_CRITICAL(&detectionControlMux);
-      Serial.println("Control response missing enabled state or command ID.");
+      Serial.println(
+        "Invalid control response: missing enabled state or command ID. "
+        "Keeping last confirmed detection state."
+      );
 
     }
 
@@ -1241,9 +1233,9 @@ bool pollDetectionControl() {
 
     );
 
-    portENTER_CRITICAL(&detectionControlMux);
-    detectionEnabled = false;
-    portEXIT_CRITICAL(&detectionControlMux);
+    Serial.println(
+      "Temporary control failure. Keeping last confirmed detection state."
+    );
 
   }
 
@@ -1258,12 +1250,6 @@ bool pollDetectionControl() {
   controlHttp.end();
 
   if (previousState != currentState || commandChanged) {
-
-    if (currentState) {
-      // A new Detect session starts ready to recognize its first sound event.
-      soundEventLocked = false;
-      quietWindowsAfterEvent = 0;
-    }
 
     Serial.println(currentState
 
@@ -1326,17 +1312,13 @@ void loop() {
 
   }
 
-  const unsigned long now = millis();
+  bool detectionStateSnapshot;
 
-  if (lastControlPollMs == 0 || now - lastControlPollMs >= CONTROL_POLL_INTERVAL_MS) {
+  portENTER_CRITICAL(&detectionControlMux);
+  detectionStateSnapshot = detectionEnabled;
+  portEXIT_CRITICAL(&detectionControlMux);
 
-    lastControlPollMs = now;
-
-    pollDetectionControl();
-
-  }
-
-  if (!detectionEnabled) {
+  if (!detectionStateSnapshot) {
 
     delay(100);
 

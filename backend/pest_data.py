@@ -1,508 +1,1590 @@
-PEST_DATA = [
-    {
-        "pest_id": "rice_planthopper",
-        "name": "Rice Planthopper",
-        "scientific_name": "Nilaparvata lugens",
-        "risk": "HIGH",
-        "description": (
-            "A common rice pest that feeds on plant sap and can cause "
-            "yellowing, drying and serious crop damage."
-        ),
-        "symptoms": (
-            "Yellowing of rice plants, drying patches and reduced plant growth."
-        ),
-    },
-    {
-        "pest_id": "rice_leaf_folder",
-        "name": "Rice Leaf Folder",
-        "scientific_name": "Cnaphalocrocis medinalis",
-        "risk": "MEDIUM",
-        "description": (
-            "A rice pest whose larvae fold and feed inside leaves, "
-            "reducing the effective leaf area."
-        ),
-        "symptoms": (
-            "Folded leaves, scraped leaf surfaces and damaged green tissue."
-        ),
-    },
-    {
-        "pest_id": "brown_plant_hopper",
-        "name": "Brown Planthopper",
-        "scientific_name": "Nilaparvata lugens",
-        "risk": "HIGH",
-        "description": (
-            "A sap-sucking rice pest that can rapidly damage plants "
-            "under favorable conditions."
-        ),
-        "symptoms": (
-            "Yellowing plants, hopper burn and patches of dried rice plants."
-        ),
-    },
-    {
-        "pest_id": "stem_borer",
-        "name": "Rice Stem Borer",
-        "scientific_name": "Scirpophaga incertulas",
-        "risk": "HIGH",
-        "description": (
-            "A destructive rice pest whose larvae bore into plant stems "
-            "and interfere with plant growth."
-        ),
-        "symptoms": (
-            "Dead hearts in young plants and white heads during later growth."
-        ),
-    },
-    {
-        "pest_id": "armyworm",
-        "name": "Armyworm",
-        "scientific_name": "Spodoptera spp.",
-        "risk": "HIGH",
-        "description": (
-            "Leaf-feeding caterpillars that can consume large amounts "
-            "of crop foliage."
-        ),
-        "symptoms": (
-            "Irregular holes, damaged leaves and rapid loss of foliage."
-        ),
-    },
-    {
-        "pest_id": "fall_armyworm",
-        "name": "Fall Armyworm",
-        "scientific_name": "Spodoptera frugiperda",
-        "risk": "HIGH",
-        "description": (
-            "A serious crop pest that commonly attacks maize and other crops."
-        ),
-        "symptoms": (
-            "Leaf holes, windowing, ragged foliage and caterpillar feeding damage."
-        ),
-    },
-    {
-        "pest_id": "aphid",
-        "name": "Aphid",
-        "scientific_name": "Aphididae",
-        "risk": "MEDIUM",
-        "description": (
-            "Small sap-sucking insects that can weaken plants and affect "
-            "new leaves and shoots."
-        ),
-        "symptoms": (
-            "Curling leaves, sticky honeydew and weak or distorted new growth."
-        ),
-    },
-    # Model class: Cicada
-    {
-        "pest_id": "cicada",
-        "name": "Cicada",
-        "scientific_name": "Cicada",
-        "risk": "LOW",
-        "description": "Cicadas feed on plant fluids. Their effect on crops varies by species.",
-        "symptoms": "Check for twig injury, sap-feeding signs, and egg-laying scars.",
-    },
-    {
-        "pest_id": "common_field_grasshopper",
-        "name": "Common Field Grasshopper",
-        "scientific_name": "Acrididae spp.",
-        "risk": "MEDIUM",
-        "description": "Grasshoppers can feed on leaves and other plant material. Impact varies by species and population.",
-        "symptoms": "Chewed leaf margins, holes in leaves, and loss of foliage.",
-    },
-    {
-        "pest_id": "desert_locust",
-        "name": "Desert Locust",
-        "scientific_name": "Schistocerca gregaria",
-        "risk": "HIGH",
-        "description": "A major migratory locust pest capable of causing extensive crop and vegetation damage during outbreaks.",
-        "symptoms": "Rapid foliage loss, extensive chewing damage, and large locust aggregations.",
-    },
-    {
-        "pest_id": "dog_day_cicada",
-        "name": "Dog-day Cicada",
-        "scientific_name": "Dog-day Cicada",
-        "risk": "LOW",
-        "description": "A cicada group whose effects vary by species and location; not every detection indicates crop damage.",
-        "symptoms": "Look for twig injury or egg-laying scars and verify the species before assigning crop damage.",
-    },
-    {
-        "pest_id": "field_crickt",
-        "name": "Field Cricket",
-        "scientific_name": "Gryllus campestris",
-        "risk": "LOW",
-        "description": "Field crickets are ground-dwelling insects. Crop impacts depend on the species, crop, and population.",
-        "symptoms": "Inspect seedlings and nearby plant material for chewing damage.",
-    },
-    {
-        "pest_id": "fruite_fly",
-        "name": "Fruit Fly",
-        "scientific_name": "Fruit Fly",
-        "risk": "MEDIUM",
-        "description": "Some fruit fly species damage fruit. The exact species is needed for reliable crop-specific advice.",
-        "symptoms": "Inspect fruit for puncture marks, softening, internal larvae, and premature decay.",
-    },
-    {
-        "pest_id": "grasshopper",
-        "name": "Grasshopper",
-        "scientific_name": "Acrididae spp.",
-        "risk": "MEDIUM",
-        "description": "Grasshoppers can feed on crop foliage, with damage depending on species and population density.",
-        "symptoms": "Chewed leaf edges, missing foliage, and increasing defoliation.",
-    },
-    {
-        "pest_id": "great_green_bush_cricket",
-        "name": "Great Green Bush-cricket",
-        "scientific_name": "Tettigonia viridissima",
-        "risk": "LOW",
-        "description": "A large bush-cricket that may feed on plant material and other small animals.",
-        "symptoms": "Check for actual chewing injury on foliage before treating it as a crop pest.",
-    },
-    {
-        "pest_id": "house_cricket",
-        "name": "House Cricket",
-        "scientific_name": "Acheta domesticus",
-        "risk": "LOW",
-        "description": "House crickets are generally associated with buildings and stored materials; field risk needs local verification.",
-        "symptoms": "Inspect nearby seedlings or stored materials for chewing damage.",
-    },
-    {
-        "pest_id": "katydid",
-        "name": "Katydid",
-        "scientific_name": "Katydid",
-        "risk": "LOW",
-        "description": "Katydids generally cause limited damage, although some species and high populations can damage foliage or fruit.",
-        "symptoms": "Check leaf edges for chewing and fruit for shallow scars or distorted growth.",
-    },
-    {
-        "pest_id": "migratory_locust",
-        "name": "Migratory Locust",
-        "scientific_name": "Locusta migratoria",
-        "risk": "HIGH",
-        "description": "A migratory locust species that can cause substantial vegetation damage when populations build up.",
-        "symptoms": "Look for extensive foliage loss and concentrated locust activity.",
-    },
-    {
-        "pest_id": "mole_cricket",
-        "name": "Mole Cricket",
-        "scientific_name": "Gryllotalpidae spp.",
-        "risk": "MEDIUM",
-        "description": "Mole crickets live in soil and some species damage roots, seeds, or young plants.",
-        "symptoms": "Inspect for disturbed soil, weakened seedlings, and root damage.",
-    },
-    {
-        "pest_id": "rhinoceros_beetle",
-        "name": "Rhinoceros Beetle",
-        "scientific_name": "Oryctes rhinoceros",
-        "risk": "HIGH",
-        "description": "The coconut rhinoceros beetle is a significant palm pest. Confirm the species and host crop.",
-        "symptoms": "On palms, check for V-shaped cuts on opened fronds and holes near the crown.",
-    },
-    {
-        "pest_id": "roesels_bush_cricket",
-        "name": "Roesel's Bush-cricket",
-        "scientific_name": "Roeseliana roeselii",
-        "risk": "LOW",
-        "description": "A bush-cricket species whose presence alone does not establish economically significant crop damage.",
-        "symptoms": "Check for visible feeding injury and identify the species locally.",
-    },
-    {
-        "pest_id": "short_horned_grasshopper",
-        "name": "Short-horned Grasshopper",
-        "scientific_name": "Caelifera",
-        "risk": "MEDIUM",
-        "description": "Short-horned grasshoppers include species that feed on vegetation and may damage crops.",
-        "symptoms": "Chewed foliage, damaged leaf margins, and increasing plant defoliation.",
-    },
-    {
-        "pest_id": "snowy_tree_cricket",
-        "name": "Snowy Tree Cricket",
-        "scientific_name": "Oecanthus fultoni",
-        "risk": "LOW",
-        "description": "A tree cricket; crop significance should be judged from species confirmation and observed damage.",
-        "symptoms": "Record the insect and inspect nearby plants for visible feeding injury.",
-    },
-    {
-        "pest_id": "swamp_cicada",
-        "name": "Swamp Cicada",
-        "scientific_name": "Swamp Cicada",
-        "risk": "LOW",
-        "description": "A cicada class whose specific ecological and agricultural effects need species-level confirmation.",
-        "symptoms": "Check for twig injury or egg-laying scars and verify the species.",
-    },
-    {
-        "pest_id": "tree_cricket",
-        "name": "Tree Cricket",
-        "scientific_name": "Oecanthus spp.",
-        "risk": "LOW",
-        "description": "Tree crickets are a group of insects whose agricultural significance varies by species.",
-        "symptoms": "Check for observable feeding injury rather than relying on sound alone.",
-    },
-    {
-        "pest_id": "two_spotted_cricket",
-        "name": "Two-spotted Cricket",
-        "scientific_name": "Gryllus bimaculatus",
-        "risk": "LOW",
-        "description": "An omnivorous cricket whose crop impact depends on the local environment and food availability.",
-        "symptoms": "Inspect seedlings and plant material for actual chewing injury.",
-    },
-    {
-        "pest_id": "termite",
-        "name": "Termite",
-        "scientific_name": "Termitoidae",
-        "risk": "MEDIUM",
-        "description": "Termites feed on cellulose-rich material, and some species damage living plants or crops.",
-        "symptoms": "Check for damaged stems or roots, galleries, and mud tubes where applicable.",
-    },
-]
+# Pest Guard pest catalog
+# Source: user-provided 132-pest risk list (26 HIGH, 66 MEDIUM, 40 LOW).
+# Scientific names and species-specific symptoms/descriptions were not supplied;
+# these fields are intentionally left as None or clearly marked category-level text.
 
+PEST_DATA = [{'pest_id': 'european_mole_cricket',
+  'name': 'European Mole Cricket',
+  'scientific_name': None,
+  'insect_group': 'Mole Crickets',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'northern_mole_cricket',
+  'name': 'Northern Mole Cricket',
+  'scientific_name': None,
+  'insect_group': 'Mole Crickets',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'vineyard_mole_cricket',
+  'name': 'Vineyard Mole Cricket',
+  'scientific_name': None,
+  'insect_group': 'Mole Crickets',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'greyback_cane_grub',
+  'name': 'Greyback cane grub',
+  'scientific_name': None,
+  'insect_group': 'Beetles',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'june_beetle',
+  'name': 'June beetle',
+  'scientific_name': None,
+  'insect_group': 'Beetles',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'pine_weevil',
+  'name': 'Pine weevil',
+  'scientific_name': None,
+  'insect_group': 'Beetles',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'rhinoceros_beetle',
+  'name': 'Rhinoceros Beetle',
+  'scientific_name': None,
+  'insect_group': 'Beetles',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'red_turpentine_beetle',
+  'name': 'Red turpentine beetle',
+  'scientific_name': None,
+  'insect_group': 'Beetles',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'magnolia_root_borer',
+  'name': 'Magnolia root borer',
+  'scientific_name': None,
+  'insect_group': 'Beetles',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'european_field_cricket',
+  'name': 'European Field Cricket',
+  'scientific_name': None,
+  'insect_group': 'Crickets',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'fall_field_cricket',
+  'name': 'Fall Field Cricket',
+  'scientific_name': None,
+  'insect_group': 'Crickets',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'spring_field_cricket',
+  'name': 'Spring Field Cricket',
+  'scientific_name': None,
+  'insect_group': 'Crickets',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'field_cricket',
+  'name': 'Field Cricket',
+  'scientific_name': None,
+  'insect_group': 'Crickets',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'desert_field_cricket',
+  'name': 'Desert Field Cricket',
+  'scientific_name': None,
+  'insect_group': 'Crickets',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'two_spotted_cricket',
+  'name': 'Two-spotted cricket',
+  'scientific_name': None,
+  'insect_group': 'Crickets',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'japanese_burrowing_cricket',
+  'name': 'Japanese Burrowing Cricket',
+  'scientific_name': None,
+  'insect_group': 'Crickets',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'meadow_grasshopper',
+  'name': 'Meadow grasshopper',
+  'scientific_name': None,
+  'insect_group': 'Grasshopper',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'common_field_grasshopper',
+  'name': 'Common Field Grasshopper',
+  'scientific_name': None,
+  'insect_group': 'Grasshopper',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'iberian_field_grasshopper',
+  'name': 'Iberian Field Grasshopper',
+  'scientific_name': None,
+  'insect_group': 'Grasshopper',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'lesser_field_grasshopper',
+  'name': 'Lesser Field Grasshopper',
+  'scientific_name': None,
+  'insect_group': 'Grasshopper',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'upland_field_grasshopper',
+  'name': 'Upland Field Grasshopper',
+  'scientific_name': None,
+  'insect_group': 'Grasshopper',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'siberian_grasshopper',
+  'name': 'Siberian Grasshopper',
+  'scientific_name': None,
+  'insect_group': 'Grasshopper',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'steppe_grasshopper',
+  'name': 'Steppe grasshopper',
+  'scientific_name': None,
+  'insect_group': 'Grasshopper',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'water_meadow_grasshopper',
+  'name': 'Water-meadow Grasshopper',
+  'scientific_name': None,
+  'insect_group': 'Grasshopper',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'lesser_marsh_grasshopper',
+  'name': 'lesser marsh grasshopper',
+  'scientific_name': None,
+  'insect_group': 'Grasshopper',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'green_grasshopper',
+  'name': 'green grasshopper',
+  'scientific_name': None,
+  'insect_group': 'Grasshopper',
+  'risk': 'HIGH',
+  'description': "Classified as HIGH risk in the user's supplied pest-risk list. The supplied "
+                 'category describes primary destructive pests that may cause severe agricultural '
+                 'losses through root damage, tunnelling, defoliation, or damage to live wood. The '
+                 'exact damage pattern for this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest HIGH risk. Confirm the insect identification '
+              'and inspect the affected crop or plant for actual damage before selecting control '
+              'measures.'},
+ {'pest_id': 'old_house_borer',
+  'name': 'Old house borer',
+  'scientific_name': None,
+  'insect_group': 'Beetles',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'allards_ground_cricket',
+  'name': "Allard's ground cricket",
+  'scientific_name': None,
+  'insect_group': 'Crickets',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'carolina_ground_cricket',
+  'name': 'Carolina Ground Cricket',
+  'scientific_name': None,
+  'insect_group': 'Crickets',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'striped_ground_cricket',
+  'name': 'Striped ground cricket',
+  'scientific_name': None,
+  'insect_group': 'Crickets',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'marsh_cricket',
+  'name': 'Marsh Cricket',
+  'scientific_name': None,
+  'insect_group': 'Crickets',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'verge_cricket',
+  'name': 'Verge Cricket',
+  'scientific_name': None,
+  'insect_group': 'Crickets',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'wood_cricket',
+  'name': 'Wood cricket',
+  'scientific_name': None,
+  'insect_group': 'Crickets',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'house_cricket',
+  'name': 'House Cricket',
+  'scientific_name': None,
+  'insect_group': 'Crickets',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'tropical_house_cricket',
+  'name': 'Tropical House Cricket',
+  'scientific_name': None,
+  'insect_group': 'Crickets',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'jumping_bush_cricket',
+  'name': 'Jumping Bush Cricket',
+  'scientific_name': None,
+  'insect_group': 'Crickets',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'european_tree_cricket',
+  'name': 'European tree cricket',
+  'scientific_name': None,
+  'insect_group': 'Crickets',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'large_tree_cricket',
+  'name': 'Large Tree Cricket',
+  'scientific_name': None,
+  'insect_group': 'Crickets',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'rileys_tree_cricket',
+  'name': "Riley's Tree Cricket",
+  'scientific_name': None,
+  'insect_group': 'Crickets',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'snowy_tree_cricket',
+  'name': 'Snowy Tree Cricket',
+  'scientific_name': None,
+  'insect_group': 'Crickets',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'periodical_cicada',
+  'name': 'Periodical Cicada',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'bow_winged_grasshopper',
+  'name': 'Bow-winged Grasshopper',
+  'scientific_name': None,
+  'insect_group': 'Grasshopper',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'common_straw_grasshopper',
+  'name': 'Common Straw Grasshopper',
+  'scientific_name': None,
+  'insect_group': 'Grasshopper',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'eisentrauts_bow_winged_grasshopper',
+  'name': "Eisentraut's Bow-winged Grasshopper",
+  'scientific_name': None,
+  'insect_group': 'Grasshopper',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'heath_grasshopper',
+  'name': 'Heath Grasshopper',
+  'scientific_name': None,
+  'insect_group': 'Grasshopper',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'large_banded_grasshopper',
+  'name': 'Large Banded Grasshopper',
+  'scientific_name': None,
+  'insect_group': 'Grasshopper',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'large_gold_grasshopper',
+  'name': 'large gold grasshopper',
+  'scientific_name': None,
+  'insect_group': 'Grasshopper',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'large_mountain_grasshopper',
+  'name': 'Large Mountain Grasshopper',
+  'scientific_name': None,
+  'insect_group': 'Grasshopper',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'lesser_mottled_grasshopper',
+  'name': 'Lesser mottled grasshopper',
+  'scientific_name': None,
+  'insect_group': 'Grasshopper',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'mottled_grasshopper',
+  'name': 'Mottled grasshopper',
+  'scientific_name': None,
+  'insect_group': 'Grasshopper',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'rock_dwelling_grasshopper',
+  'name': 'Rock-dwelling Grasshopper',
+  'scientific_name': None,
+  'insect_group': 'Grasshopper',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'rufous_grasshopper',
+  'name': 'Rufous grasshopper',
+  'scientific_name': None,
+  'insect_group': 'Grasshopper',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'stripe_winged_grasshopper',
+  'name': 'Stripe-winged grasshopper',
+  'scientific_name': None,
+  'insect_group': 'Grasshopper',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'two_marked_grasshopper',
+  'name': 'Two-marked Grasshopper',
+  'scientific_name': None,
+  'insect_group': 'Grasshopper',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'woodland_grasshopper',
+  'name': 'Woodland grasshopper',
+  'scientific_name': None,
+  'insect_group': 'Grasshopper',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'alpine_dark_bush_cricket',
+  'name': 'Alpine dark bush-cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'balkan_bright_bush_cricket',
+  'name': 'Balkan Bright Bush-cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'balkan_saw_bush_cricket',
+  'name': 'Balkan Saw Bush-cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'bright_bush_cricket',
+  'name': 'Bright Bush-cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'central_texas_leaf_katydid',
+  'name': 'Central Texas Leaf Katydid',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'common_slender_bush_cricket',
+  'name': 'Common Slender Bush-cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'costal_bush_cricket',
+  'name': 'Costal Bush Cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'dark_bush_cricket',
+  'name': 'Dark bush-cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'great_green_bush_cricket',
+  'name': 'Great green bush-cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'greater_dark_bush_cricket',
+  'name': 'Greater Dark Bush-cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'grey_bush_cricket',
+  'name': 'Grey bush-cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'intermediate_greay_bush_cricket',
+  'name': 'Intermediate Greay Bush Cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'ionian_bright_bush_cricket',
+  'name': 'Ionian Bright Bush-cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'large_conehead',
+  'name': 'Large conehead',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'lesser_plump_bush_cricket',
+  'name': 'Lesser Plump Bush-cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'lily_bush_cricket',
+  'name': 'Lily bush-cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'long_tailed_speckled_bush_cricket',
+  'name': 'Long-tailed Speckled Bush-cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'long_winged_conehead',
+  'name': 'Long-winged conehead',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'mediterranean_bush_cricket',
+  'name': 'Mediterranean Bush-cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'mediterranean_slender_bush_cricket',
+  'name': 'Mediterranean slender bush-cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'mediterranean_wart_biter',
+  'name': 'Mediterranean Wart-biter',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'northern_katydid',
+  'name': 'Northern Katydid',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'oblong_winged_katydid',
+  'name': 'Oblong-winged katydid',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'ornate_bush_cricket',
+  'name': 'Ornate bush cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'roesels_bush_cricket',
+  'name': "Roesel's bush-cricket",
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'rough_saddle_bush_cricket',
+  'name': 'Rough Saddle Bush-cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'saw_tailed_bush_cricket',
+  'name': 'Saw-tailed Bush-cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'schmidts_bush_cricket',
+  'name': "Schmidt's bush-cricket",
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'shielded_oak_bush_cricket',
+  'name': 'Shielded Oak Bush-cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'short_winged_conehead',
+  'name': 'Short-winged conehead',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'sickle_bush_cricket',
+  'name': 'sickle bush-cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'slender_green_bush_cricket',
+  'name': 'Slender green bush-cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'speckled_bush_cricket',
+  'name': 'Speckled bush-cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'spiny_legged_bush_cricket',
+  'name': 'Spiny-legged Bush-cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'two_coloured_bush_cricket',
+  'name': 'Two-coloured Bush-cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'wart_biter_bush_cricket',
+  'name': 'Wart-biter bush-cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'western_saddle_bush_cricket',
+  'name': 'Western Saddle Bush-cricket',
+  'scientific_name': None,
+  'insect_group': 'Katydid',
+  'risk': 'MEDIUM',
+  'description': "Classified as MEDIUM risk in the user's supplied pest-risk list. The supplied "
+                 'category describes secondary, edge, or nursery pests that may cause local damage '
+                 'to branches, seedlings, fruit, or vegetables. The exact damage pattern for this '
+                 'individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest MEDIUM risk. Inspect nearby plants for local '
+              'damage and confirm the insect identification before selecting control measures.'},
+ {'pest_id': 'giant_beetle',
+  'name': 'Giant beetle',
+  'scientific_name': None,
+  'insect_group': 'Beetles',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'stag_beetle',
+  'name': 'Stag Beetle',
+  'scientific_name': None,
+  'insect_group': 'Beetles',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'ash_cicada',
+  'name': 'Ash Cicada',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'beach_squeaker',
+  'name': 'Beach Squeaker',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'black_cicada',
+  'name': 'Black Cicada',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'black_marked_tree_cicad',
+  'name': 'Black Marked tree Cicad',
+  'scientific_name': None,
+  'insect_group': 'Katydid / Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'black_prince_cicada',
+  'name': 'Black Prince Cicada',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'black_squeaker',
+  'name': 'Black Squeaker',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'bladder_cicada',
+  'name': 'Bladder Cicada',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'brown_bunyip',
+  'name': 'Brown Bunyip',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'cherrynose_cicada',
+  'name': 'Cherrynose Cicada',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'chorus_cicada',
+  'name': 'Chorus cicada',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'common_cicada',
+  'name': 'Common Cicada',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'cumberland_ambertail',
+  'name': 'Cumberland Ambertail',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'double_drummer_cicada',
+  'name': 'Double Drummer Cicada',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'double_spotted_cicada',
+  'name': 'Double spotted Cicada',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'ferny_acacia_cicada',
+  'name': 'Ferny Acacia Cicada',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'floury_baker',
+  'name': 'Floury Baker',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'giant_cicada',
+  'name': 'Giant Cicada',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'greengrocer_cicada',
+  'name': 'Greengrocer Cicada',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'green_winged_cicada',
+  'name': 'Green-winged Cicada',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'jos_s_cicada',
+  'name': "José's Cicada",
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'kaempfer_cicada',
+  'name': 'Kaempfer Cicada',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'large_brown_cicada',
+  'name': 'Large Brown Cicada',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'northern_dusk_singing_cicada',
+  'name': 'Northern Dusk-singing Cicada',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'paperbark_cicada',
+  'name': 'Paperbark Cicada',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'plains_cicada',
+  'name': 'Plains Cicada',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'razor_grinder',
+  'name': 'Razor Grinder',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'red_squeaker',
+  'name': 'Red Squeaker',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'sandstone_squeaker',
+  'name': 'Sandstone Squeaker',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'silver_cicada',
+  'name': 'Silver Cicada',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'silver_princess_cicada',
+  'name': 'Silver Princess Cicada',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'southern_bark_squeaker',
+  'name': 'Southern Bark Squeaker',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'southern_red_eyed_squeaker',
+  'name': 'Southern Red-eyed Squeaker',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'swamp_cicada',
+  'name': 'Swamp Cicada',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'taiwanese_cicada',
+  'name': 'Taiwanese Cicada',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'walkers_cicada',
+  'name': "Walker's Cicada",
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'white_drummer',
+  'name': 'White Drummer',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'yoyetta_cicada',
+  'name': 'Yoyetta cicada',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'},
+ {'pest_id': 'zipping_ambertail',
+  'name': 'Zipping Ambertail',
+  'scientific_name': None,
+  'insect_group': 'Cicada',
+  'risk': 'LOW',
+  'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
+                 'category describes woodland sap-feeders, decaying-wood consumers, or predatory '
+                 'insects considered not to threaten field crops in that assessment. The exact '
+                 'ecology of this individual pest has not been separately specified.',
+  'symptoms': 'The supplied list assigns this pest LOW risk. Confirm identification and check for '
+              'actual crop damage; presence alone should not be treated as evidence of a damaging '
+              'infestation.'}]
 
-SOLUTION_DATA = [
-    {
-        "pest_id": "cicada",
-        "title": "Cicada Monitoring and Prevention",
-        "description": "Cicada detections do not always indicate crop damage. Inspect the affected plants first.",
-        "recommended_action": "Inspect twigs and branches for egg-laying scars or injury. Record the affected plants and seek local advice if damage is significant.",
-        "prevention": "Monitor young plants, maintain plant health, and remove damaged material where appropriate.",
-    },
-    {
-        "pest_id": "common_field_grasshopper",
-        "title": "Common Field Grasshopper Management",
-        "description": "Grasshopper feeding can damage foliage, especially when populations increase.",
-        "recommended_action": "Inspect leaves for chewing damage. Monitor affected areas and protect young plants using crop-appropriate physical or integrated pest-management methods.",
-        "prevention": "Monitor field margins and young crops regularly. Record changes in grasshopper numbers and crop damage.",
-    },
-    {
-        "pest_id": "desert_locust",
-        "title": "Desert Locust Monitoring",
-        "description": "Desert locust outbreaks can cause extensive crop damage.",
-        "recommended_action": "Record the location, approximate numbers, and affected crops. Report suspected outbreaks to the local agricultural authority. Do not attempt large-scale control without trained guidance.",
-        "prevention": "Monitor crops and field margins, keep records of sightings, and follow official locust advisories.",
-    },
-    {
-        "pest_id": "dog_day_cicada",
-        "title": "Dog-day Cicada Monitoring",
-        "description": "Confirm the cicada species and check for actual plant injury before taking action.",
-        "recommended_action": "Inspect branches and twigs for damage. If significant injury is present, document it and seek local agricultural advice.",
-        "prevention": "Monitor susceptible plants and maintain regular inspections during periods of insect activity.",
-    },
-    {
-        "pest_id": "field_crickt",
-        "title": "Field Cricket Management",
-        "description": "Some field crickets may feed on seedlings or plant material.",
-        "recommended_action": "Inspect seedlings and nearby soil for chewing damage. Confirm that crickets are responsible before choosing a control method.",
-        "prevention": "Keep crop areas monitored, manage suitable hiding places where practical, and check seedlings regularly.",
-    },
-    {
-        "pest_id": "fruite_fly",
-        "title": "Fruit Fly Monitoring and Prevention",
-        "description": "Some fruit flies lay eggs in fruit, where developing larvae can cause damage.",
-        "recommended_action": "Inspect fruit for punctures, decay, or larvae. Remove and dispose of affected fruit appropriately, and use locally recommended monitoring methods for the confirmed species.",
-        "prevention": "Collect fallen and damaged fruit regularly, maintain orchard sanitation, and follow local fruit-fly monitoring guidance.",
-    },
-    {
-        "pest_id": "grasshopper",
-        "title": "Grasshopper Management",
-        "description": "Grasshoppers can feed on crop foliage and cause greater damage during population outbreaks.",
-        "recommended_action": "Inspect the crop for fresh chewing damage and monitor affected areas. Protect vulnerable young plants with suitable integrated pest-management measures.",
-        "prevention": "Inspect field edges and seedlings regularly, monitor population changes, and maintain crop records.",
-    },
-    {
-        "pest_id": "great_green_bush_cricket",
-        "title": "Great Green Bush-cricket Monitoring",
-        "description": "Presence alone does not prove economically important crop damage.",
-        "recommended_action": "Observe the insect and check nearby plants for feeding injury. Avoid unnecessary control when no meaningful damage is present.",
-        "prevention": "Maintain plant monitoring and use species identification and observed damage to guide decisions.",
-    },
-    {
-        "pest_id": "house_cricket",
-        "title": "House Cricket Monitoring",
-        "description": "House crickets are often associated with buildings and stored materials. Field damage needs confirmation.",
-        "recommended_action": "Check seedlings, stored materials, and surrounding areas for actual damage. Remove accessible shelter and food sources when appropriate.",
-        "prevention": "Keep storage areas clean, seal unnecessary entry points, and inspect susceptible materials.",
-    },
-    {
-        "pest_id": "katydid",
-        "title": "Katydid Monitoring and Management",
-        "description": "Some katydids feed on leaves or fruit, but their impact varies by species and crop.",
-        "recommended_action": "Inspect leaves and fruit for fresh chewing damage or scars. Monitor the affected plants and seek local advice if damage continues.",
-        "prevention": "Check susceptible plants regularly, record damage, and avoid unnecessary insect control when no significant injury is found.",
-    },
-    {
-        "pest_id": "migratory_locust",
-        "title": "Migratory Locust Monitoring",
-        "description": "Large migratory locust populations can damage vegetation and crops.",
-        "recommended_action": "Record the location, crop affected, and observed numbers. Report suspected outbreaks to the local agricultural authority and follow official guidance.",
-        "prevention": "Monitor crop edges and surrounding vegetation, and maintain records of sightings and crop damage.",
-    },
-    {
-        "pest_id": "mole_cricket",
-        "title": "Mole Cricket Management",
-        "description": "Some mole cricket species damage roots, seeds, or young plants below the soil surface.",
-        "recommended_action": "Inspect weakened seedlings and soil for tunnels or root injury. Confirm the responsible species before selecting a control method.",
-        "prevention": "Monitor seedlings and soil conditions, use healthy planting material, and follow crop-specific local advice.",
-    },
-    {
-        "pest_id": "rhinoceros_beetle",
-        "title": "Rhinoceros Beetle Management",
-        "description": "Certain rhinoceros beetles, including the coconut rhinoceros beetle, can seriously damage palms.",
-        "recommended_action": "For suspected palm attacks, inspect the crown and fronds for characteristic cuts or holes. Confirm the species and contact a local agricultural extension service for appropriate management.",
-        "prevention": "Inspect susceptible palms regularly and follow locally recommended sanitation and monitoring practices.",
-    },
-    {
-        "pest_id": "roesels_bush_cricket",
-        "title": "Roesel's Bush-cricket Monitoring",
-        "description": "A sighting does not establish that the insect is causing economically significant crop damage.",
-        "recommended_action": "Inspect nearby plants for feeding injury and confirm identification. Take control measures only when justified by observed damage and local guidance.",
-        "prevention": "Monitor affected plants and keep records of insect sightings and changes in crop condition.",
-    },
-    {
-        "pest_id": "short_horned_grasshopper",
-        "title": "Short-horned Grasshopper Management",
-        "description": "Some short-horned grasshoppers can damage crop foliage.",
-        "recommended_action": "Inspect leaves for chewing and monitor population levels. Use crop-appropriate integrated pest-management measures when damage warrants action.",
-        "prevention": "Check field margins and young crops frequently and document changes in foliage damage.",
-    },
-    {
-        "pest_id": "snowy_tree_cricket",
-        "title": "Snowy Tree Cricket Monitoring",
-        "description": "Confirm the species and assess visible plant injury before treating the detection as a crop threat.",
-        "recommended_action": "Record the insect and inspect nearby vegetation. If sustained damage is observed, seek advice suited to the crop and location.",
-        "prevention": "Maintain regular plant inspections and avoid unnecessary control when no significant damage is evident.",
-    },
-    {
-        "pest_id": "swamp_cicada",
-        "title": "Swamp Cicada Monitoring",
-        "description": "The agricultural significance of this cicada class requires confirmation of the species and observed damage.",
-        "recommended_action": "Inspect twigs and branches for injury. Document any damage and seek local identification advice if symptoms persist.",
-        "prevention": "Monitor susceptible plants and record insect activity and any changes in plant condition.",
-    },
-    {
-        "pest_id": "tree_cricket",
-        "title": "Tree Cricket Monitoring",
-        "description": "Tree crickets should be assessed using species identification and actual crop damage.",
-        "recommended_action": "Inspect nearby plants for feeding injury and observe whether damage is increasing. Avoid pest-specific treatment until the cause is confirmed.",
-        "prevention": "Monitor plants and maintain records of insect activity and symptoms.",
-    },
-    {
-        "pest_id": "two_spotted_cricket",
-        "title": "Two-spotted Cricket Monitoring",
-        "description": "The effect of this cricket on crops depends on local conditions and observed feeding damage.",
-        "recommended_action": "Inspect seedlings and plant material for chewing. Confirm the insect is responsible before choosing any control measures.",
-        "prevention": "Check seedlings regularly, remove suitable shelter when practical, and monitor crop condition.",
-    },
-    {
-        "pest_id": "termite",
-        "title": "Termite Monitoring and Management",
-        "description": "Some termite species damage living plants, roots, wooden structures, or stored materials.",
-        "recommended_action": "Inspect affected roots, stems, or structures for galleries and mud tubes. Confirm the termite species and seek locally appropriate management advice.",
-        "prevention": "Monitor vulnerable plants and materials, reduce unnecessary wood-to-soil contact around structures, and address moisture problems where practical.",
-    },
-    {
-        "pest_id": "rice_planthopper",
-        "title": "Rice Planthopper Management",
-        "description": (
-            "Regular field monitoring is important for detecting planthopper "
-            "activity early and preventing rapid spread."
-        ),
-        "recommended_action": (
-            "Inspect affected areas, maintain proper field conditions and "
-            "follow locally recommended integrated pest management practices."
-        ),
-        "prevention": (
-            "Avoid excessive nitrogen application, maintain suitable plant "
-            "spacing and regularly monitor the crop."
-        ),
-    },
-    {
-        "pest_id": "rice_leaf_folder",
-        "title": "Rice Leaf Folder Management",
-        "description": (
-            "Early identification of folded and damaged leaves helps "
-            "reduce crop damage."
-        ),
-        "recommended_action": (
-            "Inspect damaged leaves and follow locally recommended integrated "
-            "pest management practices when pest levels become significant."
-        ),
-        "prevention": (
-            "Monitor the crop regularly and avoid unnecessary conditions "
-            "that encourage excessive pest growth."
-        ),
-    },
-    {
-        "pest_id": "brown_plant_hopper",
-        "title": "Brown Planthopper Management",
-        "description": (
-            "Brown planthopper outbreaks should be identified early because "
-            "damage can develop quickly."
-        ),
-        "recommended_action": (
-            "Inspect hopper populations and follow locally recommended "
-            "integrated pest management guidance."
-        ),
-        "prevention": (
-            "Avoid excessive nitrogen, monitor crop growth regularly and "
-            "maintain appropriate field management."
-        ),
-    },
-    {
-        "pest_id": "stem_borer",
-        "title": "Rice Stem Borer Management",
-        "description": (
-            "Regular crop inspection can help identify stem-borer damage "
-            "before severe yield loss occurs."
-        ),
-        "recommended_action": (
-            "Inspect plants for dead hearts or white heads and follow "
-            "locally recommended integrated pest management practices."
-        ),
-        "prevention": (
-            "Maintain field hygiene and regularly monitor the crop for "
-            "early signs of stem-borer activity."
-        ),
-    },
-    {
-        "pest_id": "armyworm",
-        "title": "Armyworm Management",
-        "description": (
-            "Early detection of leaf-feeding activity can help reduce "
-            "rapid foliage damage."
-        ),
-        "recommended_action": (
-            "Inspect affected crop areas and follow locally recommended "
-            "integrated pest management guidance."
-        ),
-        "prevention": (
-            "Monitor crop foliage frequently and remove severe infestations "
-            "according to local agricultural guidance."
-        ),
-    },
-    {
-        "pest_id": "fall_armyworm",
-        "title": "Fall Armyworm Management",
-        "description": (
-            "Regular scouting is important, especially in maize and other "
-            "susceptible crops."
-        ),
-        "recommended_action": (
-            "Inspect plants for characteristic feeding damage and follow "
-            "locally recommended integrated pest management practices."
-        ),
-        "prevention": (
-            "Scout fields regularly and respond early to newly detected "
-            "infestations."
-        ),
-    },
-    {
-        "pest_id": "aphid",
-        "title": "Aphid Management",
-        "description": (
-            "Aphid populations can increase quickly, so regular inspection "
-            "of young leaves and shoots is useful."
-        ),
-        "recommended_action": (
-            "Inspect affected plant parts and follow locally recommended "
-            "integrated pest management guidance."
-        ),
-        "prevention": (
-            "Monitor new plant growth and encourage healthy crop conditions."
-        ),
-    },
-]
+# Retained only existing solution entries whose pest_id matches the new catalog.
+SOLUTION_DATA = [{'pest_id': 'common_field_grasshopper',
+  'title': 'Common Field Grasshopper Management',
+  'description': 'Grasshopper feeding can damage foliage, especially when populations increase.',
+  'recommended_action': 'Inspect leaves for chewing damage. Monitor affected areas and protect '
+                        'young plants using crop-appropriate physical or integrated '
+                        'pest-management methods.',
+  'prevention': 'Monitor field margins and young crops regularly. Record changes in grasshopper '
+                'numbers and crop damage.'},
+ {'pest_id': 'great_green_bush_cricket',
+  'title': 'Great Green Bush-cricket Monitoring',
+  'description': 'Presence alone does not prove economically important crop damage.',
+  'recommended_action': 'Observe the insect and check nearby plants for feeding injury. Avoid '
+                        'unnecessary control when no meaningful damage is present.',
+  'prevention': 'Maintain plant monitoring and use species identification and observed damage to '
+                'guide decisions.'},
+ {'pest_id': 'house_cricket',
+  'title': 'House Cricket Monitoring',
+  'description': 'House crickets are often associated with buildings and stored materials. Field '
+                 'damage needs confirmation.',
+  'recommended_action': 'Check seedlings, stored materials, and surrounding areas for actual '
+                        'damage. Remove accessible shelter and food sources when appropriate.',
+  'prevention': 'Keep storage areas clean, seal unnecessary entry points, and inspect susceptible '
+                'materials.'},
+ {'pest_id': 'rhinoceros_beetle',
+  'title': 'Rhinoceros Beetle Management',
+  'description': 'Certain rhinoceros beetles, including the coconut rhinoceros beetle, can '
+                 'seriously damage palms.',
+  'recommended_action': 'For suspected palm attacks, inspect the crown and fronds for '
+                        'characteristic cuts or holes. Confirm the species and contact a local '
+                        'agricultural extension service for appropriate management.',
+  'prevention': 'Inspect susceptible palms regularly and follow locally recommended sanitation and '
+                'monitoring practices.'},
+ {'pest_id': 'roesels_bush_cricket',
+  'title': "Roesel's Bush-cricket Monitoring",
+  'description': 'A sighting does not establish that the insect is causing economically '
+                 'significant crop damage.',
+  'recommended_action': 'Inspect nearby plants for feeding injury and confirm identification. Take '
+                        'control measures only when justified by observed damage and local '
+                        'guidance.',
+  'prevention': 'Monitor affected plants and keep records of insect sightings and changes in crop '
+                'condition.'},
+ {'pest_id': 'snowy_tree_cricket',
+  'title': 'Snowy Tree Cricket Monitoring',
+  'description': 'Confirm the species and assess visible plant injury before treating the '
+                 'detection as a crop threat.',
+  'recommended_action': 'Record the insect and inspect nearby vegetation. If sustained damage is '
+                        'observed, seek advice suited to the crop and location.',
+  'prevention': 'Maintain regular plant inspections and avoid unnecessary control when no '
+                'significant damage is evident.'},
+ {'pest_id': 'swamp_cicada',
+  'title': 'Swamp Cicada Monitoring',
+  'description': 'The agricultural significance of this cicada class requires confirmation of the '
+                 'species and observed damage.',
+  'recommended_action': 'Inspect twigs and branches for injury. Document any damage and seek local '
+                        'identification advice if symptoms persist.',
+  'prevention': 'Monitor susceptible plants and record insect activity and any changes in plant '
+                'condition.'},
+ {'pest_id': 'two_spotted_cricket',
+  'title': 'Two-spotted Cricket Monitoring',
+  'description': 'The effect of this cricket on crops depends on local conditions and observed '
+                 'feeding damage.',
+  'recommended_action': 'Inspect seedlings and plant material for chewing. Confirm the insect is '
+                        'responsible before choosing any control measures.',
+  'prevention': 'Check seedlings regularly, remove suitable shelter when practical, and monitor '
+                'crop condition.'}]
