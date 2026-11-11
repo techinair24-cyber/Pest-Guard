@@ -52,7 +52,9 @@ AI detections also include `insect_group` and `group_score`. Group-only and unce
 
 ## Solution guidance
 
-The Solutions page uses manually maintained, source-attributed records in `solution_data.py`; it does not generate guidance with an external AI provider. The crop list in `crop_data.py` defines supported search choices, not pest-to-crop relationships. `GET /api/crops` lists supported crops, and `GET /api/solutions?crop_id={crop_id}` returns only complete `VERIFIED` records with an exact crop match and catalogue-risk match. Records marked `NEEDS_REVIEW` are withheld. No pest/crop association or treatment is inferred when evidence is unavailable.
+The Solutions page uses manually maintained, source-attributed records in `solution_data.py`; it does not generate guidance with an external AI provider. Per-pest research coverage is loaded from the root `pest_crop_evidence_matrix.csv` into `pest_solution_coverage`; it is separate from publishable crop-specific solution records. The crop list in `crop_data.py` defines supported search choices, not pest-to-crop relationships.
+
+`GET /api/crops` lists supported crops. `GET /api/solutions?crop_id={crop_id}` returns only records marked `VERIFIED` that match the crop and catalogue risk, have species identity and crop-damage evidence, and provide field-level sources for each populated recommendation. The endpoint supports HIGH, MEDIUM, and LOW catalogue risks. Unverified management categories remain unavailable rather than being inferred. Internal scientific names are not included in the public solution response.
 
 `GET /api/solutions/history/high-risk` returns persisted history records and a `total` count. It does not attach unverified or legacy solution text to those records. The API response shape is defined in `schemas.py`; source organization, URL, title, and review date are included with each verified crop solution.
 

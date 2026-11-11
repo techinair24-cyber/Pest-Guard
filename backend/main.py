@@ -694,6 +694,34 @@ def _migrate_detection_metadata_columns():
 
 _migrate_detection_metadata_columns()
 
+def _migrate_solution_research_columns():
+    required_columns = {
+        "pest_crop_solutions": {
+            "affected_plant_parts": "TEXT",
+        },
+        "pest_solution_coverage": {
+            "research_data": "JSON",
+        },
+    }
+    with engine.begin() as connection:
+        inspector = inspect(connection)
+        for table_name, columns in required_columns.items():
+            existing_columns = {
+                column["name"]
+                for column in inspector.get_columns(table_name)
+            }
+            for column_name, column_type in columns.items():
+                if column_name not in existing_columns:
+                    connection.execute(
+                        text(
+                            f"ALTER TABLE {table_name} ADD COLUMN "
+                            f"{column_name} {column_type}"
+                        )
+                    )
+
+
+_migrate_solution_research_columns()
+
 def _migrate_solution_history_source_column():
     with engine.begin() as connection:
         existing_columns = {
@@ -861,6 +889,78 @@ manager = ConnectionManager()
 
 # -------------------------------------------------------------------
 
+SOLUTION_REQUIRED_FIELDS = (
+    "scientific_name",
+    "crop_damage",
+    "reviewed_on",
+)
+
+
+def _solution_value(solution, field):
+    if isinstance(solution, dict):
+        return solution.get(field)
+    return getattr(solution, field, None)
+
+
+def _has_verified_solution_evidence(solution) -> bool:
+    if any(
+        not isinstance(value, str) or not value.strip()
+        for value in (_solution_value(solution, field) for field in SOLUTION_REQUIRED_FIELDS)
+    ):
+        return False
+
+    sources = _solution_value(solution, "source_references")
+    if not isinstance(sources, list) or not sources:
+        return False
+
+    supported_fields = {"crop_id"}
+    for source in sources:
+        if not isinstance(source, dict) or any(
+            not isinstance(source.get(field), str) or not source[field].strip()
+            for field in ("title", "organization", "url", "reviewed_on")
+        ):
+            return False
+        supports = source.get("supports")
+        if not isinstance(supports, list):
+            return False
+        supported_fields.update(
+            value for value in supports if isinstance(value, str)
+        )
+
+    evidence_fields = set(SOLUTION_REQUIRED_FIELDS[:-1])
+    optional_evidence_fields = (
+        "description",
+        "identification_signs",
+        "affected_plant_parts",
+        "recommended_treatment",
+        "immediate_control_measures",
+        "biological_control_options",
+        "cultural_control_methods",
+        "mechanical_control_methods",
+        "chemical_control_options",
+        "prevention",
+        "monitoring",
+        "safety_precautions",
+        "expert_advice",
+    )
+    for field in optional_evidence_fields:
+        value = _solution_value(solution, field)
+        if isinstance(value, str) and value.strip():
+            evidence_fields.add(field)
+
+    management_fields = (
+        "biological_control_options",
+        "cultural_control_methods",
+        "chemical_control_options",
+    )
+    has_management = any(
+        isinstance(_solution_value(solution, field), str)
+        and _solution_value(solution, field).strip()
+        for field in management_fields
+    )
+    return has_management and evidence_fields.issubset(supported_fields)
+
+
 def seed_pest_data(db: Session):
     """
     Seed the catalogue, supported crop names, and reviewed solution records.
@@ -919,7 +1019,7 @@ def seed_pest_data(db: Session):
             raise ValueError(f"Unknown pest_id in solution record: {item['pest_id']}")
         if item["crop_id"] not in crop_ids:
             raise ValueError(f"Unknown crop_id in solution record: {item['crop_id']}")
-        if item["risk_level"] not in {"HIGH", "MEDIUM"}:
+        if item["risk_level"] not in {"HIGH", "MEDIUM", "LOW"}:
             raise ValueError(
                 f"Unsupported solution risk for pest_id={item['pest_id']}: "
                 f"{item['risk_level']}"
@@ -932,30 +1032,10 @@ def seed_pest_data(db: Session):
             raise ValueError(f"Duplicate solution_id: {item['solution_id']}")
         solution_ids.add(item["solution_id"])
         if item["status"] == "VERIFIED":
-            required_fields = (
-                "scientific_name",
-                "description",
-                "identification_signs",
-                "crop_damage",
-                "recommended_treatment",
-                "immediate_control_measures",
-                "biological_control_options",
-                "cultural_control_methods",
-                "mechanical_control_methods",
-                "chemical_control_options",
-                "prevention",
-                "monitoring",
-                "safety_precautions",
-                "expert_advice",
-                "reviewed_on",
-            )
-            if any(not item.get(field) for field in required_fields):
+            if not _has_verified_solution_evidence(item):
                 raise ValueError(
-                    f"Verified solution is incomplete: {item['solution_id']}"
-                )
-            if not item.get("source_references"):
-                raise ValueError(
-                    f"Verified solution has no sources: {item['solution_id']}"
+                    f"Verified solution is incomplete or lacks field evidence: "
+                    f"{item['solution_id']}"
                 )
         existing = (
             db.query(PestCropSolution)
@@ -2034,9 +2114,6 @@ def _serialize_pest_crop_solution(solution, pest, crop) -> dict:
         "solution_id": solution.solution_id,
         "pest_id": pest.pest_id,
         "pest_name": pest.name,
-        "scientific_name": (
-            solution.scientific_name or pest.scientific_name
-        ),
         "insect_group": next(
             item["insect_group"]
             for item in PEST_DATA
@@ -2049,6 +2126,7 @@ def _serialize_pest_crop_solution(solution, pest, crop) -> dict:
         "description": solution.description,
         "identification_signs": solution.identification_signs,
         "crop_damage": solution.crop_damage,
+        "affected_plant_parts": solution.affected_plant_parts,
         "recommended_treatment": solution.recommended_treatment,
         "immediate_control_measures": solution.immediate_control_measures,
         "biological_control_options": solution.biological_control_options,
@@ -2083,7 +2161,7 @@ def get_solutions(
         .filter(
             PestCropSolution.crop_id == crop.crop_id,
             PestCropSolution.status == "VERIFIED",
-            PestCropSolution.risk_level.in_(("HIGH", "MEDIUM")),
+            PestCropSolution.risk_level.in_(("HIGH", "MEDIUM", "LOW")),
             PestCropSolution.risk_level == Pest.risk,
             Pest.pest_id.in_(item["pest_id"] for item in PEST_DATA),
         )
@@ -2095,7 +2173,7 @@ def get_solutions(
     serialized = [
         _serialize_pest_crop_solution(solution, pest, crop)
         for solution, pest in records
-        if _is_active_species_label(pest.name)
+        if _has_verified_solution_evidence(solution)
     ]
     return {
         "crop": _serialize_crop(crop),

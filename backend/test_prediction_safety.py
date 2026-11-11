@@ -982,13 +982,32 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             {item["pest_id"] for item in PEST_COVERAGE_DATA},
             {item["pest_id"] for item in main.PEST_DATA},
         )
-        self.assertTrue(SOLUTION_RECORDS)
-        self.assertTrue(
-            all(item["status"] == "NEEDS_REVIEW" for item in SOLUTION_RECORDS)
+        self.assertEqual(len(PEST_COVERAGE_DATA), 132)
+        self.assertEqual(
+            {
+                risk: sum(item["risk"] == risk for item in main.PEST_DATA)
+                for risk in ("HIGH", "MEDIUM", "LOW")
+            },
+            {"HIGH": 26, "MEDIUM": 66, "LOW": 40},
         )
+        catalogue = {item["pest_id"]: item for item in main.PEST_DATA}
         self.assertTrue(
-            all(not item.get("recommended_action") for item in SOLUTION_RECORDS)
+            all(
+                item["research_data"]["common_name"]
+                and item["research_data"]["insect_group"]
+                and item["research_data"]["risk_level"]
+                == catalogue[item["pest_id"]]["risk"]
+                and item["research_data"]["missing_evidence_fields"] is not None
+                for item in PEST_COVERAGE_DATA
+            )
         )
+        self.assertEqual(len(SOLUTION_RECORDS), 1)
+        self.assertTrue(
+            all(item["status"] == "VERIFIED" for item in SOLUTION_RECORDS)
+        )
+        self.assertEqual(SOLUTION_RECORDS[0]["pest_id"], "rhinoceros_beetle")
+        self.assertEqual(SOLUTION_RECORDS[0]["crop_id"], "coconut")
+        self.assertIsNone(SOLUTION_RECORDS[0]["chemical_control_options"])
 
     def test_unverified_solution_records_are_not_returned_by_api(self):
         from database import Base
@@ -1014,7 +1033,26 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             session.close()
             engine.dispose()
 
-    def test_solution_api_excludes_low_risk_records(self):
+    def test_solution_response_omits_scientific_name_and_allows_missing_fields(self):
+        response = main.PestCropSolutionResponse.model_validate(
+            {
+                "solution_id": "response-shape-check",
+                "pest_id": "rhinoceros_beetle",
+                "pest_name": "Rhinoceros Beetle",
+                "insect_group": "Beetles",
+                "risk": "HIGH",
+                "crop_id": "coconut",
+                "crop_name": "Coconut",
+                "source_references": [],
+            }
+        )
+
+        self.assertFalse(hasattr(response, "scientific_name"))
+        self.assertIsNone(response.crop_damage)
+        self.assertIsNone(response.cultural_control_methods)
+        self.assertIsNone(response.chemical_control_options)
+
+    def test_solution_api_returns_supported_record_but_hides_incomplete_record(self):
         from database import Base
 
         engine = create_engine(
@@ -1051,21 +1089,20 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             )
             main.PestCropSolutionListResponse.model_validate(response)
             self.assertEqual(
-                {item["risk"] for item in response["solutions"]},
-                set(),
-            )
-            self.assertEqual(
                 {item["solution_id"] for item in response["solutions"]},
-                set(),
+                {"rhinoceros_beetle_coconut_high_2026_11_11"},
+            )
+            self.assertNotIn("scientific_name", response["solutions"][0])
+            self.assertNotIn(
+                "unsupported_low",
+                {item["solution_id"] for item in response["solutions"]},
             )
         finally:
             session.close()
             engine.dispose()
 
-    def test_solution_seed_rejects_low_risk_records(self):
-        from copy import deepcopy
+    def test_solution_seed_creates_low_risk_coverage_records(self):
         from database import Base
-        from solution_data import SOLUTION_RECORDS
 
         engine = create_engine(
             "sqlite://",
@@ -1074,18 +1111,37 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         )
         Base.metadata.create_all(bind=engine)
         session = sessionmaker(bind=engine)()
-        pest = next(item for item in main.PEST_DATA if item["risk"] == "LOW")
-        record = deepcopy(SOLUTION_RECORDS[0])
-        record.update(
-            solution_id="unsupported_low",
-            pest_id=pest["pest_id"],
-            risk_level="LOW",
-        )
 
         try:
-            with patch.object(main, "SOLUTION_RECORDS", [record]):
-                with self.assertRaisesRegex(ValueError, "Unsupported solution risk"):
-                    main.seed_pest_data(session)
+            with patch.object(main, "SOLUTION_RECORDS", []):
+                main.seed_pest_data(session)
+            self.assertEqual(
+                session.query(main.PestSolutionCoverage).count(),
+                132,
+            )
+            pest = next(item for item in main.PEST_DATA if item["risk"] == "LOW")
+            stored = (
+                session.query(main.PestSolutionCoverage)
+                .filter_by(pest_id=pest["pest_id"])
+                .one()
+            )
+            self.assertEqual(stored.research_data["risk_level"], "LOW")
+            self.assertEqual(stored.research_data["common_name"], pest["name"])
+            self.assertEqual(stored.review_status, "NEEDS_REVIEW")
+
+            rhinoceros = (
+                session.query(main.PestSolutionCoverage)
+                .filter_by(pest_id="rhinoceros_beetle")
+                .one()
+            )
+            self.assertEqual(
+                rhinoceros.research_data["verified_host_crops"][0]["crop_id"],
+                "coconut",
+            )
+            self.assertEqual(
+                rhinoceros.research_data["field_status"]["chemical_management"],
+                "NOT_ESTABLISHED",
+            )
         finally:
             session.close()
             engine.dispose()

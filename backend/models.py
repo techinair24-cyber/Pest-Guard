@@ -188,6 +188,7 @@ class PestCropSolution(Base):
     description = Column(Text, nullable=True)
     identification_signs = Column(Text, nullable=True)
     crop_damage = Column(Text, nullable=True)
+    affected_plant_parts = Column(Text, nullable=True)
     recommended_treatment = Column(Text, nullable=True)
     immediate_control_measures = Column(Text, nullable=True)
     biological_control_options = Column(Text, nullable=True)
@@ -213,6 +214,7 @@ class PestSolutionCoverage(Base):
     review_status = Column(String(20), nullable=False, default="NEEDS_REVIEW")
     unresolved_fields = Column(JSON, nullable=False, default=list)
     reviewed_on = Column(String(10), nullable=True)
+    research_data = Column(JSON, nullable=True)
 
 
 class HighRiskSolutionHistory(Base):

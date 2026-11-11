@@ -108,7 +108,7 @@ class SolutionSourceResponse(BaseModel):
     title: str
     organization: str
     url: str
-    reviewed_on: str
+    reviewed_on: Optional[str] = None
     supports: list[str] = Field(default_factory=list)
 
 
@@ -116,27 +116,27 @@ class PestCropSolutionResponse(BaseModel):
     solution_id: str
     pest_id: str
     pest_name: str
-    scientific_name: str
     insect_group: str
-    risk: Literal["HIGH", "MEDIUM"]
+    risk: Literal["HIGH", "MEDIUM", "LOW"]
     crop_id: str
     crop_name: str
     region: Optional[str] = None
-    description: str
-    identification_signs: str
-    crop_damage: str
-    recommended_treatment: str
-    immediate_control_measures: str
-    biological_control_options: str
-    cultural_control_methods: str
-    mechanical_control_methods: str
-    chemical_control_options: str
-    prevention: str
-    monitoring: str
-    safety_precautions: str
-    expert_advice: str
+    description: Optional[str] = None
+    identification_signs: Optional[str] = None
+    crop_damage: Optional[str] = None
+    affected_plant_parts: Optional[str] = None
+    recommended_treatment: Optional[str] = None
+    immediate_control_measures: Optional[str] = None
+    biological_control_options: Optional[str] = None
+    cultural_control_methods: Optional[str] = None
+    mechanical_control_methods: Optional[str] = None
+    chemical_control_options: Optional[str] = None
+    prevention: Optional[str] = None
+    monitoring: Optional[str] = None
+    safety_precautions: Optional[str] = None
+    expert_advice: Optional[str] = None
     source_references: list[SolutionSourceResponse]
-    reviewed_on: str
+    reviewed_on: Optional[str] = None
 
 
 class PestCropSolutionListResponse(BaseModel):
