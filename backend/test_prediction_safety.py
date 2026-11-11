@@ -975,7 +975,11 @@ class AudioPredictionSafetyTests(unittest.TestCase):
 
     def test_solution_inventory_requires_verified_crop_specific_records(self):
         from crop_data import CROP_DATA
-        from solution_data import PEST_COVERAGE_DATA, SOLUTION_RECORDS
+        from solution_data import (
+            PEST_COVERAGE_DATA,
+            SOLUTION_RECORDS,
+            validate_solution_records,
+        )
 
         self.assertEqual(len(CROP_DATA), 60)
         self.assertEqual(
@@ -1008,6 +1012,17 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         self.assertEqual(SOLUTION_RECORDS[0]["pest_id"], "rhinoceros_beetle")
         self.assertEqual(SOLUTION_RECORDS[0]["crop_id"], "coconut")
         self.assertIsNone(SOLUTION_RECORDS[0]["chemical_control_options"])
+        self.assertIn(
+            "mechanical_control_methods",
+            SOLUTION_RECORDS[0]["source_references"][0]["supports"],
+        )
+        self.assertIn(
+            "Rhinolure pheromone traps",
+            SOLUTION_RECORDS[0]["mechanical_control_methods"],
+        )
+        self.assertTrue(validate_solution_records(SOLUTION_RECORDS))
+        with self.assertRaisesRegex(ValueError, "Duplicate pest-crop solution"):
+            validate_solution_records(SOLUTION_RECORDS * 2)
 
     def test_unverified_solution_records_are_not_returned_by_api(self):
         from database import Base
@@ -1096,6 +1111,78 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             self.assertNotIn(
                 "unsupported_low",
                 {item["solution_id"] for item in response["solutions"]},
+            )
+        finally:
+            session.close()
+            engine.dispose()
+
+    def test_solution_api_filters_crop_and_pest_and_supports_multiple_crops(self):
+        from database import Base
+
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(bind=engine)
+        session = sessionmaker(bind=engine)()
+        try:
+            main.seed_pest_data(session)
+            rice = session.query(main.Crop).filter_by(crop_id="rice").one()
+            synthetic_record = main.PestCropSolution(
+                solution_id="test_only_rhinoceros_beetle_rice",
+                pest_id="rhinoceros_beetle",
+                crop_id=rice.crop_id,
+                risk_level="HIGH",
+                status="VERIFIED",
+                scientific_name="Test-only fixture identity",
+                crop_damage="Test-only fixture damage evidence.",
+                mechanical_control_methods="Test-only fixture mechanical control.",
+                reviewed_on="2026-11-11",
+                source_references=[
+                    {
+                        "title": "Synthetic API test fixture",
+                        "organization": "Automated test",
+                        "url": "https://example.test/fixture",
+                        "reviewed_on": "2026-11-11",
+                        "supports": [
+                            "scientific_name",
+                            "crop_id",
+                            "crop_damage",
+                            "mechanical_control_methods",
+                        ],
+                    }
+                ],
+            )
+            session.add(synthetic_record)
+            session.commit()
+
+            rice_response = main.get_solutions(
+                crop_id="rice",
+                pest_id="rhinoceros_beetle",
+                db=session,
+            )
+            main.PestCropSolutionListResponse.model_validate(rice_response)
+            self.assertEqual(
+                [item["solution_id"] for item in rice_response["solutions"]],
+                ["test_only_rhinoceros_beetle_rice"],
+            )
+
+            unmatched_pest_response = main.get_solutions(
+                crop_id="rice",
+                pest_id="green_grasshopper",
+                db=session,
+            )
+            self.assertEqual(unmatched_pest_response["solutions"], [])
+
+            coconut_response = main.get_solutions(
+                crop_id="coconut",
+                pest_id="rhinoceros_beetle",
+                db=session,
+            )
+            self.assertEqual(
+                [item["solution_id"] for item in coconut_response["solutions"]],
+                ["rhinoceros_beetle_coconut_high_2026_11_11"],
             )
         finally:
             session.close()

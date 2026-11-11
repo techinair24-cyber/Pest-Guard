@@ -34,7 +34,11 @@ SOLUTION_RECORDS = [
         ),
         "mechanical_control_methods": (
             "The TNAU coconut pest-management page recommends examining palm "
-            "crowns at harvest and hooking out and killing adult beetles."
+            "crowns at each harvest and hooking out and killing adult beetles. "
+            "It also recommends castor-cake water pots, split tender-coconut "
+            "stem or green-petiole traps, light traps after the first summer "
+            "and monsoon rains, and Rhinolure pheromone traps at one per "
+            "0.5 hectare."
         ),
         "chemical_control_options": None,
         "prevention": (
@@ -72,6 +76,33 @@ SOLUTION_RECORDS = [
         "reviewed_on": "2026-11-11",
     }
 ]
+
+
+def validate_solution_records(records):
+    seen = set()
+
+    for item in records:
+        identity = (item["pest_id"], item["crop_id"])
+
+        if identity in seen:
+            raise ValueError(f"Duplicate pest-crop solution: {identity}")
+
+        seen.add(identity)
+
+        if item["risk_level"] not in {"HIGH", "MEDIUM"}:
+            raise ValueError(f"Unsupported risk level: {item['risk_level']}")
+
+        if item["status"] == "VERIFIED":
+            if not item.get("scientific_name"):
+                raise ValueError(f"Missing scientific name: {item['pest_id']}")
+
+            if not item.get("source_references"):
+                raise ValueError(f"Missing sources: {item['pest_id']}")
+
+    return True
+
+
+validate_solution_records(SOLUTION_RECORDS)
 
 _PEST_BY_ID = {pest["pest_id"]: pest for pest in PEST_DATA}
 _SOLUTION_BY_IDENTITY = {
