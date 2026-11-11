@@ -34,6 +34,7 @@ import {
   matchesDetectionControlAction,
   getRequestedDetectionControlPresentation,
   getIdentificationLabel,
+  getLatestDetectionSpeciesName,
   getLeadingSpeciesPrediction,
   requestDetectionControl,
 } from '../utils/liveMonitoringStatus'
@@ -276,6 +277,10 @@ function LiveMonitoring() {
   const healthTone = connectionState === 'Online' ? 'online' : 'offline'
   const leadingSpeciesPrediction = getLeadingSpeciesPrediction(displayDetection)
   const predictedPestName = leadingSpeciesPrediction?.pest || ''
+  const latestDetectionSpeciesName = getLatestDetectionSpeciesName(
+    displayDetection,
+    pestDirectory,
+  )
   const insectGroup = getDetectionInsectGroup(displayDetection)
   const topSpeciesPredictions = getTopSpeciesPredictions(
     displayDetection?.top_predictions,
@@ -694,8 +699,8 @@ function LiveMonitoring() {
                 </small>
               )}
               <strong>
-                {predictedPestName
-                  ? getCandidateDisplayName(leadingSpeciesPrediction)
+                {predictedPestName || latestDetectionSpeciesName !== 'Unknown pest'
+                  ? latestDetectionSpeciesName
                   : displayDetection
                     ? displayDetectionLabel === 'Inference error'
                       ? displayDetectionLabel

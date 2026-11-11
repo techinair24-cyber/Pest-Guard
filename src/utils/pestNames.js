@@ -184,3 +184,37 @@ export function getDisplayPestName(
 
   return `${commonName} (${scientificName})`
 }
+
+export function getVerifiedDetectionDisplayName(
+  detection,
+  directory = {},
+) {
+  const pestId = String(detection?.pest_id || '').trim()
+
+  if (
+    detection?.status !== 'HARMFUL_PEST' ||
+    detection?.pest_verified !== true ||
+    !pestId
+  ) {
+    return 'Unknown pest'
+  }
+
+  const catalogEntry = directory[normalizePestName(pestId)]
+  if (catalogEntry && catalogEntry.pestId !== pestId) {
+    return 'Unknown pest'
+  }
+
+  const commonName = String(
+    detection.common_name ||
+      catalogEntry?.commonName ||
+      detection.pest ||
+      '',
+  ).trim()
+  if (!commonName) return 'Unknown pest'
+
+  return getDisplayPestName(commonName, directory, {
+    common_name: commonName,
+    scientific_name:
+      detection.scientific_name || catalogEntry?.scientificName || '',
+  })
+}

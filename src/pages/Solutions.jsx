@@ -18,6 +18,7 @@ import {
  buildPestDirectory,
  getDisplayPestName,
  getDetectionRiskEstimate,
+ getVerifiedDetectionDisplayName,
  normalizePestName,
 } from '../utils/pestNames'
 
@@ -250,7 +251,7 @@ function Solutions() {
   (item) => item.pest_id === detection?.pest_id,
  )
  const pestName = hasVerifiedLiveDetection
-  ? getDisplayPestName(detectionPest.name, pestDirectory, detection)
+  ? getVerifiedDetectionDisplayName(detection, pestDirectory)
   : 'Unconfirmed model prediction'
  const riskLabel = hasVerifiedLiveDetection ? catalogRisk : 'UNCONFIRMED'
 

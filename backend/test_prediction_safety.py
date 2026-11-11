@@ -913,6 +913,66 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         self.assertEqual(device_filter.left, main.Detection.device_id)
         self.assertEqual(device_filter.right.value, "FIELD-UNIT-02")
 
+    def test_latest_detection_serialization_preserves_known_common_name_and_scores(self):
+        pest = main.Pest(
+            pest_id="european_field_cricket",
+            name="European Field Cricket",
+            scientific_name=None,
+            risk="HIGH",
+            description="",
+            symptoms="",
+        )
+        detection = Mock(
+            id=42,
+            device_id="FIELD-UNIT-01",
+            status="HARMFUL_PEST",
+            pest="European Field Cricket",
+            scientific_name=None,
+            common_name="European Field Cricket",
+            confidence=0.677,
+            top_predictions=json.dumps({
+                "species": [{
+                    "pest": "European Field Cricket",
+                    "score": 0.677,
+                    "subtype_confidence": 0.677,
+                }],
+            }),
+            insect_group="Crickets",
+            group_score=0.728,
+            risk="HIGH",
+            risk_rationale="Catalogue risk.",
+            affected_crops="[]",
+            metadata_source_name=None,
+            metadata_source_url=None,
+            temperature=None,
+            humidity=None,
+            audio_file=None,
+            message="Model-predicted harmful pest",
+            detected_at=datetime(2026, 11, 11, 12, 0),
+        )
+        latest_query = Mock()
+        latest_query.order_by.return_value = latest_query
+        latest_query.first.return_value = detection
+        pest_query = Mock()
+        pest_query.all.return_value = [pest]
+        database = Mock()
+        database.query.side_effect = lambda model: (
+            latest_query if model is main.Detection else pest_query
+        )
+
+        response = main.get_latest_detection(db=database)["detection"]
+        api_response = main.DetectionResponse.model_validate(response)
+
+        self.assertEqual(response["common_name"], "European Field Cricket")
+        self.assertIsNone(response["scientific_name"])
+        self.assertEqual(response["pest_id"], "european_field_cricket")
+        self.assertTrue(response["pest_verified"])
+        self.assertEqual(response["risk"], "HIGH")
+        self.assertEqual(response["confidence"], 0.677)
+        self.assertEqual(response["group_score"], 0.728)
+        self.assertEqual(api_response.common_name, "European Field Cricket")
+        self.assertIsNone(api_response.scientific_name)
+
     def test_solution_inventory_requires_verified_crop_specific_records(self):
         from crop_data import CROP_DATA
         from solution_data import PEST_COVERAGE_DATA, SOLUTION_RECORDS

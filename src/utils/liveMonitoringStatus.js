@@ -3,6 +3,7 @@ import {
   isInsectGroupLabel,
   getTopSpeciesPredictions,
 } from './insectPredictions.js'
+import { getVerifiedDetectionDisplayName } from './pestNames.js'
 
 export function getLeadingSpeciesPrediction(detection) {
   const candidate = getTopSpeciesPredictions(detection?.top_predictions)[0]
@@ -21,6 +22,14 @@ export function getLeadingSpeciesPrediction(detection) {
 export function getLeadingSpeciesLabel(detection) {
   const candidate = getLeadingSpeciesPrediction(detection)
   return candidate ? getCandidateDisplayName(candidate) : ''
+}
+
+export function getLatestDetectionSpeciesName(detection, directory = {}) {
+  const verifiedName = getVerifiedDetectionDisplayName(detection, directory)
+  if (verifiedName !== 'Unknown pest') return verifiedName
+
+  const candidate = getLeadingSpeciesPrediction(detection)
+  return candidate ? getCandidateDisplayName(candidate) : 'Unknown pest'
 }
 
 export function getIdentificationLabel(detection) {
