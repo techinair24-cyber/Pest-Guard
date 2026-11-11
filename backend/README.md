@@ -12,7 +12,7 @@ pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
 
-Run the command from the `backend` directory. The service creates `pest_guard.db` on first start and seeds pest and solution reference catalogs. Detection records are created by `POST /api/device/detection`.
+Run the command from the `backend` directory. The service creates `pest_guard.db` on first start and seeds pest, crop, and solution-review reference data. Detection records are created by `POST /api/device/detection`.
 
 ## Field-unit detection control
 
@@ -52,9 +52,9 @@ AI detections also include `insect_group` and `group_score`. Group-only and unce
 
 ## Solution guidance
 
-`POST /api/ai/solution` requires a species prediction that matches an exact pest catalogue record and its supported risk category. It returns validated Gemini text for the `about`, `recommended_action`, and `prevention` fields. If Gemini is unavailable or returns incomplete data, the API returns an error instead of fallback guidance. Pesticide products, doses, and application precautions remain unavailable until a verified applicable source is integrated.
+The Solutions page uses manually maintained, source-attributed records in `solution_data.py`; it does not generate guidance with an external AI provider. The crop list in `crop_data.py` defines supported search choices, not pest-to-crop relationships. `GET /api/crops` lists supported crops, and `GET /api/solutions?crop_id={crop_id}` returns only complete `VERIFIED` records with an exact crop match and catalogue-risk match. Records marked `NEEDS_REVIEW` are withheld. No pest/crop association or treatment is inferred when evidence is unavailable.
 
-`GET /api/solutions/history/high-risk` returns persisted history records and a `total` count. Guidance is exposed only when the record has a verified catalogue or Gemini source; legacy history without source metadata remains available as a detection record but does not display its unverified solution text.
+`GET /api/solutions/history/high-risk` returns persisted history records and a `total` count. It does not attach unverified or legacy solution text to those records. The API response shape is defined in `schemas.py`; source organization, URL, title, and review date are included with each verified crop solution.
 
 Run the focused safety tests from this directory:
 

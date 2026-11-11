@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -95,6 +95,54 @@ class SolutionResponse(BaseModel):
     description: Optional[str] = None
     recommended_action: Optional[str] = None
     prevention: Optional[str] = None
+
+
+class CropResponse(BaseModel):
+    crop_id: str
+    name: str
+    category: str
+    aliases: list[str] = Field(default_factory=list)
+
+
+class SolutionSourceResponse(BaseModel):
+    title: str
+    organization: str
+    url: str
+    reviewed_on: str
+    supports: list[str] = Field(default_factory=list)
+
+
+class PestCropSolutionResponse(BaseModel):
+    solution_id: str
+    pest_id: str
+    pest_name: str
+    scientific_name: str
+    insect_group: str
+    risk: Literal["HIGH", "MEDIUM"]
+    crop_id: str
+    crop_name: str
+    region: Optional[str] = None
+    description: str
+    identification_signs: str
+    crop_damage: str
+    recommended_treatment: str
+    immediate_control_measures: str
+    biological_control_options: str
+    cultural_control_methods: str
+    mechanical_control_methods: str
+    chemical_control_options: str
+    prevention: str
+    monitoring: str
+    safety_precautions: str
+    expert_advice: str
+    source_references: list[SolutionSourceResponse]
+    reviewed_on: str
+
+
+class PestCropSolutionListResponse(BaseModel):
+    crop: CropResponse
+    total: int
+    solutions: list[PestCropSolutionResponse] = Field(default_factory=list)
 
 
 class HealthResponse(BaseModel):

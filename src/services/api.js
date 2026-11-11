@@ -172,24 +172,25 @@ export const getPests = async () => {
   return data.pests || []
 }
 
+export const getCrops = async (search = '') => {
+  const query = new URLSearchParams()
+  if (search.trim()) query.set('search', search.trim())
+  const queryString = query.toString()
+  return request(`/api/crops${queryString ? `?${queryString}` : ''}`)
+}
+
+export const getCropSolutions = async (cropId, { pestId } = {}) => {
+  const query = new URLSearchParams({ crop_id: cropId })
+  if (pestId) query.set('pest_id', pestId)
+  return request(`/api/solutions?${query.toString()}`)
+}
+
 export const getPestInfo = async (pestId) =>
   request(
     `/api/pests/${encodeURIComponent(pestId)}`,
   )
 
 export const getPestById = getPestInfo
-
-export const getSolutions = async () => {
-  const data = await request('/api/solutions')
-  return data.solutions || []
-}
-
-export const getSolution = async (pestId) =>
-  request(
-    `/api/solutions/${encodeURIComponent(pestId)}`,
-  )
-
-export const getSolutionByPest = getSolution
 
 export const predictAI = (audio) =>
   request('/api/ai/predict', {

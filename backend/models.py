@@ -1,6 +1,17 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 
 from database import Base
 
@@ -110,6 +121,15 @@ class Pest(Base):
     )
 
 
+class Crop(Base):
+    __tablename__ = "crops"
+
+    crop_id = Column(String(100), primary_key=True)
+    name = Column(String(150), nullable=False)
+    category = Column(String(100), nullable=False)
+    aliases = Column(JSON, nullable=False, default=list)
+
+
 class Solution(Base):
     __tablename__ = "solutions"
 
@@ -135,6 +155,64 @@ class Solution(Base):
         default=datetime.utcnow,
         nullable=False,
     )
+
+
+class PestCropSolution(Base):
+    __tablename__ = "pest_crop_solutions"
+    __table_args__ = (
+        UniqueConstraint(
+            "pest_id",
+            "crop_id",
+            "risk_level",
+            name="uq_pest_crop_solution_identity",
+        ),
+    )
+
+    solution_id = Column(String(300), primary_key=True)
+    pest_id = Column(
+        String(100),
+        ForeignKey("pests.pest_id"),
+        nullable=False,
+        index=True,
+    )
+    crop_id = Column(
+        String(100),
+        ForeignKey("crops.crop_id"),
+        nullable=False,
+        index=True,
+    )
+    risk_level = Column(String(20), nullable=False)
+    status = Column(String(20), nullable=False, default="NEEDS_REVIEW")
+    region = Column(String(150), nullable=True)
+    scientific_name = Column(String(200), nullable=True)
+    description = Column(Text, nullable=True)
+    identification_signs = Column(Text, nullable=True)
+    crop_damage = Column(Text, nullable=True)
+    recommended_treatment = Column(Text, nullable=True)
+    immediate_control_measures = Column(Text, nullable=True)
+    biological_control_options = Column(Text, nullable=True)
+    cultural_control_methods = Column(Text, nullable=True)
+    mechanical_control_methods = Column(Text, nullable=True)
+    chemical_control_options = Column(Text, nullable=True)
+    prevention = Column(Text, nullable=True)
+    monitoring = Column(Text, nullable=True)
+    safety_precautions = Column(Text, nullable=True)
+    expert_advice = Column(Text, nullable=True)
+    source_references = Column(JSON, nullable=False, default=list)
+    reviewed_on = Column(String(10), nullable=True)
+
+
+class PestSolutionCoverage(Base):
+    __tablename__ = "pest_solution_coverage"
+
+    pest_id = Column(
+        String(100),
+        ForeignKey("pests.pest_id"),
+        primary_key=True,
+    )
+    review_status = Column(String(20), nullable=False, default="NEEDS_REVIEW")
+    unresolved_fields = Column(JSON, nullable=False, default=list)
+    reviewed_on = Column(String(10), nullable=True)
 
 
 class HighRiskSolutionHistory(Base):

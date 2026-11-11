@@ -36,23 +36,12 @@ def catalog_records(risk="LOW"):
     ]
 
 
-def generated_solution():
-    return {
-        "about": "Information pending expert verification.",
-        "recommended_action": "Confirm the insect before taking action.",
-        "pesticide_recommendation": "No verified product.",
-        "precautions": "Follow local guidance.",
-        "prevention": "Use integrated pest management.",
-    }
-
-def real_active_catalog_item(with_solution=False):
-    solution_ids = {item["pest_id"] for item in main.SOLUTION_DATA}
+def real_active_catalog_item():
     return next(
         item
         for item in main.PEST_DATA
         if main._is_active_species_label(item.get("name"))
         and item.get("risk") in {"HIGH", "MEDIUM", "LOW", "NO_RISK"}
-        and (not with_solution or item.get("pest_id") in solution_ids)
     )
 
 def real_high_risk_catalog_item():
@@ -924,162 +913,125 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         self.assertEqual(device_filter.left, main.Detection.device_id)
         self.assertEqual(device_filter.right.value, "FIELD-UNIT-02")
 
-    def test_unverified_group_does_not_receive_a_generated_solution(self):
-        catalog_item = real_active_catalog_item()
-        pest = next(
-            group
-            for group in main._PEST_GUARD_HIERARCHY.groups
-            if not main._is_active_species_label(group)
-        )
-        payload = main.AISolutionRequest(
-            pest=pest,
-            common_name=pest,
-            risk=catalog_item["risk"],
-            confidence=0.99,
-        )
+    def test_solution_inventory_requires_verified_crop_specific_records(self):
+        from crop_data import CROP_DATA
+        from solution_data import PEST_COVERAGE_DATA, SOLUTION_RECORDS
 
-        with patch.object(main, "_find_verified_pest_record", return_value=None):
-            with self.assertRaises(HTTPException) as raised:
-                asyncio.run(main.generate_ai_solution(payload, Mock()))
-
-        self.assertEqual(raised.exception.status_code, 422)
-        self.assertIn("verified species-level", raised.exception.detail)
-
-    def test_unknown_risk_does_not_allow_specific_solution_with_a_record(self):
-        catalog_item = real_active_catalog_item()
-        catalog_record = SimpleNamespace(
-            **{**catalog_item, "risk": None}
+        self.assertEqual(len(CROP_DATA), 60)
+        self.assertEqual(
+            {item["pest_id"] for item in PEST_COVERAGE_DATA},
+            {item["pest_id"] for item in main.PEST_DATA},
         )
-        payload = main.AISolutionRequest(
-            pest=catalog_item.get("scientific_name") or catalog_item["name"],
-            common_name=catalog_item["name"],
-            risk=catalog_item["risk"],
-            confidence=0.99,
-            pest_id=catalog_item["pest_id"],
+        self.assertTrue(SOLUTION_RECORDS)
+        self.assertTrue(
+            all(item["status"] == "NEEDS_REVIEW" for item in SOLUTION_RECORDS)
+        )
+        self.assertTrue(
+            all(not item.get("recommended_action") for item in SOLUTION_RECORDS)
         )
 
-        with (
-            patch.object(
-                main,
-                "_find_verified_pest_record",
-                return_value=catalog_record,
+    def test_unverified_solution_records_are_not_returned_by_api(self):
+        from database import Base
+
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(bind=engine)
+        session = sessionmaker(bind=engine)()
+        try:
+            main.seed_pest_data(session)
+            crops = main.get_crops(search="paddy", db=session)
+            self.assertEqual(len(crops), 1)
+            self.assertEqual(crops[0]["crop_id"], "rice")
+
+            crop = session.query(main.Crop).first()
+            response = main.get_solutions(crop_id=crop.crop_id, pest_id=None, db=session)
+            main.PestCropSolutionListResponse.model_validate(response)
+            self.assertEqual(response["solutions"], [])
+        finally:
+            session.close()
+            engine.dispose()
+
+    def test_solution_api_excludes_low_risk_records(self):
+        from database import Base
+
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(bind=engine)
+        session = sessionmaker(bind=engine)()
+        try:
+            main.seed_pest_data(session)
+            crop = session.query(main.Crop).filter_by(crop_id="coconut").one()
+            low_risk_pest = next(
+                item
+                for item in main.PEST_DATA
+                if item["risk"] == "LOW"
+                and main._is_active_species_label(item["name"])
             )
-        ):
-            with self.assertRaises(HTTPException) as raised:
-                asyncio.run(main.generate_ai_solution(payload, Mock()))
-
-        self.assertEqual(raised.exception.status_code, 503)
-        self.assertIn("no valid risk category", raised.exception.detail)
-
-    def test_catalog_match_preserves_model_prediction_and_catalog_risk(self):
-        catalog_item = real_active_catalog_item()
-        catalog_record = SimpleNamespace(**catalog_item)
-        payload = main.AISolutionRequest(
-            pest=catalog_item.get("scientific_name") or catalog_item["name"],
-            common_name=catalog_item["name"],
-            risk=catalog_item["risk"],
-            confidence=0.99,
-            pest_id=catalog_item["pest_id"],
-        )
-
-        with (
-            patch.object(
-                main,
-                "_find_verified_pest_record",
-                return_value=catalog_record,
-            ),
-            patch.object(
-                main,
-                "_request_gemini_solution",
-                return_value=generated_solution(),
-            ),
-        ):
-            response = asyncio.run(
-                main.generate_ai_solution(payload, Mock())
+            unsupported_record = main.PestCropSolution(
+                solution_id="unsupported_low",
+                pest_id=low_risk_pest["pest_id"],
+                crop_id=crop.crop_id,
+                risk_level="LOW",
+                status="VERIFIED",
             )
 
-        self.assertEqual(response["risk"], catalog_item["risk"])
-        self.assertEqual(
-            response["pest"],
-            catalog_item.get("scientific_name") or catalog_item["name"],
+            session.add(unsupported_record)
+            session.commit()
+
+            response = main.get_solutions(
+                crop_id=crop.crop_id,
+                pest_id=None,
+                db=session,
+            )
+            main.PestCropSolutionListResponse.model_validate(response)
+            self.assertEqual(
+                {item["risk"] for item in response["solutions"]},
+                set(),
+            )
+            self.assertEqual(
+                {item["solution_id"] for item in response["solutions"]},
+                set(),
+            )
+        finally:
+            session.close()
+            engine.dispose()
+
+    def test_solution_seed_rejects_low_risk_records(self):
+        from copy import deepcopy
+        from database import Base
+        from solution_data import SOLUTION_RECORDS
+
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
         )
-        self.assertEqual(response["about"], generated_solution()["about"])
-        self.assertEqual(
-            response["recommended_action"],
-            generated_solution()["recommended_action"],
-        )
-        self.assertIsNone(response["pesticide_recommendation"])
-        self.assertIsNone(response["precautions"])
-
-    def test_solution_generation_returns_retryable_error_when_gemini_fails(self):
-        catalog_item = real_active_catalog_item()
-        pest_record = SimpleNamespace(**catalog_item)
-        payload = main.AISolutionRequest(
-            pest=catalog_item.get("scientific_name") or catalog_item["name"],
-            common_name=catalog_item["name"],
-            risk=catalog_item["risk"],
-            confidence=0.9,
-            pest_id=catalog_item["pest_id"],
-        )
-
-        with (
-            patch.object(
-                main,
-                "_find_verified_pest_record",
-                return_value=pest_record,
-            ),
-            patch.object(
-                main,
-                "_request_gemini_solution",
-                side_effect=RuntimeError("provider unavailable"),
-            ),
-        ):
-            with self.assertRaises(HTTPException) as raised:
-                asyncio.run(main.generate_ai_solution(payload, Mock()))
-
-        self.assertEqual(raised.exception.status_code, 502)
-        self.assertIn("please retry", raised.exception.detail)
-
-    def test_incomplete_gemini_guidance_is_not_returned(self):
-        catalog_item = real_active_catalog_item()
-        pest_record = SimpleNamespace(**catalog_item)
-        payload = main.AISolutionRequest(
-            pest=catalog_item.get("scientific_name") or catalog_item["name"],
-            common_name=catalog_item["name"],
-            risk=catalog_item["risk"],
-            confidence=0.9,
-            pest_id=catalog_item["pest_id"],
+        Base.metadata.create_all(bind=engine)
+        session = sessionmaker(bind=engine)()
+        pest = next(item for item in main.PEST_DATA if item["risk"] == "LOW")
+        record = deepcopy(SOLUTION_RECORDS[0])
+        record.update(
+            solution_id="unsupported_low",
+            pest_id=pest["pest_id"],
+            risk_level="LOW",
         )
 
-        with (
-            patch.object(
-                main,
-                "_find_verified_pest_record",
-                return_value=pest_record,
-            ),
-            patch.object(
-                main,
-                "_request_gemini_solution",
-                return_value={
-                    "about": "",
-                    "recommended_action": None,
-                    "prevention": "",
-                },
-            ),
-        ):
-            with self.assertRaises(HTTPException) as raised:
-                asyncio.run(main.generate_ai_solution(payload, Mock()))
-
-        self.assertEqual(raised.exception.status_code, 502)
-        self.assertIn("incomplete solution data", raised.exception.detail)
+        try:
+            with patch.object(main, "SOLUTION_RECORDS", [record]):
+                with self.assertRaisesRegex(ValueError, "Unsupported solution risk"):
+                    main.seed_pest_data(session)
+        finally:
+            session.close()
+            engine.dispose()
 
     def test_untracked_history_guidance_is_not_served(self):
-        catalog_item = real_active_catalog_item(with_solution=True)
-        catalog_solution = next(
-            item
-            for item in main.SOLUTION_DATA
-            if item["pest_id"] == catalog_item["pest_id"]
-        )
+        catalog_item = real_active_catalog_item()
         pest_record = SimpleNamespace(**catalog_item)
         database = Mock()
         item = SimpleNamespace(
@@ -1096,9 +1048,9 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             humidity=None,
             solution_title=None,
             solution_source=None,
-            solution_description=catalog_solution["description"],
-            recommended_action=catalog_solution["recommended_action"],
-            prevention=catalog_solution["prevention"],
+            solution_description="Legacy guidance",
+            recommended_action="Legacy guidance",
+            prevention="Legacy guidance",
             detected_at=None,
             created_at=None,
         )
@@ -1118,12 +1070,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         self.assertIsNone(response["prevention"])
 
     def test_high_risk_history_preserves_identity_and_risk(self):
-        catalog_item = real_active_catalog_item(with_solution=True)
-        catalog_solution = next(
-            item
-            for item in main.SOLUTION_DATA
-            if item["pest_id"] == catalog_item["pest_id"]
-        )
+        catalog_item = real_high_risk_catalog_item()
         pest_record = SimpleNamespace(**catalog_item)
         item = SimpleNamespace(
             id=7,
@@ -1137,11 +1084,11 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             confidence=None,
             temperature=None,
             humidity=None,
-            solution_title=catalog_solution["title"],
+            solution_title="Legacy title",
             solution_source="CATALOG",
-            solution_description=catalog_solution["description"],
-            recommended_action=catalog_solution["recommended_action"],
-            prevention=catalog_solution["prevention"],
+            solution_description="Legacy guidance",
+            recommended_action="Legacy guidance",
+            prevention="Legacy guidance",
             detected_at=None,
             created_at=None,
         )
@@ -1160,58 +1107,12 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         self.assertEqual(response["common_name"], catalog_item["name"])
         self.assertEqual(
             response["solution_title"],
-            f"{catalog_item['name']} ({catalog_item['risk']}) "
-            "Integrated Pest Management Guidance",
+            None,
         )
-        self.assertEqual(response["solution_source"], "CATALOG")
-        self.assertEqual(
-            response["recommended_action"],
-            catalog_solution["recommended_action"],
-        )
-
-    def test_unverified_classes_cannot_receive_pest_specific_guidance(self):
-        catalog_item = real_active_catalog_item()
-        for pest in (
-            "Grasshopper",
-            "Migratory locust",
-            "termite",
-            "Cicada",
-        ):
-            payload = main.AISolutionRequest(
-                pest=pest,
-                common_name=pest,
-                risk=catalog_item["risk"],
-                confidence=0.99,
-            )
-
-            with self.subTest(pest=pest):
-                with patch.object(
-                    main,
-                    "_find_verified_pest_record",
-                    return_value=None,
-                ):
-                    with self.assertRaises(HTTPException) as raised:
-                        asyncio.run(
-                            main.generate_ai_solution(payload, Mock())
-                        )
-
-                self.assertEqual(raised.exception.status_code, 422)
-
-    def test_missing_active_catalogue_record_does_not_return_guidance(self):
-        catalog_item = real_active_catalog_item()
-        payload = main.AISolutionRequest(
-            pest=catalog_item.get("scientific_name") or catalog_item["name"],
-            common_name=catalog_item["name"],
-            risk=catalog_item["risk"],
-            confidence=0.99,
-            pest_id=catalog_item["pest_id"],
-        )
-
-        with patch.object(main, "_find_verified_pest_record", return_value=None):
-            with self.assertRaises(HTTPException) as raised:
-                asyncio.run(main.generate_ai_solution(payload, Mock()))
-
-        self.assertEqual(raised.exception.status_code, 503)
+        self.assertIsNone(response["solution_source"])
+        self.assertIsNone(response["solution_description"])
+        self.assertIsNone(response["recommended_action"])
+        self.assertIsNone(response["prevention"])
 
     def test_harmful_device_detection_status_is_preserved(self):
         database = Mock()
@@ -1313,11 +1214,6 @@ class AudioPredictionSafetyTests(unittest.TestCase):
                 main.manager, "broadcast", new_callable=AsyncMock
             ) as broadcast,
             patch.object(main, "send_high_risk_sms"),
-            patch.object(
-                main,
-                "_request_gemini_solution",
-                return_value=generated_solution(),
-            ),
         ):
             detection = asyncio.run(main.create_detection(payload, database))
 
@@ -1587,11 +1483,6 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
                         new_callable=AsyncMock,
                     ) as broadcast,
                     patch.object(main, "send_high_risk_sms"),
-                    patch.object(
-                        main,
-                        "_request_gemini_solution",
-                        return_value=generated_solution(),
-                    ),
                 ):
                     response = asyncio.run(
                         main.create_detection(payload, self.db)
@@ -1623,19 +1514,13 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
                         .first()
                     )
                     self.assertEqual(solution_history.risk, risk)
-                    self.assertEqual(
-                        solution_history.solution_title,
-                        f"{pest_name} ({risk}) AI Solution",
-                    )
+                    self.assertIsNone(solution_history.solution_title)
                     for field in (
                         "solution_description",
                         "recommended_action",
                         "prevention",
                     ):
-                        self.assertTrue(
-                            getattr(solution_history, field).strip(),
-                            field,
-                        )
+                        self.assertIsNone(getattr(solution_history, field), field)
 
     def test_prediction_prefers_canonical_catalogue_id_over_stale_name_match(self):
         pest_name = "Field Cricket"
@@ -1724,49 +1609,31 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
         pest_record.risk = catalog_item["risk"]
         self.db.commit()
 
-        for index, gemini_result in enumerate(
-            (RuntimeError("provider unavailable"), {}),
+        payload = main.DetectionCreate(
+            device_id="HIGH-RISK-NO-GUIDANCE",
+            status="HARMFUL_PEST",
+            pest=pest_name,
+            confidence=0.99,
+        )
+        with (
+            patch.object(main.manager, "broadcast", new_callable=AsyncMock),
+            patch.object(main, "send_high_risk_sms"),
         ):
-            with self.subTest(gemini_result=gemini_result):
-                payload = main.DetectionCreate(
-                    device_id=f"GEMINI-ERROR-{index}",
-                    status="HARMFUL_PEST",
-                    pest=pest_name,
-                    confidence=0.99,
-                )
-                with (
-                    patch.object(main.manager, "broadcast", new_callable=AsyncMock),
-                    patch.object(main, "send_high_risk_sms"),
-                    patch.object(
-                        main,
-                        "_request_gemini_solution",
-                        side_effect=gemini_result
-                        if isinstance(gemini_result, Exception)
-                        else None,
-                        return_value=(
-                            None
-                            if isinstance(gemini_result, Exception)
-                            else gemini_result
-                        ),
-                    ),
-                ):
-                    response = asyncio.run(
-                        main.create_detection(payload, self.db)
-                    )
+            response = asyncio.run(main.create_detection(payload, self.db))
 
-                history = (
-                    self.db.query(main.HighRiskSolutionHistory)
-                    .filter_by(detection_id=response["id"])
-                    .first()
-                )
-                self.assertEqual(history.risk, "HIGH")
-                self.assertIsNone(history.solution_source)
-                for field in (
-                    "solution_description",
-                    "recommended_action",
-                    "prevention",
-                ):
-                    self.assertIsNone(getattr(history, field), field)
+        history = (
+            self.db.query(main.HighRiskSolutionHistory)
+            .filter_by(detection_id=response["id"])
+            .first()
+        )
+        self.assertEqual(history.risk, "HIGH")
+        self.assertIsNone(history.solution_source)
+        for field in (
+            "solution_description",
+            "recommended_action",
+            "prevention",
+        ):
+            self.assertIsNone(getattr(history, field), field)
 
 
 class DeviceHeartbeatAndControlTests(unittest.TestCase):

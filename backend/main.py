@@ -6,28 +6,22 @@ import logging
 
 import os
 
-import urllib.error
-import urllib.request
-
-import time
-
 import uuid
 
 from twilio.rest import Client
 
+import difflib
 import json
 
 import numpy as np
 
 from pathlib import Path
 
-from typing import List, Literal
+from typing import List
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 
 from fastapi.middleware.cors import CORSMiddleware
-
-from pydantic import BaseModel, Field
 
 from sqlalchemy import desc, inspect, text
 
@@ -43,13 +37,17 @@ from models import (
 
     Pest,
 
-    Solution,
+    Crop,
+    PestCropSolution,
+    PestSolutionCoverage,
 
     HighRiskSolutionHistory,
 
 )
 
-from pest_data import PEST_DATA, SOLUTION_DATA
+from crop_data import CROP_DATA
+from pest_data import PEST_DATA
+from solution_data import PEST_COVERAGE_DATA, SOLUTION_RECORDS
 from pest_guard_hierarchy_inference_8class import (
     PestGuardHierarchy8Class as PestGuardHierarchy,
 )
@@ -67,6 +65,9 @@ from schemas import (
     DeviceHeartbeat,
 
     HealthResponse,
+    CropResponse,
+    PestCropSolutionListResponse,
+    PestCropSolutionResponse,
     PestResponse,
 )
 
@@ -369,49 +370,6 @@ def predict_pest(audio):
     return result
 
 
-class AISolutionRequest(BaseModel):
-
-    pest: str = Field(min_length=1, max_length=200)
-
-    common_name: str = Field(min_length=1, max_length=200)
-
-    risk: Literal["HIGH", "MEDIUM", "LOW", "NO_RISK"]
-
-    confidence: float = Field(ge=0, le=1)
-
-    pest_id: str = Field(default="", max_length=200)
-
-    pest_description: str = Field(default="", max_length=2000)
-
-    pest_symptoms: str = Field(default="", max_length=2000)
-
-    crop: str = Field(default="", max_length=100)
-
-class AISolutionResponse(BaseModel):
-
-    pest: str
-
-    common_name: str
-
-    pest_id: str
-
-    risk: Literal["HIGH", "MEDIUM", "LOW", "NO_RISK"]
-
-    confidence: float
-
-    crop: str
-
-    about: str
-
-    recommended_action: str
-
-    pesticide_recommendation: str | None = None
-
-    prevention: str
-
-    precautions: str | None = None
-
-
 def _find_verified_pest_record(db: Session, pest_name: str, pest_id: str = ""):
     if not pest_name:
         return None
@@ -699,212 +657,6 @@ def _serialize_detection(detection: Detection, db: Session | None) -> dict:
     return response
 
 
-def _request_gemini_solution(payload: AISolutionRequest) -> dict:
-    api_key = os.getenv("GEMINI_API_KEY")
-
-    if not api_key:
-        raise HTTPException(
-            status_code=503,
-            detail="Gemini AI solution generation is not configured.",
-        )
-
-    prompt = (
-        "You are an agricultural pest-management assistant. Return valid JSON only.\n\n"
-        f"Common name: {payload.common_name}\n"
-        f"Scientific name: {payload.pest}\n"
-        f"Risk level: {payload.risk}\n"
-        f"AI model score: {payload.confidence:.1%} (uncalibrated; not verified confidence)\n"
-        f"Crop: {payload.crop or 'not supplied'}\n"
-        f"Pest ID: {payload.pest_id or 'unavailable'}\n"
-        f"Known description: {payload.pest_description or 'unavailable'}\n"
-        f"Known symptoms: {payload.pest_symptoms or 'unavailable'}\n\n"
-        "Return exactly these three non-empty JSON string fields: about, recommended_action, "
-        "prevention.\n"
-        "about: explain the likely crop damage and observable symptoms for this accepted model "
-        "prediction; do not claim independent human confirmation or require it before displaying "
-        "the prediction.\n"
-        "recommended_action: give practical crop-protection measures, prioritizing integrated "
-        "pest management and suitable non-chemical controls.\n"
-        "prevention: give practical monitoring, sanitation, prevention, and follow-up steps.\n\n"
-        "Use only the supplied model-predicted pest; do not substitute another species. The model "
-        "score is uncalibrated. Do not claim independent confirmation. "
-        "Do not mention pesticide products, application rates, label intervals, or chemical "
-        "treatments; Pest Guard has no verified product-label source for this request. "
-        "If crop information is missing, say that crop-specific treatment cannot be confirmed. "
-        "Do not invent facts, label details, or treatment claims."
-    )
-
-    model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip() or "gemini-3.8-flash"
-    print("Gemini solution request model:", model)
-
-    request_body = json.dumps(
-        {
-            "contents": [
-                {
-                    "parts": [
-                        {
-                            "text": prompt
-                        }
-                    ]
-                }
-            ],
-            "generationConfig": {
-                "responseMimeType": "application/json",
-                "maxOutputTokens": 2500,
-            },
-        }
-    ).encode("utf-8")
-
-    provider_request = urllib.request.Request(
-        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
-        data=request_body,
-        headers={
-            "x-goog-api-key": api_key,
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
-
-    provider_data = None
-    last_provider_error = None
-
-    for attempt in range(3):
-        try:
-            with urllib.request.urlopen(provider_request, timeout=30) as response:
-                response_status = response.status
-                response_content_type = response.headers.get("Content-Type", "")
-                response_body = response.read()
-
-            if not response_body.strip():
-                logger.error(
-                    "Gemini provider returned an empty response "
-                    "(status=%s, content_type=%r)",
-                    response_status,
-                    response_content_type,
-                )
-                raise RuntimeError(
-                    "Gemini solution provider returned an empty response."
-                )
-
-            if "json" not in response_content_type.lower():
-                logger.error(
-                    "Gemini provider returned a non-JSON response "
-                    "(status=%s, content_type=%r, bytes=%s)",
-                    response_status,
-                    response_content_type,
-                    len(response_body),
-                )
-                raise RuntimeError(
-                    "Gemini solution provider returned a non-JSON response."
-                )
-
-            try:
-                provider_data = json.loads(response_body.decode("utf-8"))
-            except (UnicodeDecodeError, json.JSONDecodeError) as error:
-                logger.error(
-                    "Gemini provider returned invalid JSON "
-                    "(status=%s, content_type=%r, bytes=%s, error=%s)",
-                    response_status,
-                    response_content_type,
-                    len(response_body),
-                    type(error).__name__,
-                )
-                raise RuntimeError(
-                    "Gemini solution provider returned invalid JSON."
-                ) from error
-            break
-        except urllib.error.HTTPError as error:
-            logger.error(
-                "Gemini provider HTTP error (status=%s, content_type=%r)",
-                error.code,
-                error.headers.get("Content-Type", "") if error.headers else "",
-            )
-            last_provider_error = error
-            error.close()
-
-            if error.code == 503 and attempt < 2:
-                retry_seconds = 2 ** (attempt + 1)
-                print(f"Gemini 503 received. Retrying in {retry_seconds} seconds...")
-                time.sleep(retry_seconds)
-                continue
-
-            raise RuntimeError(
-                f"Gemini solution provider HTTP error {error.code}."
-            ) from error
-        except (urllib.error.URLError, TimeoutError) as error:
-            print("Gemini solution provider error:", repr(error))
-            last_provider_error = error
-            if attempt < 2:
-                retry_seconds = 2 ** (attempt + 1)
-                print(f"Gemini connection error. Retrying in {retry_seconds} seconds...")
-                time.sleep(retry_seconds)
-                continue
-            raise RuntimeError(
-                "Gemini solution provider returned an invalid or unavailable response."
-            ) from error
-
-    if provider_data is None:
-        raise RuntimeError("Gemini solution provider did not return a response.") from last_provider_error
-
-    if not isinstance(provider_data, dict):
-        logger.error("Gemini provider JSON response was not an object")
-        raise RuntimeError("Gemini solution provider returned an invalid response.")
-
-    try:
-        candidates = provider_data.get("candidates") or []
-        if not candidates:
-            logger.error("Gemini provider response contained no candidates")
-            raise RuntimeError("Gemini returned no candidates.")
-
-        parts = candidates[0].get("content", {}).get("parts", [])
-        content = "".join(
-            part.get("text", "")
-            for part in parts
-            if isinstance(part, dict) and part.get("text")
-        ).strip()
-
-        if not content:
-            logger.error("Gemini provider response contained empty content")
-            raise RuntimeError("Gemini returned empty content.")
-
-        if content.startswith("```json"):
-            content = content[7:]
-        elif content.startswith("```"):
-            content = content[3:]
-        if content.endswith("```"):
-            content = content[:-3]
-        content = content.strip()
-        logger.error("Gemini response text (first 2000 chars): %r", content[:2000])
-        generated = json.loads(content)
-
-    except (KeyError, IndexError, TypeError, ValueError) as error:
-        logger.error(
-            "Gemini solution response could not be parsed (%s)",
-            type(error).__name__,
-        )
-        raise RuntimeError(
-            "Gemini solution provider returned an invalid or unavailable response."
-        ) from error
-
-
-
-
-    required_fields = ("about", "recommended_action", "prevention")
-
-    if not isinstance(generated, dict) or any(
-        not isinstance(generated.get(field), str) or not generated[field].strip()
-        for field in required_fields
-    ):
-        raise RuntimeError("Gemini solution provider returned incomplete guidance.")
-
-    return {
-        "pest": payload.pest,
-        "common_name": payload.common_name,
-        "risk": payload.risk,
-        "confidence": payload.confidence,
-        "crop": payload.crop,
-        **{field: generated[field].strip() for field in required_fields},
-    }
 # -------------------------------------------------------------------
 
 # Database
@@ -1111,9 +863,7 @@ manager = ConnectionManager()
 
 def seed_pest_data(db: Session):
     """
-    Insert new pest records and update existing pest records
-    using pest_data.py as the source of truth.
-    Existing solution records are preserved.
+    Seed the catalogue, supported crop names, and reviewed solution records.
     """
     pest_columns = {column.name for column in Pest.__table__.columns}
 
@@ -1135,15 +885,88 @@ def seed_pest_data(db: Session):
         else:
             db.add(Pest(**pest_values))
 
-    for item in SOLUTION_DATA:
+    for item in CROP_DATA:
         existing = (
-            db.query(Solution)
-            .filter(Solution.pest_id == item["pest_id"])
+            db.query(Crop)
+            .filter(Crop.crop_id == item["crop_id"])
             .first()
         )
 
-        if not existing:
-            db.add(Solution(**item))
+        if existing:
+            for key, value in item.items():
+                setattr(existing, key, value)
+        else:
+            db.add(Crop(**item))
+
+    for item in PEST_COVERAGE_DATA:
+        existing = (
+            db.query(PestSolutionCoverage)
+            .filter(PestSolutionCoverage.pest_id == item["pest_id"])
+            .first()
+        )
+        if existing:
+            for key, value in item.items():
+                setattr(existing, key, value)
+        else:
+            db.add(PestSolutionCoverage(**item))
+
+    pest_by_id = {item["pest_id"]: item for item in PEST_DATA}
+    crop_ids = {item["crop_id"] for item in CROP_DATA}
+    solution_ids = set()
+    for item in SOLUTION_RECORDS:
+        pest = pest_by_id.get(item["pest_id"])
+        if not pest:
+            raise ValueError(f"Unknown pest_id in solution record: {item['pest_id']}")
+        if item["crop_id"] not in crop_ids:
+            raise ValueError(f"Unknown crop_id in solution record: {item['crop_id']}")
+        if item["risk_level"] not in {"HIGH", "MEDIUM"}:
+            raise ValueError(
+                f"Unsupported solution risk for pest_id={item['pest_id']}: "
+                f"{item['risk_level']}"
+            )
+        if item["risk_level"] != pest["risk"]:
+            raise ValueError(
+                f"Solution risk does not match catalogue for pest_id={item['pest_id']}"
+            )
+        if item["solution_id"] in solution_ids:
+            raise ValueError(f"Duplicate solution_id: {item['solution_id']}")
+        solution_ids.add(item["solution_id"])
+        if item["status"] == "VERIFIED":
+            required_fields = (
+                "scientific_name",
+                "description",
+                "identification_signs",
+                "crop_damage",
+                "recommended_treatment",
+                "immediate_control_measures",
+                "biological_control_options",
+                "cultural_control_methods",
+                "mechanical_control_methods",
+                "chemical_control_options",
+                "prevention",
+                "monitoring",
+                "safety_precautions",
+                "expert_advice",
+                "reviewed_on",
+            )
+            if any(not item.get(field) for field in required_fields):
+                raise ValueError(
+                    f"Verified solution is incomplete: {item['solution_id']}"
+                )
+            if not item.get("source_references"):
+                raise ValueError(
+                    f"Verified solution has no sources: {item['solution_id']}"
+                )
+        existing = (
+            db.query(PestCropSolution)
+            .filter(PestCropSolution.solution_id == item["solution_id"])
+            .first()
+        )
+        if existing:
+            for key, value in item.items():
+                setattr(existing, key, value)
+        else:
+            db.add(PestCropSolution(**item))
     db.commit()
 
 def startup_event():
@@ -1691,10 +1514,6 @@ def _high_risk_solution_history_response(item, db: Session) -> dict:
         pest_record
         and _is_active_species_label(pest_name)
     )
-    solution_source = getattr(item, "solution_source", None)
-    has_verified_solution_source = bool(
-        pest_verified and solution_source in {"CATALOG", "GEMINI"}
-    )
     return {
         "id": getattr(item, "id", None),
         "detection_id": getattr(item, "detection_id", None),
@@ -1710,150 +1529,14 @@ def _high_risk_solution_history_response(item, db: Session) -> dict:
         "confidence": getattr(item, "confidence", None),
         "temperature": getattr(item, "temperature", None),
         "humidity": getattr(item, "humidity", None),
-        "solution_title": (
-            f"{common_name} ({risk}) Integrated Pest Management Guidance"
-            if has_verified_solution_source and risk
-            else None
-        ),
-        "solution_source": (
-            solution_source if has_verified_solution_source else None
-        ),
-        "solution_description": (
-            getattr(item, "solution_description", None)
-            if has_verified_solution_source
-            else None
-        ),
-        "recommended_action": (
-            getattr(item, "recommended_action", None)
-            if has_verified_solution_source
-            else None
-        ),
-        "prevention": (
-            getattr(item, "prevention", None)
-            if has_verified_solution_source
-            else None
-        ),
+        "solution_title": None,
+        "solution_source": None,
+        "solution_description": None,
+        "recommended_action": None,
+        "prevention": None,
         "detected_at": getattr(item, "detected_at", None),
         "created_at": getattr(item, "created_at", None),
     }
-
-
-@app.post("/api/ai/solution", response_model=AISolutionResponse)
-async def generate_ai_solution(
-    payload: AISolutionRequest,
-    db: Session = Depends(get_db),
-):
-    if not payload.pest_id.strip():
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "A verified species-level prediction and its exact catalogue "
-                "pest_id are required for solution guidance."
-            ),
-        )
-
-    pest_record = _find_verified_pest_record(
-        db,
-        payload.pest,
-        payload.pest_id,
-    )
-
-    if not pest_record:
-        if _is_active_species_label(payload.pest) or payload.pest_id:
-            raise HTTPException(
-                status_code=503,
-                detail=(
-                    "The active pest prediction has no matching catalogue record; "
-                    "a species-specific solution cannot be returned."
-                ),
-            )
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "A verified species-level prediction is required to request "
-                "pest-specific solution guidance."
-            ),
-        )
-
-    if not (
-        _is_active_species_label(payload.pest)
-        or _is_active_species_label(pest_record.name)
-    ):
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "A verified species-level prediction is required to request "
-                "pest-specific solution guidance."
-            ),
-        )
-
-    candidate_pest = pest_record.scientific_name or pest_record.name
-    candidate_common_name = pest_record.name
-    candidate_pest_id = pest_record.pest_id
-    candidate_description = pest_record.description or payload.pest_description
-    candidate_symptoms = pest_record.symptoms or payload.pest_symptoms
-    candidate_risk = str(getattr(pest_record, "risk", None) or "").strip().upper()
-    if candidate_risk not in {"HIGH", "MEDIUM", "LOW", "NO_RISK"}:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "The matching pest catalogue record has no valid risk category; "
-                "a solution cannot be generated."
-            ),
-        )
-
-    gemini_payload = AISolutionRequest(
-        pest=candidate_pest,
-        common_name=candidate_common_name,
-        risk=candidate_risk,
-        confidence=payload.confidence,
-        pest_id=candidate_pest_id,
-        pest_description=candidate_description,
-        pest_symptoms=candidate_symptoms,
-        crop=payload.crop,
-    )
-
-    try:
-        generated = await asyncio.to_thread(_request_gemini_solution, gemini_payload)
-    except Exception as error:
-        logger.exception(
-            "Gemini solution generation failed for model_class=%s",
-            payload.pest,
-        )
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                "Gemini could not generate a solution. No guidance was returned; "
-                "please retry."
-            ),
-        ) from error
-    required_fields = ("about", "recommended_action", "prevention")
-    if not isinstance(generated, dict) or any(
-        not isinstance(generated.get(field), str)
-        or not generated[field].strip()
-        for field in required_fields
-    ):
-        logger.error(
-            "Gemini solution generation returned incomplete guidance for model_class=%s",
-            payload.pest,
-        )
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                "Gemini returned incomplete solution data. No guidance was returned; "
-                "please retry."
-            ),
-        )
-
-    generated["pest"] = candidate_pest
-    generated["common_name"] = candidate_common_name
-    generated["pest_id"] = candidate_pest_id
-    generated["risk"] = candidate_risk
-    generated["confidence"] = payload.confidence
-    generated["crop"] = payload.crop
-    generated["pesticide_recommendation"] = None
-    generated["precautions"] = None
-    return generated
 
 
 # -------------------------------------------------------------------
@@ -2078,101 +1761,32 @@ async def create_detection(
 
     db.flush()
 
-    # Save HIGH-risk detections with the solution available at detection time.
+    # Preserve the detection record; crop-specific guidance is looked up only
+    # after a crop has been selected and a reviewed catalogue record exists.
 
     if detection.status == "HARMFUL_PEST" and detection.risk == "HIGH":
-
         common_name = pest_record.name
         pest_id = pest_record.pest_id
-
-        solution_record = None
-
-        if pest_id:
-
-            solution_record = db.query(Solution).filter(Solution.pest_id == pest_id).first()
-
-        solution_title = None
-        solution_source = None
-        solution_description = None
-        recommended_action = None
-        prevention = None
-
-        if solution_record:
-            solution_source = "CATALOG"
-            solution_title = solution_record.title
-            solution_description = (
-                solution_record.description
+        db.add(
+            HighRiskSolutionHistory(
+                detection_id=detection.id,
+                device_id=payload.device_id,
+                pest_id=pest_id,
+                pest=detection_pest,
+                common_name=common_name,
+                image_url=None,
+                risk=detection.risk,
+                confidence=payload.confidence,
+                temperature=payload.temperature,
+                humidity=payload.humidity,
+                solution_title=None,
+                solution_source=None,
+                solution_description=None,
+                recommended_action=None,
+                prevention=None,
+                detected_at=detected_time,
             )
-            recommended_action = (
-                solution_record.recommended_action
-            )
-            prevention = solution_record.prevention
-        elif (
-            payload.confidence is not None
-            and np.isfinite(payload.confidence)
-            and 0 <= payload.confidence <= 1
-        ):
-            try:
-                ai_solution_payload = AISolutionRequest(
-                    pest=pest_record.scientific_name or pest_record.name,
-                    common_name=common_name,
-                    risk=detection.risk,
-                    confidence=payload.confidence,
-                    pest_id=pest_record.pest_id,
-                    pest_description=pest_record.description or "",
-                    pest_symptoms=pest_record.symptoms or "",
-                )
-                generated_solution = await asyncio.to_thread(
-                    _request_gemini_solution,
-                    ai_solution_payload,
-                )
-                required_solution_fields = (
-                    "about",
-                    "recommended_action",
-                    "prevention",
-                )
-                if not isinstance(generated_solution, dict) or any(
-                    not isinstance(generated_solution.get(field), str)
-                    or not generated_solution[field].strip()
-                    for field in required_solution_fields
-                ):
-                    raise ValueError(
-                        "Gemini returned incomplete solution data."
-                    )
-                solution_source = "GEMINI"
-                solution_title = f"{common_name} ({detection.risk}) AI Solution"
-                solution_description = generated_solution["about"]
-                recommended_action = generated_solution["recommended_action"]
-                prevention = generated_solution["prevention"]
-            except Exception:
-                logger.exception(
-                    "HIGH-risk solution generation failed for pest_id=%s",
-                    pest_id,
-                )
-        else:
-            logger.warning(
-                "HIGH-risk solution generation skipped for pest_id=%s: "
-                "prediction confidence is unavailable or invalid",
-                pest_id,
-            )
-
-        db.add(HighRiskSolutionHistory(
-
-            detection_id=detection.id, device_id=payload.device_id, pest_id=pest_id,
-
-            pest=detection_pest, common_name=common_name, image_url=None, risk=detection.risk,
-
-            confidence=payload.confidence, temperature=payload.temperature,
-
-            humidity=payload.humidity, solution_title=solution_title,
-
-            solution_source=solution_source,
-
-            solution_description=solution_description, recommended_action=recommended_action,
-
-            prevention=prevention, detected_at=detected_time,
-
-        ))
+        )
 
     # Update device information from the detection.
 
@@ -2361,68 +1975,132 @@ def get_pest(pest_id: str, db: Session = Depends(get_db)):
 
 # -------------------------------------------------------------------
 
-# Solution API
+# Crop and verified solution API
 
 # -------------------------------------------------------------------
 
-@app.get("/api/solutions")
-def get_solutions(db: Session = Depends(get_db)):
-    active_solution_ids = [
-        item["pest_id"] for item in SOLUTION_DATA
-    ]
-
-    solutions = (
-        db.query(Solution)
-        .filter(Solution.pest_id.in_(active_solution_ids))
-        .order_by(Solution.title.asc())
-        .all()
-    )
-
+def _serialize_crop(crop: Crop) -> dict:
     return {
-        "solutions": [
-            {
-                "pest_id": solution.pest_id,
-                "title": solution.title,
-                "description": solution.description,
-                "recommended_action": solution.recommended_action,
-                "prevention": solution.prevention,
-            }
-            for solution in solutions
+        "crop_id": crop.crop_id,
+        "name": crop.name,
+        "category": crop.category,
+        "aliases": crop.aliases or [],
+    }
+
+
+@app.get("/api/crops", response_model=list[CropResponse])
+def get_crops(
+    search: str | None = Query(default=None, max_length=100),
+    db: Session = Depends(get_db),
+):
+    crops = db.query(Crop).order_by(Crop.name.asc()).all()
+    if not search or not search.strip():
+        return [_serialize_crop(crop) for crop in crops]
+
+    query = _normalize_pest_label(search)
+    if len(query) < 2:
+        return []
+
+    def normalized_names(crop):
+        return [
+            _normalize_pest_label(name)
+            for name in [crop.name, *(crop.aliases or [])]
         ]
-    }
 
-@app.get("/api/solutions/{pest_id}")
-def get_solution(pest_id: str, db: Session = Depends(get_db)):
-    active_solution_ids = {
-        item["pest_id"] for item in SOLUTION_DATA
-    }
-
-    if pest_id not in active_solution_ids:
-        raise HTTPException(
-            status_code=404,
-            detail="Solution not found for this pest",
-        )
-
-    solution = (
-        db.query(Solution)
-        .filter(Solution.pest_id == pest_id)
-        .first()
-    )
-
-    if not solution:
-        raise HTTPException(
-            status_code=404,
-            detail="Solution not found for this pest",
-        )
-
-    return {
-        "solution": {
-            "pest_id": solution.pest_id,
-            "title": solution.title,
-            "description": solution.description,
-            "recommended_action": solution.recommended_action,
-            "prevention": solution.prevention,
+    matched = [
+        crop
+        for crop in crops
+        if any(query in name for name in normalized_names(crop))
+    ]
+    if not matched:
+        searchable = {
+            name: crop
+            for crop in crops
+            for name in normalized_names(crop)
+            if name
         }
+        near_matches = difflib.get_close_matches(
+            query,
+            list(searchable),
+            n=8,
+            cutoff=0.55,
+        )
+        matched = list(dict.fromkeys(searchable[name] for name in near_matches))
+    return [_serialize_crop(crop) for crop in matched]
+
+
+def _serialize_pest_crop_solution(solution, pest, crop) -> dict:
+    return {
+        "solution_id": solution.solution_id,
+        "pest_id": pest.pest_id,
+        "pest_name": pest.name,
+        "scientific_name": (
+            solution.scientific_name or pest.scientific_name
+        ),
+        "insect_group": next(
+            item["insect_group"]
+            for item in PEST_DATA
+            if item["pest_id"] == pest.pest_id
+        ),
+        "risk": pest.risk,
+        "crop_id": crop.crop_id,
+        "crop_name": crop.name,
+        "region": solution.region,
+        "description": solution.description,
+        "identification_signs": solution.identification_signs,
+        "crop_damage": solution.crop_damage,
+        "recommended_treatment": solution.recommended_treatment,
+        "immediate_control_measures": solution.immediate_control_measures,
+        "biological_control_options": solution.biological_control_options,
+        "cultural_control_methods": solution.cultural_control_methods,
+        "mechanical_control_methods": solution.mechanical_control_methods,
+        "chemical_control_options": solution.chemical_control_options,
+        "prevention": solution.prevention,
+        "monitoring": solution.monitoring,
+        "safety_precautions": solution.safety_precautions,
+        "expert_advice": solution.expert_advice,
+        "source_references": solution.source_references or [],
+        "reviewed_on": solution.reviewed_on,
+    }
+
+
+@app.get(
+    "/api/solutions",
+    response_model=PestCropSolutionListResponse,
+)
+def get_solutions(
+    crop_id: str = Query(min_length=1, max_length=100),
+    pest_id: str | None = Query(default=None, max_length=100),
+    db: Session = Depends(get_db),
+):
+    crop = db.query(Crop).filter(Crop.crop_id == crop_id).first()
+    if not crop:
+        raise HTTPException(status_code=404, detail="Supported crop not found")
+
+    query = (
+        db.query(PestCropSolution, Pest)
+        .join(Pest, Pest.pest_id == PestCropSolution.pest_id)
+        .filter(
+            PestCropSolution.crop_id == crop.crop_id,
+            PestCropSolution.status == "VERIFIED",
+            PestCropSolution.risk_level.in_(("HIGH", "MEDIUM")),
+            PestCropSolution.risk_level == Pest.risk,
+            Pest.pest_id.in_(item["pest_id"] for item in PEST_DATA),
+        )
+    )
+    if pest_id:
+        query = query.filter(PestCropSolution.pest_id == pest_id)
+
+    records = query.order_by(Pest.name.asc()).all()
+    serialized = [
+        _serialize_pest_crop_solution(solution, pest, crop)
+        for solution, pest in records
+        if _is_active_species_label(pest.name)
+    ]
+    return {
+        "crop": _serialize_crop(crop),
+        "total": len(serialized),
+        "solutions": serialized,
     }
 
 # -------------------------------------------------------------------
