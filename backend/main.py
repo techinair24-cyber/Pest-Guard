@@ -475,7 +475,33 @@ def _find_pest_record_normalized(db: Session, pest_name: str | None):
     if not normalized_name:
         return None
 
-    for pest in db.query(Pest).all():
+    pests = db.query(Pest).all()
+    catalog_record = next(
+        (
+            item
+            for item in PEST_DATA
+            if normalized_name
+            in {
+                _normalize_pest_label(item.get("pest_id")),
+                _normalize_pest_label(item.get("name")),
+                _normalize_pest_label(item.get("scientific_name")),
+            }
+        ),
+        None,
+    )
+    if catalog_record:
+        pest = next(
+            (
+                item
+                for item in pests
+                if item.pest_id == catalog_record["pest_id"]
+            ),
+            None,
+        )
+        if pest:
+            return pest
+
+    for pest in pests:
         if normalized_name in {
             _normalize_pest_label(pest.pest_id),
             _normalize_pest_label(pest.name),
@@ -1743,11 +1769,13 @@ def _high_risk_solution_history_response(item, db: Session) -> dict:
         or str(getattr(pest_record, "name", None) or "").strip()
         or pest_name
     )
-    risk_value = str(getattr(item, "risk", None) or "").strip().upper()
+    risk_value = str(getattr(pest_record, "risk", None) or "").strip().upper()
+    if risk_value not in {"HIGH", "MEDIUM", "LOW", "NO_RISK"}:
+        risk_value = str(getattr(item, "risk", None) or "").strip().upper()
     risk = (
         risk_value
         if risk_value in {"HIGH", "MEDIUM", "LOW", "NO_RISK"}
-        else "HIGH"
+        else "LOW"
     )
     fallback = _fallback_ai_solution(
         AISolutionRequest(
@@ -1786,8 +1814,7 @@ def _high_risk_solution_history_response(item, db: Session) -> dict:
         "temperature": getattr(item, "temperature", None),
         "humidity": getattr(item, "humidity", None),
         "solution_title": (
-            getattr(item, "solution_title", None)
-            or f"{common_name} HIGH Risk IPM Guidance"
+            f"{common_name} ({risk}) Integrated Pest Management Guidance"
         ),
         "solution_description": (
             getattr(item, "solution_description", None) or fallback["about"]
@@ -1854,17 +1881,18 @@ async def generate_ai_solution(
 
     try:
         generated = await asyncio.to_thread(_request_gemini_solution, gemini_payload)
-    except HTTPException:
-        raise
     except Exception as error:
         logger.exception(
             "Gemini solution generation failed for model_class=%s",
             payload.pest,
         )
-        raise HTTPException(
-            status_code=502,
-            detail="Gemini could not generate the pest solution. Please try again.",
-        ) from error
+        generated = _fallback_ai_solution(gemini_payload)
+    if not isinstance(generated, dict):
+        logger.error(
+            "Gemini solution generation returned a non-object for model_class=%s",
+            payload.pest,
+        )
+        generated = _fallback_ai_solution(gemini_payload)
 
     uncertain_identification = False
     generated["pest"] = candidate_pest
@@ -2146,20 +2174,22 @@ async def create_detection(
                 pest_symptoms=pest_record.symptoms or "",
             )
         )
-        solution_title = f"{common_name} HIGH Risk IPM Guidance"
+        solution_title = (
+            f"{common_name} ({detection.risk}) Integrated Pest Management Guidance"
+        )
         solution_description = safe_guidance["about"]
         recommended_action = safe_guidance["recommended_action"]
         prevention = safe_guidance["prevention"]
 
         if solution_record:
 
-            solution_title = solution_record.title
-
-            solution_description = solution_record.description
-
-            recommended_action = solution_record.recommended_action
-
-            prevention = solution_record.prevention
+            solution_description = (
+                solution_record.description or solution_description
+            )
+            recommended_action = (
+                solution_record.recommended_action or recommended_action
+            )
+            prevention = solution_record.prevention or prevention
         else:
             try:
                 ai_solution_payload = AISolutionRequest(
@@ -2175,7 +2205,9 @@ async def create_detection(
                     _request_gemini_solution,
                     ai_solution_payload,
                 )
-                solution_title = f"{common_name} HIGH Risk AI Solution"
+                solution_title = (
+                    f"{common_name} ({detection.risk}) AI Solution"
+                )
                 solution_description = (
                     str(generated_solution.get("about") or "").strip()
                     or safe_guidance["about"]

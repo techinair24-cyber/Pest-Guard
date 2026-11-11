@@ -1004,6 +1004,132 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             response["pesticide_recommendation"],
         )
 
+    def test_solution_fallback_populates_required_guidance_when_gemini_fails(self):
+        pest_record = SimpleNamespace(
+            pest_id=main._normalize_pest_label(ACTIVE_LABELS[0]).replace(" ", "-"),
+            name=ACTIVE_LABELS[0],
+            scientific_name="Test species 0",
+            risk="MEDIUM",
+            description="Catalogue description.",
+            symptoms="Catalogue symptoms.",
+        )
+        payload = main.AISolutionRequest(
+            pest=ACTIVE_LABELS[0],
+            common_name=ACTIVE_LABELS[0],
+            risk="LOW",
+            confidence=0.9,
+            pest_id=pest_record.pest_id,
+        )
+
+        with (
+            patch.object(
+                main,
+                "_find_verified_pest_record",
+                return_value=pest_record,
+            ),
+            patch.object(
+                main,
+                "_request_gemini_solution",
+                side_effect=RuntimeError("provider unavailable"),
+            ),
+        ):
+            response = asyncio.run(
+                main.generate_ai_solution(payload, Mock())
+            )
+
+        self.assertEqual(response["risk"], "MEDIUM")
+        for field in ("about", "recommended_action", "prevention"):
+            self.assertTrue(response[field].strip(), field)
+
+    def test_solution_fills_incomplete_gemini_guidance(self):
+        pest_record = SimpleNamespace(
+            pest_id=main._normalize_pest_label(ACTIVE_LABELS[0]).replace(" ", "-"),
+            name=ACTIVE_LABELS[0],
+            scientific_name="Test species 0",
+            risk="LOW",
+            description="Catalogue description.",
+            symptoms="Catalogue symptoms.",
+        )
+        payload = main.AISolutionRequest(
+            pest=ACTIVE_LABELS[0],
+            common_name=ACTIVE_LABELS[0],
+            risk="HIGH",
+            confidence=0.9,
+            pest_id=pest_record.pest_id,
+        )
+
+        with (
+            patch.object(
+                main,
+                "_find_verified_pest_record",
+                return_value=pest_record,
+            ),
+            patch.object(
+                main,
+                "_request_gemini_solution",
+                return_value={
+                    "about": "",
+                    "recommended_action": None,
+                    "prevention": "",
+                },
+            ),
+        ):
+            response = asyncio.run(
+                main.generate_ai_solution(payload, Mock())
+            )
+
+        for field in ("about", "recommended_action", "prevention"):
+            self.assertTrue(response[field].strip(), field)
+
+    def test_solution_history_titles_use_catalogue_risk(self):
+        records = catalog_records()
+        database = Mock()
+        database.query.return_value.all.return_value = records
+
+        for risk, pest_record in zip(
+            ("HIGH", "MEDIUM", "LOW", "NO_RISK"),
+            records[:4],
+        ):
+            with self.subTest(risk=risk):
+                pest_record.risk = risk
+                item = SimpleNamespace(
+                    id=1,
+                    detection_id=1,
+                    device_id="FIELD-UNIT-01",
+                    pest_id=pest_record.pest_id,
+                    pest=pest_record.name,
+                    common_name=pest_record.name,
+                    image_url=None,
+                    risk="HIGH",
+                    confidence=0.9,
+                    temperature=None,
+                    humidity=None,
+                    solution_title=f"{pest_record.name} HIGH Risk legacy title",
+                    solution_description=None,
+                    recommended_action=None,
+                    prevention=None,
+                    detected_at=None,
+                    created_at=None,
+                )
+
+                response = main._high_risk_solution_history_response(
+                    item,
+                    database,
+                )
+
+                self.assertEqual(response["risk"], risk)
+                self.assertEqual(
+                    response["solution_title"],
+                    f"{pest_record.name} ({risk}) "
+                    "Integrated Pest Management Guidance",
+                )
+                for field in (
+                    "solution_description",
+                    "recommended_action",
+                    "prevention",
+                ):
+                    self.assertTrue(response[field].strip(), field)
+
     def test_high_risk_history_preserves_identity_and_risk(self):
         item = Mock(
             id=7,
@@ -1026,7 +1152,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         )
 
         database = Mock()
-        database.query.return_value.all.return_value = catalog_records()
+        database.query.return_value.all.return_value = catalog_records("HIGH")
         response = main._high_risk_solution_history_response(item, database)
 
         self.assertTrue(response["pest_verified"])
@@ -1035,7 +1161,8 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         self.assertEqual(response["common_name"], ACTIVE_LABELS[0])
         self.assertEqual(
             response["solution_title"],
-            "Legacy species-specific title",
+            f"{ACTIVE_LABELS[0]} (HIGH) "
+            "Integrated Pest Management Guidance",
         )
         self.assertEqual(response["pest_description"], "Catalog description.")
         self.assertIn(
@@ -1428,6 +1555,210 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
             response["affected_crops"],
         )
         broadcast.assert_awaited_once_with(response)
+
+    def test_catalogue_risk_survives_detection_history_and_websocket_for_all_levels(self):
+        pest_name = ACTIVE_LABELS[0]
+        pest_record = (
+            self.db.query(main.Pest)
+            .filter_by(name=pest_name)
+            .first()
+        )
+
+        for risk in ("HIGH", "MEDIUM", "LOW", "NO_RISK"):
+            with self.subTest(risk=risk):
+                pest_record.risk = risk
+                self.db.commit()
+                payload = main.DetectionCreate(
+                    device_id="RISK-CATEGORY-UNIT",
+                    status="HARMFUL_PEST",
+                    pest=pest_name,
+                    confidence=0.99,
+                    risk="LOW" if risk != "HIGH" else "MEDIUM",
+                )
+
+                with (
+                    patch.object(
+                        main.manager,
+                        "broadcast",
+                        new_callable=AsyncMock,
+                    ) as broadcast,
+                    patch.object(main, "send_high_risk_sms"),
+                    patch.object(
+                        main,
+                        "_request_gemini_solution",
+                        return_value=generated_solution(),
+                    ),
+                ):
+                    response = asyncio.run(
+                        main.create_detection(payload, self.db)
+                    )
+
+                saved = self.db.query(main.Detection).filter_by(
+                    id=response["id"]
+                ).first()
+                history = main.get_detection_history(
+                    device_id="RISK-CATEGORY-UNIT",
+                    status=None,
+                    limit=500,
+                    db=self.db,
+                )["detections"]
+                history_response = next(
+                    item for item in history if item["id"] == response["id"]
+                )
+                websocket_event = broadcast.await_args.args[0]
+
+                self.assertEqual(response["risk"], risk)
+                self.assertEqual(saved.risk, risk)
+                self.assertEqual(history_response["risk"], risk)
+                self.assertEqual(websocket_event["risk"], risk)
+                self.assertEqual(response["identification_status"], "MODEL_PREDICTED")
+                if risk == "HIGH":
+                    solution_history = (
+                        self.db.query(main.HighRiskSolutionHistory)
+                        .filter_by(detection_id=response["id"])
+                        .first()
+                    )
+                    self.assertEqual(solution_history.risk, risk)
+                    self.assertEqual(
+                        solution_history.solution_title,
+                        f"{pest_name} ({risk}) AI Solution",
+                    )
+                    for field in (
+                        "solution_description",
+                        "recommended_action",
+                        "prevention",
+                    ):
+                        self.assertTrue(
+                            getattr(solution_history, field).strip(),
+                            field,
+                        )
+
+    def test_prediction_prefers_canonical_catalogue_id_over_stale_name_match(self):
+        pest_name = "Field Cricket"
+        source_record = next(
+            item for item in main.PEST_DATA if item["name"] == pest_name
+        )
+        stale_record = main.Pest(
+            pest_id="field_crickt",
+            name=pest_name,
+            scientific_name="Gryllus campestris",
+            risk="LOW",
+        )
+        canonical_record = main.Pest(
+            pest_id=source_record["pest_id"],
+            name=pest_name,
+            scientific_name=source_record["scientific_name"],
+            description=source_record["description"],
+            risk=source_record["risk"],
+            symptoms=source_record["symptoms"],
+        )
+        self.db.add_all([stale_record, canonical_record])
+        self.db.commit()
+
+        self.assertEqual(
+            main._find_pest_record_normalized(self.db, pest_name).pest_id,
+            source_record["pest_id"],
+        )
+
+        request = FakeRequest(
+            "application/json",
+            payload={"audio": [0.1, -0.1]},
+        )
+        for risk in ("HIGH", "MEDIUM", "LOW", "NO_RISK"):
+            with self.subTest(risk=risk):
+                canonical_record.risk = risk
+                self.db.commit()
+                with (
+                    patch.object(
+                        main,
+                        "predict_pest",
+                        return_value={
+                            "pest": pest_name,
+                            "confidence": 0.9,
+                            "insect_group": "Crickets",
+                        },
+                    ),
+                    patch.object(
+                        main.manager,
+                        "broadcast",
+                        new_callable=AsyncMock,
+                    ) as broadcast,
+                ):
+                    response = asyncio.run(
+                        main.ai_predict(request, db=self.db)
+                    )
+
+                saved = self.db.query(main.Detection).filter_by(
+                    id=response["id"]
+                ).first()
+                history = main.get_detection_history(
+                    device_id=None,
+                    status=None,
+                    limit=500,
+                    db=self.db,
+                )["detections"]
+                history_response = next(
+                    item for item in history if item["id"] == response["id"]
+                )
+
+                self.assertEqual(response["risk"], risk)
+                self.assertEqual(saved.risk, risk)
+                self.assertEqual(history_response["risk"], risk)
+                self.assertEqual(broadcast.await_args.args[0]["risk"], risk)
+                self.assertTrue(response["pest_verified"])
+
+    def test_high_risk_solution_history_uses_fallback_when_gemini_is_incomplete_or_fails(self):
+        pest_name = ACTIVE_LABELS[0]
+        pest_record = (
+            self.db.query(main.Pest)
+            .filter_by(name=pest_name)
+            .first()
+        )
+        pest_record.risk = "HIGH"
+        self.db.commit()
+
+        for index, gemini_result in enumerate(
+            (RuntimeError("provider unavailable"), {}),
+        ):
+            with self.subTest(gemini_result=gemini_result):
+                payload = main.DetectionCreate(
+                    device_id=f"GEMINI-FALLBACK-{index}",
+                    status="HARMFUL_PEST",
+                    pest=pest_name,
+                    confidence=0.99,
+                )
+                with (
+                    patch.object(main.manager, "broadcast", new_callable=AsyncMock),
+                    patch.object(main, "send_high_risk_sms"),
+                    patch.object(
+                        main,
+                        "_request_gemini_solution",
+                        side_effect=gemini_result
+                        if isinstance(gemini_result, Exception)
+                        else None,
+                        return_value=(
+                            None
+                            if isinstance(gemini_result, Exception)
+                            else gemini_result
+                        ),
+                    ),
+                ):
+                    response = asyncio.run(
+                        main.create_detection(payload, self.db)
+                    )
+
+                history = (
+                    self.db.query(main.HighRiskSolutionHistory)
+                    .filter_by(detection_id=response["id"])
+                    .first()
+                )
+                self.assertEqual(history.risk, "HIGH")
+                for field in (
+                    "solution_description",
+                    "recommended_action",
+                    "prevention",
+                ):
+                    self.assertTrue(getattr(history, field).strip(), field)
 
 
 class DeviceHeartbeatAndControlTests(unittest.TestCase):
