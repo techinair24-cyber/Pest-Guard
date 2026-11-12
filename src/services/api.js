@@ -172,10 +172,15 @@ export const getPests = async () => {
   return data.pests || []
 }
 
-export const getCrops = async (search = '') => {
+export const getCrops = async ({ pestId } = {}) => {
   const query = new URLSearchParams()
-  if (search.trim()) query.set('search', search.trim())
+
+  if (pestId) {
+    query.set('pest_id', pestId)
+  }
+
   const queryString = query.toString()
+
   return request(`/api/crops${queryString ? `?${queryString}` : ''}`)
 }
 
@@ -183,6 +188,16 @@ export const getCropSolutions = async (cropId, { pestId } = {}) => {
   const query = new URLSearchParams({ crop_id: cropId })
   if (pestId) query.set('pest_id', pestId)
   return request(`/api/solutions?${query.toString()}`)
+}
+
+export const getPestSolutions = async (pestId) => {
+  if (!pestId) {
+    throw new Error('Pest ID is required to fetch solutions')
+  }
+
+  return request(
+    `/api/pests/${encodeURIComponent(pestId)}/solutions`,
+  )
 }
 
 export const getPestInfo = async (pestId) =>

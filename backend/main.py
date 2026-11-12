@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
@@ -774,25 +774,17 @@ app = FastAPI(
 # -------------------------------------------------------------------
 
 app.add_middleware(
-
     CORSMiddleware,
-
     allow_origins=[
-
         "http://localhost:5173",
-
         "http://127.0.0.1:5173",
-
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
         "https://pest-guard-eight.vercel.app",
-
     ],
-
     allow_credentials=True,
-
     allow_methods=["*"],
-
     allow_headers=["*"],
-
 )
 
 # -------------------------------------------------------------------
@@ -951,6 +943,7 @@ def _has_verified_solution_evidence(solution) -> bool:
     management_fields = (
         "biological_control_options",
         "cultural_control_methods",
+        "mechanical_control_methods",
         "chemical_control_options",
     )
     has_management = any(
@@ -2070,43 +2063,50 @@ def _serialize_crop(crop: Crop) -> dict:
 
 @app.get("/api/crops", response_model=list[CropResponse])
 def get_crops(
-    search: str | None = Query(default=None, max_length=100),
+    pest_id: str | None = Query(default=None, max_length=100),
     db: Session = Depends(get_db),
 ):
-    crops = db.query(Crop).order_by(Crop.name.asc()).all()
-    if not search or not search.strip():
-        return [_serialize_crop(crop) for crop in crops]
+    crops_query = db.query(Crop)
 
-    query = _normalize_pest_label(search)
-    if len(query) < 2:
-        return []
-
-    def normalized_names(crop):
-        return [
-            _normalize_pest_label(name)
-            for name in [crop.name, *(crop.aliases or [])]
-        ]
-
-    matched = [
-        crop
-        for crop in crops
-        if any(query in name for name in normalized_names(crop))
-    ]
-    if not matched:
-        searchable = {
-            name: crop
-            for crop in crops
-            for name in normalized_names(crop)
-            if name
-        }
-        near_matches = difflib.get_close_matches(
-            query,
-            list(searchable),
-            n=8,
-            cutoff=0.55,
+    if pest_id:
+        verified_crop_ids = (
+            db.query(PestCropSolution.crop_id, Crop.name)
+            .join(Crop, Crop.crop_id == PestCropSolution.crop_id)
+            .join(Pest, Pest.pest_id == PestCropSolution.pest_id)
+            .filter(
+                PestCropSolution.pest_id == pest_id,
+                PestCropSolution.status == "VERIFIED",
+                PestCropSolution.risk_level.in_(("HIGH", "MEDIUM")),
+                PestCropSolution.risk_level == Pest.risk,
+                Pest.pest_id.in_(
+                    item["pest_id"] for item in PEST_DATA
+                ),
+            )
+            .all()
         )
-        matched = list(dict.fromkeys(searchable[name] for name in near_matches))
-    return [_serialize_crop(crop) for crop in matched]
+
+        verified_crop_ids = {
+            crop_id
+            for crop_id, crop_name in verified_crop_ids
+            if any(
+                _has_verified_solution_evidence(solution)
+                for solution in db.query(PestCropSolution)
+                .filter(
+                    PestCropSolution.crop_id == crop_id,
+                    PestCropSolution.pest_id == pest_id,
+                    PestCropSolution.status == "VERIFIED",
+                )
+                .all()
+            )
+        }
+
+        crops_query = crops_query.filter(
+            Crop.crop_id.in_(verified_crop_ids)
+        )
+
+    crops = crops_query.order_by(Crop.name.asc()).all()
+
+    return [_serialize_crop(crop) for crop in crops]
 
 
 def _serialize_pest_crop_solution(solution, pest, crop) -> dict:
@@ -2179,6 +2179,72 @@ def get_solutions(
         "crop": _serialize_crop(crop),
         "total": len(serialized),
         "solutions": serialized,
+    }
+
+
+@app.get("/api/pests/{pest_id}/solutions")
+def get_pest_solutions(
+    pest_id: str,
+    db: Session = Depends(get_db),
+):
+    """Return every evidence-verified crop solution for one active HIGH/MEDIUM pest."""
+    active_pests = {item["pest_id"]: item for item in PEST_DATA}
+    if pest_id not in active_pests:
+        raise HTTPException(status_code=404, detail="Pest not found")
+
+    pest = db.query(Pest).filter(Pest.pest_id == pest_id).first()
+    if not pest:
+        raise HTTPException(status_code=404, detail="Pest not found")
+
+    risk = str(pest.risk or "").strip().upper()
+    if risk not in {"HIGH", "MEDIUM"}:
+        raise HTTPException(
+            status_code=404,
+            detail="Solutions are available only for HIGH- and MEDIUM-risk pests",
+        )
+
+    records = (
+        db.query(PestCropSolution, Crop)
+        .join(Crop, Crop.crop_id == PestCropSolution.crop_id)
+        .join(Pest, Pest.pest_id == PestCropSolution.pest_id)
+        .filter(
+            PestCropSolution.pest_id == pest_id,
+            PestCropSolution.status == "VERIFIED",
+            PestCropSolution.risk_level == risk,
+            PestCropSolution.risk_level == Pest.risk,
+        )
+        .order_by(Crop.name.asc())
+        .all()
+    )
+
+    verified_records = [
+        (solution, crop)
+        for solution, crop in records
+        if _has_verified_solution_evidence(solution)
+    ]
+
+    crops_by_id = {}
+    serialized_solutions = []
+    for solution, crop in verified_records:
+        crops_by_id[crop.crop_id] = _serialize_crop(crop)
+        serialized_solutions.append(
+            _serialize_pest_crop_solution(solution, pest, crop)
+        )
+
+    return {
+        "pest": {
+            "pest_id": pest.pest_id,
+            "name": pest.name,
+            "scientific_name": pest.scientific_name,
+            "description": pest.description,
+            "risk": risk,
+            "symptoms": pest.symptoms,
+            "insect_group": active_pests[pest_id]["insect_group"],
+        },
+        "total_crops": len(crops_by_id),
+        "crops": sorted(crops_by_id.values(), key=lambda item: item["name"].casefold()),
+        "total_solutions": len(serialized_solutions),
+        "solutions": serialized_solutions,
     }
 
 # -------------------------------------------------------------------

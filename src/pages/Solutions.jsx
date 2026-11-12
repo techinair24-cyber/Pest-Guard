@@ -7,6 +7,7 @@ import {
   API_BASE_URL,
   getCrops,
   getCropSolutions,
+  getPestSolutions,
   getHighRiskSolutionHistory,
   getPests,
 } from '../services/api'
@@ -21,16 +22,9 @@ import solutionsField from '../assets/solutions-field.jpg'
 import './Solutions.css'
 
 const MANAGEMENT_CATEGORIES = [
-  {
-    key: 'cultural_control_methods',
-    title: 'Cultural Control',
-    safetyKey: null,
-  },
-  {
-    key: 'biological_control_options',
-    title: 'Biological Control',
-    safetyKey: null,
-  },
+  { key: 'cultural_control_methods', title: 'Cultural Control', safetyKey: null },
+  { key: 'mechanical_control_methods', title: 'Mechanical Control', safetyKey: null },
+  { key: 'biological_control_options', title: 'Biological Control', safetyKey: null },
   {
     key: 'chemical_control_options',
     title: 'Chemical Control',
@@ -105,6 +99,32 @@ function RecommendationCard({ item, category }) {
 }
 
 function VerifiedSolution({ item, isLiveMatch }) {
+  const sources = Array.isArray(item.source_references) ? item.source_references : []
+  const hasEvidence = (key) => sources.some((source) => source.supports?.includes(key))
+  const renderEvidence = (title, value, evidenceKey, className = '') => {
+    const verified = Boolean(value && hasEvidence(evidenceKey))
+
+    return (
+      <EvidenceCard title={title} className={className}>
+        {verified ? (
+          <p>{value}</p>
+        ) : (
+          <p className="solution-unavailable">
+            Information not verified or not available for this pest-crop record.
+          </p>
+        )}
+        <p className="evidence-label">Supporting evidence</p>
+        <SourceList
+          sources={
+            verified
+              ? sources.filter((source) => source.supports?.includes(evidenceKey))
+              : []
+          }
+        />
+      </EvidenceCard>
+    )
+  }
+
   const preventionSources = (item.source_references || []).filter(
     (source) => source.supports?.includes('prevention'),
   )
@@ -116,34 +136,51 @@ function VerifiedSolution({ item, isLiveMatch }) {
         <div>
           <p className="card-eyebrow">{item.crop_name}</p>
           <h3>{item.pest_name}</h3>
+          {item.scientific_name && (
+            <p className="solution-scientific-name">
+              {item.scientific_name}
+            </p>
+          )}
           <p className="solution-meta">
             {item.insect_group} <span aria-hidden="true">·</span> {item.risk} risk
           </p>
         </div>
         <span className="verification-badge">Source verified</span>
       </div>
-
       {isLiveMatch && (
         <p className="match-note">Matches the current verified detection.</p>
       )}
-
       <div className="solution-detail-grid">
-        <EvidenceCard title="Crop Damage & Symptoms">
-          {item.crop_damage && (item.source_references || []).some(
-            (source) => source.supports?.includes('crop_damage'),
-          ) ? (
-            <p>{item.crop_damage}</p>
-          ) : (
-            <p className="solution-unavailable">Solution not verified yet.</p>
-          )}
-          <p className="evidence-label">Supporting evidence</p>
-          <SourceList
-            sources={(item.source_references || []).filter(
-              (source) => source.supports?.includes('crop_damage'),
-            )}
-          />
-        </EvidenceCard>
-
+        {renderEvidence(
+          'Crop Damage & Symptoms',
+          item.crop_damage,
+          'crop_damage',
+        )}
+        {renderEvidence(
+          'Affected Plant Parts',
+          item.affected_plant_parts,
+          'affected_plant_parts',
+        )}
+        {renderEvidence(
+          'Immediate Control Measures',
+          item.immediate_control_measures,
+          'immediate_control_measures',
+        )}
+        {renderEvidence(
+          'Monitoring & Early Detection',
+          item.monitoring,
+          'monitoring',
+        )}
+        {renderEvidence(
+          'Safety Precautions',
+          item.safety_precautions,
+          'safety_precautions',
+        )}
+        {renderEvidence(
+          'Expert Advice',
+          item.expert_advice,
+          'expert_advice',
+        )}
         <EvidenceCard title="Recommended Management Solutions">
           <div className="recommendation-list">
             {MANAGEMENT_CATEGORIES.map((category) => (
@@ -155,7 +192,6 @@ function VerifiedSolution({ item, isLiveMatch }) {
             ))}
           </div>
         </EvidenceCard>
-
         <EvidenceCard title="Prevention" className="prevention-panel">
           <span className={preventionIsVerified ? 'verification-badge' : 'unverified-badge'}>
             {preventionIsVerified ? 'Source verified' : 'Not verified'}
@@ -176,17 +212,17 @@ function Solutions() {
   const location = useLocation()
   const { detection, loading: detectionLoading } = useLiveDetection()
 
-  const [solution, setSolution] = useState(null)
-  const [crops, setCrops] = useState([])
-  const [cropSearchResults, setCropSearchResults] = useState([])
   const [pestDirectory, setPestDirectory] = useState({})
+  const [pestDirectoryLoaded, setPestDirectoryLoaded] = useState(false)
+  const [crops, setCrops] = useState([])
+  const [solution, setSolution] = useState(null)
+  const [pestSolutionData, setPestSolutionData] = useState(null)
+  const [pestSolutionsError, setPestSolutionsError] = useState('')
+  const [selectedCrop, setSelectedCrop] = useState('')
+  const [cropLoadError, setCropLoadError] = useState('')
   const [loadingSolution, setLoadingSolution] = useState(false)
   const [error, setError] = useState('')
   const [canRetry, setCanRetry] = useState(false)
-  const [retryKey, setRetryKey] = useState(0)
-  const [cropDraft, setCropDraft] = useState('')
-  const [selectedCrop, setSelectedCrop] = useState('')
-  const [cropLoadError, setCropLoadError] = useState('')
   const [highRiskHistory, setHighRiskHistory] = useState([])
   const [highRiskHistoryTotal, setHighRiskHistoryTotal] = useState(null)
   const [historyLoading, setHistoryLoading] = useState(true)
@@ -194,26 +230,49 @@ function Solutions() {
   const [clearingHistory, setClearingHistory] = useState(false)
   const [confirmClearHistory, setConfirmClearHistory] = useState(false)
   const [clearHistoryError, setClearHistoryError] = useState('')
+  const [retryKey, setRetryKey] = useState(0)
+  const [pestSolutionsRetryKey, setPestSolutionsRetryKey] = useState(0)
 
   const queryPest = new URLSearchParams(location.search).get('pest')?.trim()
   const status = String(detection?.status || '').toUpperCase()
+
   const detectionPest = pestDirectory[normalizePestName(detection?.pest_id)]
   const catalogRisk = String(detectionPest?.risk || '').trim().toUpperCase()
   const supportedRisk = ['HIGH', 'MEDIUM', 'LOW', 'NO_RISK'].includes(catalogRisk)
+
   const hasVerifiedCatalogMatch =
     detection?.pest_verified === true &&
     Boolean(detection?.pest_id) &&
     detection.pest_id === detectionPest?.pestId &&
     supportedRisk
+
+  const normalizedQueryPest = normalizePestName(queryPest)
+  const normalizedDetectionPestId = normalizePestName(detection?.pest_id)
+  const normalizedDetectionName = normalizePestName(detection?.pest)
+
   const queryMatchesDetection =
     !queryPest ||
-    normalizePestName(queryPest) === normalizePestName(detection?.pest)
+    normalizedQueryPest === normalizedDetectionName ||
+    normalizedQueryPest === normalizedDetectionPestId
+
   const hasVerifiedLiveDetection =
     hasVerifiedCatalogMatch &&
     status === 'HARMFUL_PEST' &&
     queryMatchesDetection
+
+  const hasActionableLiveDetection =
+    hasVerifiedLiveDetection &&
+    ['HIGH', 'MEDIUM'].includes(catalogRisk)
+
   const isNonPest = status === 'NON_PEST'
-  const hasLiveDetection = Boolean(detection?.pest) || isNonPest
+
+  const hasLiveDetection =
+    Boolean(detection) &&
+    (
+      Boolean(detection.pest_id) ||
+      Boolean(detection.pest) ||
+      Boolean(status)
+    )
   const detectionConfidence =
     detection?.confidence === null ||
     detection?.confidence === undefined ||
@@ -223,10 +282,28 @@ function Solutions() {
   const confidenceLabel = Number.isFinite(detectionConfidence)
     ? formatModelScore(detectionConfidence)
     : 'N/A'
-  const selectedCropRecord = crops.find((crop) => crop.crop_id === selectedCrop)
-  const verifiedSolutions = Array.isArray(solution?.solutions)
+  const selectedCropRecord = crops.find(
+    (crop) => crop.crop_id === selectedCrop
+  )
+
+  const storedSolutions = Array.isArray(solution?.solutions)
     ? solution.solutions
     : []
+
+  // Only display solutions matching the current crop and current live pest.
+  const verifiedSolutions = storedSolutions.filter((item) => {
+    if (item.crop_id !== selectedCrop) return false
+
+    if (hasLiveDetection) {
+      return (
+        hasActionableLiveDetection &&
+        item.pest_id === detection?.pest_id
+      )
+    }
+
+    return true
+  })
+
   const liveSolution = verifiedSolutions.find(
     (item) => item.pest_id === detection?.pest_id,
   )
@@ -240,28 +317,29 @@ function Solutions() {
     : 'Unknown pest'
   const riskLabel = hasVerifiedLiveDetection ? catalogRisk : 'UNCONFIRMED'
   const insectGroup = String(detection?.insect_group || '').trim()
-
   useEffect(() => {
     let active = true
 
-    async function loadReferenceData() {
-      setCropLoadError('')
+    async function loadPestDirectory() {
       try {
-        const [availableCrops, pests] = await Promise.all([
-          getCrops(),
-          getPests(),
-        ])
+        const pests = await getPests()
+
         if (!active) return
-        setCrops(availableCrops)
-        setCropSearchResults(availableCrops)
+
         setPestDirectory(buildPestDirectory(pests))
       } catch (loadError) {
         if (!active) return
-        setCropLoadError(loadError.message || 'Unable to load supported crops.')
+
+        setCropLoadError(
+          loadError.message || 'Unable to load pest information.',
+        )
+      } finally {
+        if (active) setPestDirectoryLoaded(true)
       }
     }
 
-    loadReferenceData()
+    loadPestDirectory()
+
     return () => {
       active = false
     }
@@ -269,20 +347,47 @@ function Solutions() {
 
   useEffect(() => {
     let active = true
-    const timer = setTimeout(async () => {
+
+    async function loadAvailableCrops() {
+      setCropLoadError('')
+      setPestSolutionsError('')
+      setCrops([])
+      setSolution(null)
+      setPestSolutionData(null)
+
+      // Crop catalogue loading is independent of pest-specific solution data.
+      // A failure in one request must not hide the crop dropdown or mislabel
+      // the error as a crop-catalogue failure.
       try {
-        const results = await getCrops(cropDraft)
-        if (active) setCropSearchResults(results)
+        const availableCrops = await getCrops()
+        if (!active) return
+        setCrops(Array.isArray(availableCrops) ? availableCrops : [])
       } catch (loadError) {
-        if (active) setCropLoadError(loadError.message || 'Unable to search crops.')
+        if (!active) return
+        setCropLoadError(loadError.message || 'Unable to load supported crops.')
+        return
       }
-    }, 180)
+
+      if (hasActionableLiveDetection) {
+        try {
+          const result = await getPestSolutions(detection.pest_id)
+          if (!active) return
+          setPestSolutionData(result)
+        } catch (loadError) {
+          if (!active) return
+          setPestSolutionsError(
+            loadError.message || 'Unable to load verified solutions for this pest.',
+          )
+        }
+      }
+    }
+
+    if (pestDirectoryLoaded) loadAvailableCrops()
 
     return () => {
       active = false
-      clearTimeout(timer)
     }
-  }, [cropDraft])
+  }, [pestDirectoryLoaded, hasActionableLiveDetection, detection?.pest_id, pestSolutionsRetryKey])
 
   useEffect(() => {
     let active = true
@@ -300,8 +405,39 @@ function Solutions() {
       setError('')
       setCanRetry(false)
       try {
-        const result = await getCropSolutions(selectedCrop)
-        if (active) setSolution(result)
+        if (hasActionableLiveDetection) {
+          if (pestSolutionsError) {
+            if (active) {
+              setSolution(null)
+              setError(pestSolutionsError)
+              setCanRetry(true)
+            }
+            return
+          }
+          const allSolutions = Array.isArray(pestSolutionData?.solutions)
+            ? pestSolutionData.solutions
+            : []
+          const cropSolutions = allSolutions.filter(
+            (item) => item.crop_id === selectedCrop,
+          )
+          if (active) {
+            setSolution({
+              crop_id: selectedCrop,
+              solutions: cropSolutions,
+              total: cropSolutions.length,
+            })
+          }
+        } else if (hasLiveDetection) {
+          // A live result must never fall back to general crop results:
+          // those records could belong to a different pest or an unverified ID.
+          if (active) {
+            setSolution({ crop_id: selectedCrop, solutions: [], total: 0 })
+          }
+        } else {
+          // General crop browsing is available only when there is no live result.
+          const result = await getCropSolutions(selectedCrop)
+          if (active) setSolution(result)
+        }
       } catch (loadError) {
         if (!active) return
         setSolution(null)
@@ -316,7 +452,16 @@ function Solutions() {
     return () => {
       active = false
     }
-  }, [selectedCrop, retryKey])
+  }, [
+    selectedCrop,
+    retryKey,
+    hasVerifiedLiveDetection,
+    hasActionableLiveDetection,
+    hasLiveDetection,
+    detection?.pest_id,
+    pestSolutionData,
+    pestSolutionsError,
+  ])
 
   useEffect(() => {
     let active = true
@@ -406,59 +551,28 @@ function Solutions() {
       </section>
 
       <div className="solutions-content">
-        <section className="page-section crop-search-section" aria-labelledby="crop-search-title">
-          <div className="section-intro">
-            <p className="card-eyebrow">Crop-specific evidence</p>
-            <h2 id="crop-search-title">Search by crop</h2>
-            <p>Choose from supported crops to view only verified pest relationships and solutions.</p>
-          </div>
-          <label htmlFor="solution-crop">Search supported Indian crops</label>
-          <input
-            id="solution-crop"
-            type="search"
-            maxLength={100}
-            value={cropDraft}
-            onChange={(event) => {
-              setCropDraft(event.target.value)
-              setSelectedCrop('')
-              setSolution(null)
-            }}
-            placeholder="Type a crop name"
-            aria-describedby="crop-search-help"
-          />
-          <p id="crop-search-help" className="context-note">
-            Crop selection is context you provide. It does not mean the crop or
-            any pest has been detected.
-          </p>
-          {cropLoadError && <p className="inline-error" role="alert">{cropLoadError}</p>}
+        <section className="page-section crop-selection-section" aria-label="Crop selection">
+          <label htmlFor="solution-crop">Select a crop</label>
 
-          {cropDraft.trim().length >= 2 && cropSearchResults.length > 0 && (
-            <div className="crop-results" role="listbox" aria-label="Matching supported crops">
-              {cropSearchResults.map((crop) => (
-                <button
-                  key={crop.crop_id}
-                  type="button"
-                  role="option"
-                  aria-selected={selectedCrop === crop.crop_id}
-                  className={selectedCrop === crop.crop_id ? 'crop-option is-selected' : 'crop-option'}
-                  onClick={() => {
-                    setCropDraft(crop.name)
-                    setSelectedCrop(crop.crop_id)
-                  }}
-                >
-                  {crop.name}
-                </button>
-              ))}
-            </div>
-          )}
-          {cropDraft.trim().length >= 2 && !cropLoadError && cropSearchResults.length === 0 && (
-            <p className="solution-unavailable">No supported crop matches that search.</p>
-          )}
-          {selectedCrop && (
-            <div className="crop-results-summary" aria-live="polite">
-              <strong>{selectedCropRecord?.name || 'Selected crop'}</strong>
-              <span> · {loadingSolution ? 'Checking verified records…' : `${verifiedSolutions.length} verified solution${verifiedSolutions.length === 1 ? '' : 's'}`}</span>
-            </div>
+          <select
+            id="solution-crop"
+            value={selectedCrop}
+            onChange={(event) => setSelectedCrop(event.target.value)}
+            disabled={crops.length === 0}
+          >
+            <option value="">Select a crop</option>
+
+            {crops.map((crop) => (
+              <option key={crop.crop_id} value={crop.crop_id}>
+                {crop.name}
+              </option>
+            ))}
+          </select>
+
+          {!cropLoadError && !pestSolutionsError && hasActionableLiveDetection && pestSolutionData && pestSolutionData.total_crops === 0 && (
+            <p className="solution-unavailable">
+              No verified crop-solution records are currently available for this pest. You can still select a crop to check its verified guidance.
+            </p>
           )}
         </section>
 
@@ -551,18 +665,23 @@ function Solutions() {
             </h2>
             <p>Each record is independently verified for its pest, crop, risk and supporting source.</p>
           </div>
-
+          {cropLoadError && <p className="inline-error" role="alert">{cropLoadError}</p>}
           {!selectedCrop ? (
             <div className="empty-guidance">
               <LeafIcon size={22} />
-              <p>Select a crop above to check for source-verified pest relationships.</p>
+              <h3>Select a crop to view its guidance</h3>
+              <p>
+                Choose a crop from the dropdown above. Pest Guard will show
+                only the verified pest-crop relationships and the available
+                damage and management information for that crop.
+              </p>
             </div>
           ) : loadingSolution ? (
             <div className="solution-loading">Loading verified crop-specific solutions…</div>
           ) : error ? (
             <div className="inline-error" role="alert">
               <p>{error}</p>
-              {canRetry && <button type="button" className="secondary-button" onClick={() => setRetryKey((value) => value + 1)}>Try again</button>}
+              {canRetry && <button type="button" className="secondary-button" onClick={() => { setRetryKey((value) => value + 1); if (hasActionableLiveDetection) setPestSolutionsRetryKey((value) => value + 1) }}>Try again</button>}
             </div>
           ) : verifiedSolutions.length ? (
             <div className="verified-solution-list">
@@ -579,9 +698,11 @@ function Solutions() {
               <LeafIcon size={22} />
               <h3>No verified solutions available</h3>
               <p>
-                There is no source-verified pest association and risk-specific
-                solution for {selectedCropRecord?.name || 'this crop'} yet.
-                Unverified associations and recommendations are not shown.
+                {hasLiveDetection && !hasVerifiedLiveDetection
+                  ? 'The latest live result is not a verified pest identity. Pest-specific recommendations are withheld until the detection is verified.'
+                  : hasVerifiedLiveDetection && !hasActionableLiveDetection
+                    ? `The latest detected pest is classified as ${riskLabel} risk. Pest-specific management guidance is shown only for HIGH or MEDIUM risk detections.`
+                    : `There is no source-verified pest association and risk-specific solution for ${selectedCropRecord?.name || 'this crop'} yet. Unverified associations and recommendations are not shown.`}
               </p>
             </div>
           )}
