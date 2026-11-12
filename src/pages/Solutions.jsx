@@ -18,6 +18,7 @@ import {
   normalizePestName,
 } from '../utils/pestNames'
 import { formatModelScore } from '../utils/insectPredictions'
+import { buildPotentialHostDisplay } from '../utils/potentialHostProfile'
 import solutionsField from '../assets/solutions-field.jpg'
 import './Solutions.css'
 
@@ -57,6 +58,54 @@ function EvidenceCard({ title, children, className = '' }) {
       <p className="card-eyebrow">Evidence and guidance</p>
       <h3>{title}</h3>
       {children}
+    </article>
+  )
+}
+
+function PotentialHostProfile({ profile }) {
+  const display = buildPotentialHostDisplay(profile)
+  if (!display) return null
+
+  return (
+    <article className="potential-host-profile" aria-label={`${display.pestName} potential host profile`}>
+      <div className="potential-host-heading">
+        <div>
+          <p className="card-eyebrow">Candidate pest profile</p>
+          <h3>{display.pestName}</h3>
+          {display.scientificName && (
+            <p className="solution-scientific-name">
+              Candidate scientific name: {display.scientificName}
+            </p>
+          )}
+          <p className="solution-meta">
+            {display.riskLevel} risk <span aria-hidden="true">·</span> {display.region}
+          </p>
+        </div>
+        <span className="unverified-badge">{display.verificationLabel}</span>
+      </div>
+
+      <section className="potential-host-list" aria-labelledby="potential-hosts-title">
+        <h4 id="potential-hosts-title">{display.hostHeading}</h4>
+        <ul>
+          {display.hosts.map((host) => (
+            <li key={host.cropId}>
+              <span>{host.cropName}</span>
+              <small>{host.reviewStatus}</small>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {display.sections.length > 0 && (
+        <div className="potential-host-detail-grid">
+          {display.sections.map((section) => (
+            <section key={section.title}>
+              <h4>{section.title}</h4>
+              <p>{section.content}</p>
+            </section>
+          ))}
+        </div>
+      )}
     </article>
   )
 }
@@ -249,6 +298,9 @@ function Solutions() {
   const normalizedQueryPest = normalizePestName(queryPest)
   const normalizedDetectionPestId = normalizePestName(detection?.pest_id)
   const normalizedDetectionName = normalizePestName(detection?.pest)
+  const isPineWeevilProfileRequested =
+    detection?.pest_id === 'pine_weevil' ||
+    normalizedQueryPest === normalizePestName('pine_weevil')
 
   const queryMatchesDetection =
     !queryPest ||
@@ -285,6 +337,11 @@ function Solutions() {
   const selectedCropRecord = crops.find(
     (crop) => crop.crop_id === selectedCrop
   )
+  const activePotentialHostProfile =
+    isPineWeevilProfileRequested &&
+    pestSolutionData?.potential_host_profile?.pest_id === 'pine_weevil'
+      ? pestSolutionData.potential_host_profile
+      : null
 
   const storedSolutions = Array.isArray(solution?.solutions)
     ? solution.solutions
@@ -368,15 +425,21 @@ function Solutions() {
         return
       }
 
-      if (hasActionableLiveDetection) {
+      const pestIdToLoad = hasActionableLiveDetection
+        ? detection.pest_id
+        : isPineWeevilProfileRequested
+          ? 'pine_weevil'
+          : null
+
+      if (pestIdToLoad) {
         try {
-          const result = await getPestSolutions(detection.pest_id)
+          const result = await getPestSolutions(pestIdToLoad)
           if (!active) return
           setPestSolutionData(result)
         } catch (loadError) {
           if (!active) return
           setPestSolutionsError(
-            loadError.message || 'Unable to load verified solutions for this pest.',
+            loadError.message || 'Unable to load pest solution data.',
           )
         }
       }
@@ -387,7 +450,13 @@ function Solutions() {
     return () => {
       active = false
     }
-  }, [pestDirectoryLoaded, hasActionableLiveDetection, detection?.pest_id, pestSolutionsRetryKey])
+  }, [
+    pestDirectoryLoaded,
+    hasActionableLiveDetection,
+    isPineWeevilProfileRequested,
+    detection?.pest_id,
+    pestSolutionsRetryKey,
+  ])
 
   useEffect(() => {
     let active = true
@@ -532,8 +601,9 @@ function Solutions() {
           <p className="solutions-eyebrow">Pest Guard · Verified crop protection</p>
           <h1>Action Today,<br /><em>Healthier Tomorrow</em></h1>
           <p className="solutions-intro">
-            Explore evidence-based crop protection. Guidance appears only when
-            a pest, crop, risk and source have been reviewed together.
+            Explore evidence-based crop protection. Verified recommendations
+            appear only when pest, crop, risk and source have been reviewed
+            together; pending candidate profiles are labelled separately.
           </p>
           <div className="solution-benefits" aria-label="Solution principles">
             <span><LeafIcon size={18} />Evidence-led</span>
@@ -659,13 +729,28 @@ function Solutions() {
 
         <section className="page-section solutions-results-section" aria-labelledby="crop-guidance-title" aria-live="polite">
           <div className="section-intro">
-            <p className="card-eyebrow">Reviewed records only</p>
+            <p className="card-eyebrow">Verified guidance and review candidates</p>
             <h2 id="crop-guidance-title">
               {selectedCropRecord ? `Guidance for ${selectedCropRecord.name}` : 'Crop Damage & Management'}
             </h2>
-            <p>Each record is independently verified for its pest, crop, risk and supporting source.</p>
+            <p>Verified recommendations are tied to their pest, crop, risk and sources. Pending profiles are clearly marked.</p>
           </div>
           {cropLoadError && <p className="inline-error" role="alert">{cropLoadError}</p>}
+          {isPineWeevilProfileRequested &&
+            pestSolutionsError &&
+            !activePotentialHostProfile && (
+            <div className="inline-error" role="alert">
+              <p>{pestSolutionsError}</p>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setPestSolutionsRetryKey((value) => value + 1)}
+              >
+                Try again
+              </button>
+            </div>
+          )}
+          <PotentialHostProfile profile={activePotentialHostProfile} />
           {!selectedCrop ? (
             <div className="empty-guidance">
               <LeafIcon size={22} />

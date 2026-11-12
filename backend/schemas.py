@@ -145,6 +145,59 @@ class PestCropSolutionListResponse(BaseModel):
     solutions: list[PestCropSolutionResponse] = Field(default_factory=list)
 
 
+class PotentialHostCropResponse(BaseModel):
+    crop_id: str
+    crop_name: str
+    review_status: Literal["NEEDS_REVIEW"]
+
+
+class PotentialHostProfileResponse(BaseModel):
+    solution_id: str
+    pest_id: str
+    pest_name: str
+    insect_group: str
+    risk_level: Literal["HIGH", "MEDIUM", "LOW"]
+    status: Literal["NEEDS_REVIEW"]
+    region: Optional[str] = None
+    scientific_name: Optional[str] = None
+    description: Optional[str] = None
+    identification_signs: Optional[str] = None
+    crop_damage: Optional[str] = None
+    affected_plant_parts: Optional[str] = None
+    recommended_treatment: Optional[str] = None
+    immediate_control_measures: Optional[str] = None
+    biological_control_options: Optional[str] = None
+    cultural_control_methods: Optional[str] = None
+    mechanical_control_methods: Optional[str] = None
+    chemical_control_options: Optional[str] = None
+    prevention: Optional[str] = None
+    monitoring: Optional[str] = None
+    safety_precautions: Optional[str] = None
+    expert_advice: Optional[str] = None
+    potential_host_crops: list[PotentialHostCropResponse] = Field(default_factory=list)
+    source_references: list[SolutionSourceResponse] = Field(default_factory=list)
+    reviewed_on: Optional[str] = None
+
+
+class PestSolutionsPestResponse(BaseModel):
+    pest_id: str
+    name: str
+    scientific_name: Optional[str] = None
+    description: Optional[str] = None
+    risk: Optional[str] = None
+    symptoms: Optional[str] = None
+    insect_group: str
+
+
+class PestSolutionsResponse(BaseModel):
+    pest: PestSolutionsPestResponse
+    total_crops: int
+    crops: list[CropResponse] = Field(default_factory=list)
+    total_solutions: int
+    solutions: list[PestCropSolutionResponse] = Field(default_factory=list)
+    potential_host_profile: Optional[PotentialHostProfileResponse] = None
+
+
 class HealthResponse(BaseModel):
     status: str
     service: str

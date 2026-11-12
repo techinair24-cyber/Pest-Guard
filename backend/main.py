@@ -68,6 +68,7 @@ from schemas import (
     CropResponse,
     PestCropSolutionListResponse,
     PestCropSolutionResponse,
+    PestSolutionsResponse,
     PestResponse,
 )
 
@@ -79,6 +80,13 @@ def _normalize_pest_label(value: str | None) -> str:
         for character in (value or "").casefold()
         if character.isalnum()
     )
+
+
+_AMBIGUOUS_PEST_LABELS = frozenset({_normalize_pest_label("House Cricket")})
+
+
+def _is_ambiguous_pest_label(value: str | None) -> bool:
+    return _normalize_pest_label(value) in _AMBIGUOUS_PEST_LABELS
 
 
 AI_DIR = Path(__file__).resolve().parent / "ai_model"
@@ -370,8 +378,30 @@ def predict_pest(audio):
     return result
 
 
+def _catalog_name_aliases(pest_id: str) -> set[str]:
+    pest_record = next(
+        (item for item in PEST_DATA if item["pest_id"] == pest_id),
+        None,
+    )
+    if pest_record is None:
+        return set()
+
+    aliases = pest_record.get("aliases", [])
+    if not isinstance(aliases, list) or any(
+        not isinstance(alias, str) for alias in aliases
+    ):
+        raise ValueError(f"Invalid catalogue aliases for pest_id={pest_id}")
+
+    normalized_aliases = set()
+    for alias in aliases:
+        normalized_alias = _normalize_pest_label(alias)
+        if normalized_alias:
+            normalized_aliases.add(normalized_alias)
+    return normalized_aliases
+
+
 def _find_verified_pest_record(db: Session, pest_name: str, pest_id: str = ""):
-    if not pest_name:
+    if not pest_name or _is_ambiguous_pest_label(pest_name):
         return None
 
     if pest_id:
@@ -383,7 +413,7 @@ def _find_verified_pest_record(db: Session, pest_name: str, pest_id: str = ""):
             _normalize_pest_label(pest.pest_id),
             _normalize_pest_label(pest.name),
             _normalize_pest_label(pest.scientific_name),
-        }
+        } | _catalog_name_aliases(pest.pest_id)
         return (
             pest
             if _normalize_pest_label(pest_name) in verified_labels
@@ -395,7 +425,7 @@ def _find_verified_pest_record(db: Session, pest_name: str, pest_id: str = ""):
 
 def _find_pest_record_normalized(db: Session, pest_name: str | None):
     normalized_name = _normalize_pest_label(pest_name)
-    if not normalized_name:
+    if not normalized_name or _is_ambiguous_pest_label(pest_name):
         return None
 
     pests = db.query(Pest).all()
@@ -408,7 +438,7 @@ def _find_pest_record_normalized(db: Session, pest_name: str | None):
                 _normalize_pest_label(item.get("pest_id")),
                 _normalize_pest_label(item.get("name")),
                 _normalize_pest_label(item.get("scientific_name")),
-            }
+            } | _catalog_name_aliases(item["pest_id"])
         ),
         None,
     )
@@ -439,6 +469,7 @@ def _resolve_species_metadata(
     pest_name: str | None,
     db: Session | None = None,
 ) -> dict:
+    ambiguous_pest_label = _is_ambiguous_pest_label(pest_name)
     pest_record = (
         _find_pest_record_normalized(db, pest_name)
         if db is not None and pest_name
@@ -450,11 +481,24 @@ def _resolve_species_metadata(
     }
     risk = catalog_risk if catalog_risk_is_valid else "LOW"
 
-    common_name = (
-        str(getattr(pest_record, "name", "") or "").strip()
-        or str(pest_name or "").strip()
-        or "Unidentified sound"
-    )
+    if ambiguous_pest_label:
+        common_name = "Cricket (species uncertain)"
+        risk_rationale = (
+            "The common model label is shared by Acheta domesticus and "
+            "Gryllodes sigillatus; species-specific identification is unconfirmed."
+        )
+    else:
+        common_name = (
+            str(getattr(pest_record, "name", "") or "").strip()
+            or str(pest_name or "").strip()
+            or "Unidentified sound"
+        )
+        risk_rationale = (
+            "Risk category recorded in the matching pest catalogue entry."
+            if catalog_risk_is_valid
+            else "Identification or catalogue risk is unconfirmed. "
+            "LOW is a precautionary default."
+        )
     scientific_name = (
         str(getattr(pest_record, "scientific_name", "") or "").strip()
         or None
@@ -467,12 +511,7 @@ def _resolve_species_metadata(
         "risk": risk,
         "catalog_record_found": pest_record is not None,
         "catalog_risk_is_valid": catalog_risk_is_valid,
-        "risk_rationale": (
-            "Risk category recorded in the matching pest catalogue entry."
-            if catalog_risk_is_valid
-            else "Identification or catalogue risk is unconfirmed. "
-            "LOW is a precautionary default."
-        ),
+        "risk_rationale": risk_rationale,
         "affected_crops": [],
         "metadata_source_name": (
             "Pest Guard pest catalogue"
@@ -1010,7 +1049,10 @@ def seed_pest_data(db: Session):
         pest = pest_by_id.get(item["pest_id"])
         if not pest:
             raise ValueError(f"Unknown pest_id in solution record: {item['pest_id']}")
-        if item["crop_id"] not in crop_ids:
+        if (
+            item.get("crop_id") is not None
+            and item["crop_id"] not in crop_ids
+        ):
             raise ValueError(f"Unknown crop_id in solution record: {item['crop_id']}")
         if item["risk_level"] not in {"HIGH", "MEDIUM", "LOW"}:
             raise ValueError(
@@ -1024,6 +1066,28 @@ def seed_pest_data(db: Session):
         if item["solution_id"] in solution_ids:
             raise ValueError(f"Duplicate solution_id: {item['solution_id']}")
         solution_ids.add(item["solution_id"])
+        if item.get("crop_id") is None:
+            potential_hosts = item.get("potential_host_crops", [])
+            if not potential_hosts:
+                raise ValueError(
+                    f"Multi-host solution has no potential hosts: {item['solution_id']}"
+                )
+            unknown_crop_ids = {
+                host["crop_id"]
+                for host in potential_hosts
+                if host["crop_id"] not in crop_ids
+            }
+            if unknown_crop_ids:
+                raise ValueError(
+                    f"Unknown potential host crop IDs for "
+                    f"{item['solution_id']}: {sorted(unknown_crop_ids)}"
+                )
+            if item["status"] != "NEEDS_REVIEW":
+                raise ValueError(
+                    f"Multi-host solution must remain under review: "
+                    f"{item['solution_id']}"
+                )
+            continue
         if item["status"] == "VERIFIED":
             if not _has_verified_solution_evidence(item):
                 raise ValueError(
@@ -2046,6 +2110,7 @@ def get_pest(pest_id: str, db: Session = Depends(get_db)):
 
     return pest
 
+
 # -------------------------------------------------------------------
 
 # Crop and verified solution API
@@ -2142,6 +2207,43 @@ def _serialize_pest_crop_solution(solution, pest, crop) -> dict:
     }
 
 
+def _serialize_potential_host_profile(profile, pest) -> dict:
+    return {
+        "solution_id": profile["solution_id"],
+        "pest_id": profile["pest_id"],
+        "pest_name": pest["name"],
+        "insect_group": pest["insect_group"],
+        "risk_level": profile["risk_level"],
+        "status": profile["status"],
+        "region": profile.get("region"),
+        "scientific_name": profile.get("scientific_name"),
+        "description": profile.get("description"),
+        "identification_signs": profile.get("identification_signs"),
+        "crop_damage": profile.get("crop_damage"),
+        "affected_plant_parts": profile.get("affected_plant_parts"),
+        "recommended_treatment": profile.get("recommended_treatment"),
+        "immediate_control_measures": profile.get("immediate_control_measures"),
+        "biological_control_options": profile.get("biological_control_options"),
+        "cultural_control_methods": profile.get("cultural_control_methods"),
+        "mechanical_control_methods": profile.get("mechanical_control_methods"),
+        "chemical_control_options": profile.get("chemical_control_options"),
+        "prevention": profile.get("prevention"),
+        "monitoring": profile.get("monitoring"),
+        "safety_precautions": profile.get("safety_precautions"),
+        "expert_advice": profile.get("expert_advice"),
+        "potential_host_crops": [
+            {
+                "crop_id": crop["crop_id"],
+                "crop_name": crop["crop_name"],
+                "review_status": "NEEDS_REVIEW",
+            }
+            for crop in profile.get("potential_host_crops", [])
+        ],
+        "source_references": profile.get("source_references", []),
+        "reviewed_on": profile.get("reviewed_on"),
+    }
+
+
 @app.get(
     "/api/solutions",
     response_model=PestCropSolutionListResponse,
@@ -2182,12 +2284,15 @@ def get_solutions(
     }
 
 
-@app.get("/api/pests/{pest_id}/solutions")
+@app.get(
+    "/api/pests/{pest_id}/solutions",
+    response_model=PestSolutionsResponse,
+)
 def get_pest_solutions(
     pest_id: str,
     db: Session = Depends(get_db),
 ):
-    """Return every evidence-verified crop solution for one active HIGH/MEDIUM pest."""
+    """Return verified solutions and any separately labelled host candidate."""
     active_pests = {item["pest_id"]: item for item in PEST_DATA}
     if pest_id not in active_pests:
         raise HTTPException(status_code=404, detail="Pest not found")
@@ -2231,6 +2336,26 @@ def get_pest_solutions(
             _serialize_pest_crop_solution(solution, pest, crop)
         )
 
+    potential_host_record = next(
+        (
+            item
+            for item in SOLUTION_RECORDS
+            if item["pest_id"] == pest_id
+            and item.get("crop_id") is None
+            and item.get("potential_host_crops")
+            and item["status"] == "NEEDS_REVIEW"
+        ),
+        None,
+    )
+    potential_host_profile = (
+        _serialize_potential_host_profile(
+            potential_host_record,
+            active_pests[pest_id],
+        )
+        if potential_host_record
+        else None
+    )
+
     return {
         "pest": {
             "pest_id": pest.pest_id,
@@ -2245,6 +2370,7 @@ def get_pest_solutions(
         "crops": sorted(crops_by_id.values(), key=lambda item: item["name"].casefold()),
         "total_solutions": len(serialized_solutions),
         "solutions": serialized_solutions,
+        "potential_host_profile": potential_host_profile,
     }
 
 # -------------------------------------------------------------------
