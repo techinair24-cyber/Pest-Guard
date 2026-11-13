@@ -745,26 +745,26 @@ function Solutions() {
           </section>
         )}
 
-        <section className="page-section solutions-results-section" aria-labelledby="crop-guidance-title" aria-live="polite">
-          <div className="section-intro">
-            <p className="card-eyebrow">Verified guidance and review candidates</p>
-            <h2 id="crop-guidance-title">Crop Damage &amp; Management</h2>
-            <p>Verified recommendations are tied to their pest, crop, risk and sources. Pending profiles are clearly marked.</p>
+        {pestSolutionsError && (
+          <div className="inline-error" role="alert">
+            <p>{pestSolutionsError}</p>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => setPestSolutionsRetryKey((value) => value + 1)}
+            >
+              Try again
+            </button>
           </div>
-          {pestSolutionsError && (
-            <div className="inline-error" role="alert">
-              <p>{pestSolutionsError}</p>
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => setPestSolutionsRetryKey((value) => value + 1)}
-              >
-                Try again
-              </button>
+        )}
+        <PotentialHostProfile profile={activePotentialHostProfile} />
+        {verifiedSolutions.length > 0 && (
+          <section className="page-section solutions-results-section" aria-labelledby="crop-guidance-title" aria-live="polite">
+            <div className="section-intro">
+              <p className="card-eyebrow">Verified guidance and review candidates</p>
+              <h2 id="crop-guidance-title">Crop Damage &amp; Management</h2>
+              <p>Verified recommendations are tied to their pest, crop, risk and sources. Pending profiles are clearly marked.</p>
             </div>
-          )}
-          <PotentialHostProfile profile={activePotentialHostProfile} />
-          {verifiedSolutions.length > 0 && (
             <div className="verified-solution-list">
               {verifiedSolutions.map((item) => (
                 <VerifiedSolution
@@ -774,8 +774,8 @@ function Solutions() {
                 />
               ))}
             </div>
-          )}
-        </section>
+          </section>
+        )}
 
         <section className="page-section history-section" aria-labelledby="solution-history-title">
           <div className="history-heading">
