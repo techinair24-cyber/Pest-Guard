@@ -1099,6 +1099,181 @@ def _has_verified_solution_evidence(solution) -> bool:
     return has_management and evidence_fields.issubset(supported_fields)
 
 
+def _verified_history_solutions(db: Session, pest_id: str, risk: str) -> list:
+    source_solution_ids = {
+        solution["solution_id"]
+        for solution in SOLUTION_RECORDS
+        if solution.get("pest_id") == pest_id
+        and solution.get("risk_level") == risk
+        and solution.get("status") == "VERIFIED"
+        and solution.get("crop_id")
+        and _has_verified_solution_evidence(solution)
+    }
+    if not source_solution_ids:
+        return []
+
+    rows = (
+        db.query(PestCropSolution, Crop)
+        .join(Crop, Crop.crop_id == PestCropSolution.crop_id)
+        .join(Pest, Pest.pest_id == PestCropSolution.pest_id)
+        .filter(
+            PestCropSolution.solution_id.in_(source_solution_ids),
+            PestCropSolution.pest_id == pest_id,
+            PestCropSolution.risk_level == risk,
+            PestCropSolution.status == "VERIFIED",
+            Pest.risk == risk,
+        )
+        .order_by(Crop.name.asc(), PestCropSolution.solution_id.asc())
+        .all()
+    )
+    return [
+        (solution, crop)
+        for solution, crop in rows
+        if _has_verified_solution_evidence(solution)
+    ]
+
+
+def _history_solution_details(db: Session, pest_id: str, risk: str) -> dict:
+    records = _verified_history_solutions(db, pest_id, risk)
+    if not records:
+        return {
+            "solution_title": None,
+            "solution_source": None,
+            "solution_description": None,
+            "recommended_action": None,
+            "prevention": None,
+            "source_references": [],
+            "solution_records": [],
+        }
+
+    def format_fields(fields: tuple[tuple[str, str], ...]) -> str | None:
+        sections = []
+        for solution, crop in records:
+            values = [
+                f"{label}: {value.strip()}"
+                for field, label in fields
+                if isinstance(value := getattr(solution, field, None), str)
+                and value.strip()
+            ]
+            if values:
+                sections.append(
+                    f"Crop: {crop.name} ({crop.crop_id})\n"
+                    + "\n".join(values)
+                )
+        return "\n\n".join(sections) or None
+
+    source_references = []
+    solution_records = []
+    for solution, crop in records:
+        references = [
+            {
+                **reference,
+                "crop_id": crop.crop_id,
+                "crop_name": crop.name,
+            }
+            for reference in solution.source_references
+        ]
+        source_references.extend(references)
+        solution_records.append(
+            {
+                "solution_id": solution.solution_id,
+                "crop_id": crop.crop_id,
+                "crop_name": crop.name,
+                "description": solution.description,
+                "crop_damage": solution.crop_damage,
+                "affected_plant_parts": solution.affected_plant_parts,
+                "recommended_treatment": solution.recommended_treatment,
+                "immediate_control_measures": solution.immediate_control_measures,
+                "biological_control_options": solution.biological_control_options,
+                "cultural_control_methods": solution.cultural_control_methods,
+                "mechanical_control_methods": solution.mechanical_control_methods,
+                "chemical_control_options": solution.chemical_control_options,
+                "prevention": solution.prevention,
+                "monitoring": solution.monitoring,
+                "safety_precautions": solution.safety_precautions,
+                "expert_advice": solution.expert_advice,
+                "source_references": references,
+            }
+        )
+
+    return {
+        "solution_title": (
+            f"Crop-specific guidance: {records[0][1].name}"
+            if len(records) == 1
+            else f"Verified guidance for {len(records)} crops"
+        ),
+        "solution_source": "VERIFIED_CATALOG",
+        "solution_description": format_fields(
+            (
+                ("description", "Description"),
+                ("crop_damage", "Crop damage"),
+                ("affected_plant_parts", "Affected plant parts"),
+            )
+        ),
+        "recommended_action": format_fields(
+            (
+                ("recommended_treatment", "Recommended treatment"),
+                ("immediate_control_measures", "Immediate control measures"),
+                ("biological_control_options", "Biological control"),
+                ("cultural_control_methods", "Cultural control"),
+                ("mechanical_control_methods", "Mechanical control"),
+                ("chemical_control_options", "Chemical control"),
+                ("monitoring", "Monitoring"),
+                ("safety_precautions", "Safety precautions"),
+                ("expert_advice", "Expert advice"),
+            )
+        ),
+        "prevention": format_fields((("prevention", "Prevention"),)),
+        "source_references": source_references,
+        "solution_records": solution_records,
+    }
+
+
+def _save_high_risk_solution_history(
+    db: Session,
+    detection: Detection,
+    pest_id: str | None,
+    common_name: str | None,
+) -> None:
+    if (
+        detection.status != "HARMFUL_PEST"
+        or detection.risk not in {"HIGH", "MEDIUM"}
+        or not pest_id
+    ):
+        return
+
+    if (
+        detection.id is not None
+        and db.query(HighRiskSolutionHistory)
+        .filter_by(detection_id=detection.id)
+        .first()
+        is not None
+    ):
+        return
+
+    details = _history_solution_details(db, pest_id, detection.risk)
+    db.add(
+        HighRiskSolutionHistory(
+            detection_id=detection.id,
+            device_id=detection.device_id,
+            pest_id=pest_id,
+            pest=detection.pest,
+            common_name=common_name or detection.common_name,
+            image_url=None,
+            risk=detection.risk,
+            confidence=detection.confidence,
+            temperature=detection.temperature,
+            humidity=detection.humidity,
+            solution_title=details["solution_title"],
+            solution_source=details["solution_source"],
+            solution_description=details["solution_description"],
+            recommended_action=details["recommended_action"],
+            prevention=details["prevention"],
+            detected_at=detection.detected_at,
+        )
+    )
+
+
 def seed_pest_data(db: Session):
     """
     Seed the catalogue, supported crop names, and reviewed solution records.
@@ -1713,6 +1888,18 @@ async def ai_predict(
         )
 
         db.add(detection)
+        db.flush()
+        if (
+            prediction_is_accepted
+            and detection.status == "HARMFUL_PEST"
+            and detection.risk in {"HIGH", "MEDIUM"}
+        ):
+            _save_high_risk_solution_history(
+                db,
+                detection,
+                species_metadata["pest_id"],
+                species_metadata["common_name"],
+            )
         db.commit()
         db.refresh(detection)
 
@@ -1758,6 +1945,11 @@ def _high_risk_solution_history_response(item, db: Session) -> dict:
     if risk_value not in {"HIGH", "MEDIUM", "LOW", "NO_RISK"}:
         risk_value = str(getattr(item, "risk", None) or "").strip().upper()
     risk = risk_value if risk_value in {"HIGH", "MEDIUM", "LOW", "NO_RISK"} else None
+    solution_details = (
+        _history_solution_details(db, stored_pest_id, risk_value)
+        if pest_record and risk_value in {"HIGH", "MEDIUM"}
+        else _history_solution_details(db, "", "")
+    )
     pest_verified = bool(
         pest_record
         and _is_active_species_label(pest_name)
@@ -1777,11 +1969,13 @@ def _high_risk_solution_history_response(item, db: Session) -> dict:
         "confidence": getattr(item, "confidence", None),
         "temperature": getattr(item, "temperature", None),
         "humidity": getattr(item, "humidity", None),
-        "solution_title": None,
-        "solution_source": None,
-        "solution_description": None,
-        "recommended_action": None,
-        "prevention": None,
+        "solution_title": solution_details["solution_title"],
+        "solution_source": solution_details["solution_source"],
+        "solution_description": solution_details["solution_description"],
+        "recommended_action": solution_details["recommended_action"],
+        "prevention": solution_details["prevention"],
+        "source_references": solution_details["source_references"],
+        "solution_records": solution_details["solution_records"],
         "detected_at": getattr(item, "detected_at", None),
         "created_at": getattr(item, "created_at", None),
     }
@@ -2009,35 +2203,12 @@ async def create_detection(
 
     db.flush()
 
-    # Preserve the detection record; crop-specific guidance is looked up only
-    # after a crop has been selected and a reviewed catalogue record exists.
-
-    if (
-        detection.status == "HARMFUL_PEST"
-        and detection.risk in {"HIGH", "MEDIUM"}
-    ):
-        common_name = pest_record.name
-        pest_id = pest_record.pest_id
-        db.add(
-            HighRiskSolutionHistory(
-                detection_id=detection.id,
-                device_id=payload.device_id,
-                pest_id=pest_id,
-                pest=detection_pest,
-                common_name=common_name,
-                image_url=None,
-                risk=detection.risk,
-                confidence=payload.confidence,
-                temperature=payload.temperature,
-                humidity=payload.humidity,
-                solution_title=None,
-                solution_source=None,
-                solution_description=None,
-                recommended_action=None,
-                prevention=None,
-                detected_at=detected_time,
-            )
-        )
+    _save_high_risk_solution_history(
+        db,
+        detection,
+        pest_record.pest_id if pest_record else None,
+        pest_record.name if pest_record else None,
+    )
 
     # Update device information from the detection.
 

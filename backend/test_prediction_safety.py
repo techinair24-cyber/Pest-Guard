@@ -6869,6 +6869,8 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         self.assertIsNone(response["solution_description"])
         self.assertIsNone(response["recommended_action"])
         self.assertIsNone(response["prevention"])
+        self.assertEqual(response["source_references"], [])
+        self.assertEqual(response["solution_records"], [])
 
     def test_high_risk_history_preserves_identity_and_risk(self):
         catalog_item = real_high_risk_catalog_item()
@@ -6914,6 +6916,8 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         self.assertIsNone(response["solution_description"])
         self.assertIsNone(response["recommended_action"])
         self.assertIsNone(response["prevention"])
+        self.assertEqual(response["source_references"], [])
+        self.assertEqual(response["solution_records"], [])
 
     def test_harmful_device_detection_status_is_preserved(self):
         database = Mock()
@@ -7102,6 +7106,26 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
         self.db.close()
         self.engine.dispose()
 
+    def _predict_candidate(self, pest_name):
+        request = FakeRequest(
+            "application/json",
+            payload={"audio": [0.1, -0.1]},
+        )
+        result = {
+            "pest": pest_name,
+            "confidence": 0.9,
+            "insect_group": main._active_group_for_label(pest_name),
+        }
+        with (
+            patch.object(main, "predict_pest", return_value=result),
+            patch.object(main.manager, "broadcast", new_callable=AsyncMock),
+        ):
+            return asyncio.run(main.ai_predict(request, db=self.db))
+
+    def _seed_catalogue(self):
+        main.seed_pest_data(self.db)
+        self.db.commit()
+
     def test_legacy_detection_without_group_fields_remains_serializable(self):
         pest = ACTIVE_LABELS[0]
         detection = SimpleNamespace(
@@ -7256,6 +7280,169 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
             response["affected_crops"],
         )
         broadcast.assert_awaited_once_with(response)
+
+    def test_ai_prediction_saves_history_only_for_accepted_high_and_medium(self):
+        self._seed_catalogue()
+        pest_name = ACTIVE_LABELS[0]
+        pest_data = next(
+            item for item in main.PEST_DATA if item["name"] == pest_name
+        )
+        pest_record = self.db.query(main.Pest).filter_by(
+            pest_id=pest_data["pest_id"]
+        ).one()
+
+        for risk, should_save in (
+            ("HIGH", True),
+            ("MEDIUM", True),
+            ("LOW", False),
+        ):
+            with self.subTest(risk=risk):
+                pest_record.risk = risk
+                self.db.commit()
+                response = self._predict_candidate(pest_name)
+
+                self.assertEqual(response["status"], "HARMFUL_PEST")
+                history = (
+                    self.db.query(main.HighRiskSolutionHistory)
+                    .filter_by(detection_id=response["id"])
+                    .all()
+                )
+                self.assertEqual(len(history), int(should_save))
+                if should_save:
+                    saved_detection = self.db.query(main.Detection).filter_by(
+                        id=response["id"]
+                    ).one()
+                    self.assertEqual(history[0].risk, risk)
+                    self.assertEqual(
+                        history[0].detection_id,
+                        response["id"],
+                    )
+                    self.assertEqual(
+                        history[0].device_id,
+                        saved_detection.device_id,
+                    )
+                    self.assertEqual(history[0].pest_id, response["pest_id"])
+                    self.assertEqual(history[0].pest, response["pest"])
+                    self.assertEqual(
+                        history[0].common_name,
+                        response["common_name"],
+                    )
+                    self.assertEqual(
+                        history[0].confidence,
+                        saved_detection.confidence,
+                    )
+                    self.assertEqual(
+                        history[0].temperature,
+                        saved_detection.temperature,
+                    )
+                    self.assertEqual(
+                        history[0].humidity,
+                        saved_detection.humidity,
+                    )
+                    self.assertEqual(
+                        history[0].detected_at,
+                        saved_detection.detected_at,
+                    )
+
+    def test_unverified_ai_prediction_does_not_save_history(self):
+        response = self._predict_candidate("Not a model class")
+
+        self.assertEqual(response["status"], "UNKNOWN")
+        self.assertFalse(response["pest_verified"])
+        self.assertEqual(
+            self.db.query(main.HighRiskSolutionHistory).count(),
+            0,
+        )
+
+    def test_history_returns_verified_crop_solution_sources_and_can_be_cleared(self):
+        self._seed_catalogue()
+        source_solution = next(
+            solution
+            for solution in main.SOLUTION_RECORDS
+            if solution.get("status") == "VERIFIED"
+            and solution.get("crop_id")
+        )
+        pest = self.db.query(main.Pest).filter_by(
+            pest_id=source_solution["pest_id"]
+        ).one()
+        detected_at = datetime(2026, 1, 5, 12, 30)
+        detection = main.Detection(
+            device_id="HISTORY-DETAILS-UNIT",
+            status="HARMFUL_PEST",
+            pest=pest.name,
+            common_name=pest.name,
+            risk=pest.risk,
+            confidence=0.93,
+            temperature=25.0,
+            humidity=60.0,
+            detected_at=detected_at,
+        )
+        self.db.add(detection)
+        self.db.flush()
+        main._save_high_risk_solution_history(
+            self.db,
+            detection,
+            pest.pest_id,
+            pest.name,
+        )
+        self.db.commit()
+
+        saved = self.db.query(main.HighRiskSolutionHistory).filter_by(
+            detection_id=detection.id
+        ).one()
+        self.assertEqual(saved.device_id, detection.device_id)
+        self.assertEqual(saved.pest_id, pest.pest_id)
+        self.assertEqual(saved.confidence, detection.confidence)
+        self.assertEqual(saved.temperature, detection.temperature)
+        self.assertEqual(saved.humidity, detection.humidity)
+        self.assertEqual(saved.detected_at, detected_at)
+        self.assertEqual(saved.solution_source, "VERIFIED_CATALOG")
+        self.assertIn(source_solution["crop_id"], saved.solution_description)
+        self.assertIn(
+            source_solution["crop_id"],
+            saved.recommended_action,
+        )
+
+        response = main.get_high_risk_solution_history(limit=50, db=self.db)
+        self.assertEqual(response["total"], 1)
+        item = response["history"][0]
+        self.assertEqual(item["solution_title"], saved.solution_title)
+        self.assertEqual(item["solution_description"], saved.solution_description)
+        self.assertEqual(item["recommended_action"], saved.recommended_action)
+        self.assertEqual(item["prevention"], saved.prevention)
+        self.assertEqual(
+            item["solution_records"][0]["crop_id"],
+            source_solution["crop_id"],
+        )
+        self.assertEqual(
+            item["source_references"][0]["url"],
+            source_solution["source_references"][0]["url"],
+        )
+        self.assertEqual(
+            item["source_references"][0]["crop_id"],
+            source_solution["crop_id"],
+        )
+
+        main._save_high_risk_solution_history(
+            self.db,
+            detection,
+            pest.pest_id,
+            pest.name,
+        )
+        self.db.commit()
+        self.assertEqual(
+            self.db.query(main.HighRiskSolutionHistory)
+            .filter_by(detection_id=detection.id)
+            .count(),
+            1,
+        )
+
+        cleared = main.clear_high_risk_solution_history(db=self.db)
+        self.assertEqual(cleared["deleted"], 1)
+        self.assertEqual(
+            self.db.query(main.HighRiskSolutionHistory).count(),
+            0,
+        )
 
     def test_catalogue_risk_survives_detection_history_and_websocket_for_all_levels(self):
         pest_name = ACTIVE_LABELS[0]
