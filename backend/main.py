@@ -2012,7 +2012,10 @@ async def create_detection(
     # Preserve the detection record; crop-specific guidance is looked up only
     # after a crop has been selected and a reviewed catalogue record exists.
 
-    if detection.status == "HARMFUL_PEST" and detection.risk == "HIGH":
+    if (
+        detection.status == "HARMFUL_PEST"
+        and detection.risk in {"HIGH", "MEDIUM"}
+    ):
         common_name = pest_record.name
         pest_id = pest_record.pest_id
         db.add(
