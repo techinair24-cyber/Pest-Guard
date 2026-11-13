@@ -126,6 +126,10 @@ function PestSolutionDetails({ label, value }) {
 }
 
 function HistorySolutionModal({ item, onClose }) {
+  const [solutionData, setSolutionData] = useState(null)
+  const [solutionLoading, setSolutionLoading] = useState(Boolean(item.pest_id))
+  const [solutionError, setSolutionError] = useState('')
+
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') onClose()
@@ -135,9 +139,42 @@ function HistorySolutionModal({ item, onClose }) {
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [onClose])
 
-  const solutionRecords = Array.isArray(item.solution_records)
+  useEffect(() => {
+    let active = true
+
+    async function loadPestSolutions() {
+      try {
+        const result = await getPestSolutions(item.pest_id)
+        if (active) setSolutionData(result)
+      } catch (loadError) {
+        if (active) {
+          setSolutionError(
+            loadError.message || 'Unable to load crop-specific solutions.',
+          )
+        }
+      } finally {
+        if (active) setSolutionLoading(false)
+      }
+    }
+
+    if (item.pest_id) loadPestSolutions()
+
+    return () => {
+      active = false
+    }
+  }, [item.pest_id])
+
+  const savedSolutionRecords = Array.isArray(item.solution_records)
     ? item.solution_records
     : []
+  const matchingSolutions = Array.isArray(solutionData?.solutions)
+    ? solutionData.solutions.filter(
+        (solution) => solution.pest_id === item.pest_id,
+      )
+    : []
+  const solutionRecords = matchingSolutions.length > 0
+    ? matchingSolutions
+    : savedSolutionRecords
   const savedDetails = [
     ['Pest description', item.pest_description],
     ['Symptoms', item.pest_symptoms],
@@ -145,9 +182,7 @@ function HistorySolutionModal({ item, onClose }) {
     ['Recommended action', item.recommended_action],
     ['Prevention', item.prevention],
   ]
-  const savedSources = Array.isArray(item.source_references)
-    ? item.source_references
-    : []
+  const savedSources = getSources(item)
   const hasSavedDetails = savedDetails.some(([, value]) => Boolean(value))
 
   return (
@@ -181,53 +216,16 @@ function HistorySolutionModal({ item, onClose }) {
         </div>
         <div className="history-modal-content">
           {solutionRecords.length > 0 ? (
-            solutionRecords.map((solution, index) => {
-              const details = [
-                ['Description', solution.description],
-                ['Crop damage', solution.crop_damage],
-                ['Affected plant parts', solution.affected_plant_parts],
-                ['Identification details', solution.identification_signs],
-                ['Recommended treatment', solution.recommended_treatment],
-                ['Immediate control measures', solution.immediate_control_measures],
-                ['Biological control', solution.biological_control_options],
-                ['Cultural control', solution.cultural_control_methods],
-                ['Mechanical control', solution.mechanical_control_methods],
-                ['Chemical control', solution.chemical_control_options],
-                ['Monitoring', solution.monitoring],
-                ['Prevention', solution.prevention],
-                ['Safety precautions', solution.safety_precautions],
-                ['Expert advice', solution.expert_advice],
-              ]
-              const sources = Array.isArray(solution.source_references)
-                ? solution.source_references
-                : []
-
-              return (
-                <article
-                  className="history-modal-solution"
+            <div className="history-modal-solutions">
+              {solutionRecords.map((solution, index) => (
+                <PestSolutionCard
                   key={solution.solution_id || `${solution.crop_id}-${index}`}
-                >
-                  <h3>{solution.crop_name || solution.crop_id}</h3>
-                  {(solution.crop_id || solution.risk_level || solution.region) && (
-                    <p className="history-modal-context">
-                      {solution.crop_id && `Crop ID: ${solution.crop_id}`}
-                      {solution.risk_level && ` · ${solution.risk_level} risk`}
-                      {solution.region && ` · ${solution.region}`}
-                    </p>
-                  )}
-                  <div className="potential-host-detail-grid history-modal-details">
-                    {details.map(([label, value]) => (
-                      <PestSolutionDetails
-                        key={label}
-                        label={label}
-                        value={value}
-                      />
-                    ))}
-                  </div>
-                  {sources.length > 0 && <SourceList sources={sources} />}
-                </article>
-              )
-            })
+                  item={solution}
+                />
+              ))}
+            </div>
+          ) : solutionLoading ? (
+            <p className="solution-loading">Loading crop-specific solutions…</p>
           ) : hasSavedDetails ? (
             <>
               <div className="potential-host-detail-grid history-modal-details">
@@ -239,7 +237,12 @@ function HistorySolutionModal({ item, onClose }) {
             </>
           ) : (
             <p className="solution-unavailable">
-              Saved solution details are not available for this record.
+              Solution details are not available for this record.
+            </p>
+          )}
+          {solutionError && (
+            <p className="inline-error" role="alert">
+              {solutionError}
             </p>
           )}
         </div>
@@ -250,6 +253,7 @@ function HistorySolutionModal({ item, onClose }) {
 
 function PestSolutionCard({ item }) {
   const sources = getSources(item)
+  const risk = item.risk_level || item.risk
   const details = [
     ['Description', item.description],
     ['Habitat', item.habitat],
@@ -257,13 +261,17 @@ function PestSolutionCard({ item }) {
     ['Crop damage', item.crop_damage || item.damage_notes],
     ['Affected plant parts', item.affected_plant_parts || item.affected_parts],
     ['Identification', item.identification_signs],
+    ['Recommended treatment', item.recommended_treatment],
+    ['Immediate control measures', item.immediate_control_measures],
     ['Management', item.management || item.recommendations],
     ['Biological control', item.biological_control_options || item.biological_control],
     ['Cultural control', item.cultural_control_methods || item.cultural_control],
     ['Mechanical control', item.mechanical_control_methods || item.mechanical_control],
+    ['Chemical control', item.chemical_control_options],
     ['Monitoring', item.monitoring],
     ['Prevention', item.prevention],
     ['Safety', item.safety_precautions],
+    ['Expert advice', item.expert_advice],
     ['Geographic qualification', item.geographic_qualification || item.geographic_limitation],
     ['Economic threshold', item.economic_threshold || item.action_threshold],
     ['Notes', item.notes],
@@ -274,7 +282,7 @@ function PestSolutionCard({ item }) {
       <div className="potential-host-heading">
         <div>
           <p className="card-eyebrow">
-            Pest-specific solution · {item.risk_level} risk
+            Pest-specific solution{risk ? ` · ${risk} risk` : ''}
           </p>
           <h3>{item.title || item.pest_name}</h3>
           {item.scientific_name && (
@@ -294,12 +302,6 @@ function PestSolutionCard({ item }) {
         {details.map(([label, value]) => (
           <PestSolutionDetails key={label} label={label} value={value} />
         ))}
-        {item.chemical_control_options && (
-          <PestSolutionDetails
-            label="Chemical control"
-            value={item.chemical_control_options}
-          />
-        )}
       </div>
       <SourceList sources={sources} />
     </article>
