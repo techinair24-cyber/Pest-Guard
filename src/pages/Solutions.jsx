@@ -221,7 +221,7 @@ function PotentialHostProfile({ profile }) {
           {display.hosts.map((host) => (
             <li key={host.cropId}>
               <span>{host.cropName}</span>
-              <small>{host.reviewStatus}</small>
+              <small>Candidate</small>
             </li>
           ))}
         </ul>
@@ -257,13 +257,13 @@ function RecommendationCard({ item, category }) {
       <div className="recommendation-heading">
         <h4>{category.title}</h4>
         <span className={isVerified ? 'verification-badge' : 'unverified-badge'}>
-          {isVerified ? 'Source verified' : 'Not verified'}
+          {isVerified ? 'Sources available' : 'Sources unavailable'}
         </span>
       </div>
       {isVerified ? (
         <p>{recommendation}</p>
       ) : (
-        <p className="solution-unavailable">Solution not verified yet.</p>
+        <p className="solution-unavailable">Solution details are not available.</p>
       )}
       {isVerified && category.safetyKey && item[category.safetyKey] && safetySources.length > 0 && (
         <p className="safety-note">
@@ -290,7 +290,7 @@ function VerifiedSolution({ item, isLiveMatch }) {
           <p>{value}</p>
         ) : (
           <p className="solution-unavailable">
-            Information not verified or not available for this pest-crop record.
+            Information is not available for this pest-crop record.
           </p>
         )}
         <p className="evidence-label">Supporting evidence</p>
@@ -325,10 +325,10 @@ function VerifiedSolution({ item, isLiveMatch }) {
             {item.insect_group} <span aria-hidden="true">·</span> {item.risk} risk
           </p>
         </div>
-        <span className="verification-badge">Source verified</span>
+        <span className="verification-badge">Sources available</span>
       </div>
       {isLiveMatch && (
-        <p className="match-note">Matches the current verified detection.</p>
+        <p className="match-note">Matches the current pest identification.</p>
       )}
       <div className="solution-detail-grid">
         {renderEvidence(
@@ -374,12 +374,12 @@ function VerifiedSolution({ item, isLiveMatch }) {
         </EvidenceCard>
         <EvidenceCard title="Prevention" className="prevention-panel">
           <span className={preventionIsVerified ? 'verification-badge' : 'unverified-badge'}>
-            {preventionIsVerified ? 'Source verified' : 'Not verified'}
+            {preventionIsVerified ? 'Sources available' : 'Sources unavailable'}
           </span>
           {preventionIsVerified ? (
             <p>{item.prevention}</p>
           ) : (
-            <p className="solution-unavailable">Solution not verified yet.</p>
+            <p className="solution-unavailable">Solution details are not available.</p>
           )}
           {preventionIsVerified && <SourceList sources={preventionSources} />}
         </EvidenceCard>
@@ -491,7 +491,7 @@ function Solutions() {
           'Unknown pest',
       ).trim()
     : 'Unknown pest'
-  const riskLabel = hasVerifiedLiveDetection ? catalogRisk : 'UNCONFIRMED'
+  const riskLabel = hasVerifiedLiveDetection ? catalogRisk : 'Not available'
   const insectGroup = String(detection?.insect_group || '').trim()
   useEffect(() => {
     let active = true
@@ -630,12 +630,12 @@ function Solutions() {
     <main className="solutions-page">
       <section className="solutions-hero">
         <div className="solutions-hero-copy">
-          <p className="solutions-eyebrow">Pest Guard · Verified crop protection</p>
+          <p className="solutions-eyebrow">Pest Guard · Evidence-led crop protection</p>
           <h1>Action Today,<br /><em>Healthier Tomorrow</em></h1>
           <p className="solutions-intro">
-            Explore evidence-based crop protection. Verified recommendations
-            appear only when pest, crop, risk and source have been reviewed
-            together; pending candidate profiles are labelled separately.
+            Explore evidence-based crop protection. Recommendations are tied
+            to their pest, crop, risk and sources; candidate profiles are
+            shown separately.
           </p>
           <div className="solution-benefits" aria-label="Solution principles">
             <span><LeafIcon size={18} />Evidence-led</span>
@@ -671,7 +671,7 @@ function Solutions() {
                 <div>
                   <p className="card-eyebrow">Detected pest · {insectGroup || 'Group unavailable'}</p>
                   <h3>{pestName}</h3>
-                  <span className="verification-badge">Verified catalogue match</span>
+                  <span className="verification-badge">Pest identified</span>
                 </div>
               </div>
               <dl className="detection-metrics">
@@ -686,7 +686,7 @@ function Solutions() {
                 </div>
                 <div>
                   <dt>Identification</dt>
-                  <dd>Verified</dd>
+                  <dd>Identified</dd>
                 </div>
               </dl>
               <Link className="text-link" to="/live-monitoring">Open Live Monitoring <ArrowIcon size={15} /></Link>
@@ -694,16 +694,16 @@ function Solutions() {
           ) : (
             <article className="detection-summary detection-summary-unconfirmed">
               <div>
-                <p className="card-eyebrow">{isNonPest ? 'Non-pest result' : 'Identification unconfirmed'}</p>
-                <h3>{isNonPest ? 'No pest-specific guidance' : hasLiveDetection ? 'Unknown pest' : 'No live detection available'}</h3>
+                <p className="card-eyebrow">{isNonPest ? 'Non-pest result' : 'Identification unavailable'}</p>
+                <h3>{isNonPest ? 'No pest-specific guidance' : hasLiveDetection ? 'Pest identity unavailable' : 'No live detection available'}</h3>
                 <p>
                   {isNonPest
                     ? 'The latest result is classified as a non-pest sound.'
-                    : 'A verified species identity and catalogue match are required before pest-specific risk or guidance can be confirmed.'}
+                    : 'Pest-specific risk and guidance are shown when an identification is available.'}
                 </p>
                 {detection?.pest && (
                   <span className="unconfirmed-label">
-                    Model candidate: {detection.common_name || detection.pest}
+                    Possible match: {detection.common_name || detection.pest}
                   </span>
                 )}
               </div>
@@ -714,15 +714,15 @@ function Solutions() {
                 </div>
                 <div>
                   <dt>Risk</dt>
-                  <dd className="risk-unconfirmed">UNCONFIRMED</dd>
+                  <dd className="risk-unconfirmed">Not available</dd>
                 </div>
                 <div>
                   <dt>Model score</dt>
                   <dd>{Number.isFinite(detectionConfidence) ? confidenceLabel : 'N/A'}</dd>
                 </div>
                 <div>
-                  <dt>Catalogue status</dt>
-                  <dd>Unverified</dd>
+                  <dt>Pest match</dt>
+                  <dd>Unavailable</dd>
                 </div>
               </dl>
               <Link className="text-link" to="/live-monitoring">Open Live Monitoring <ArrowIcon size={15} /></Link>
@@ -761,9 +761,9 @@ function Solutions() {
         {verifiedSolutions.length > 0 && (
           <section className="page-section solutions-results-section" aria-labelledby="crop-guidance-title" aria-live="polite">
             <div className="section-intro">
-              <p className="card-eyebrow">Verified guidance and review candidates</p>
+              <p className="card-eyebrow">Crop-specific guidance and candidate profiles</p>
               <h2 id="crop-guidance-title">Crop Damage &amp; Management</h2>
-              <p>Verified recommendations are tied to their pest, crop, risk and sources. Pending profiles are clearly marked.</p>
+              <p>Recommendations are tied to their pest, crop, risk and sources. Candidate profiles are clearly separated.</p>
             </div>
             <div className="verified-solution-list">
               {verifiedSolutions.map((item) => (
@@ -851,10 +851,12 @@ function Solutions() {
                   <details key={item.id} className="history-card">
                     <summary>
                       <div>
-                        <p className="card-eyebrow">{verifiedHistoryPest ? 'Verified catalogue match' : 'Unconfirmed model prediction'}</p>
-                        <h3>{verifiedHistoryPest ? getCommonPestName(historyKey, pestDirectory, item) : 'Unconfirmed model prediction'}</h3>
+                        <p className="card-eyebrow">{verifiedHistoryPest ? 'Pest identified' : 'Pest identity unavailable'}</p>
+                        <h3>{verifiedHistoryPest ? getCommonPestName(historyKey, pestDirectory, item) : 'Pest identity unavailable'}</h3>
                       </div>
-                      <span className={`history-risk risk-${historyRisk.risk.toLowerCase()}`}>{historyRisk.risk}</span>
+                      <span className={`history-risk risk-${historyRisk.risk.toLowerCase()}`}>
+                        {historyRisk.risk === 'UNCONFIRMED' ? 'Not available' : historyRisk.risk}
+                      </span>
                       <div className="history-card-meta">
                         <span><small>Model score</small><strong>{verifiedHistoryPest && Number.isFinite(historyConfidence) ? formatModelScore(historyConfidence) : 'N/A'}</strong></span>
                         <span><small>Detected</small><strong>{detectedAt}</strong></span>
@@ -863,7 +865,7 @@ function Solutions() {
                       <span className="history-card-toggle">View persisted detection record</span>
                     </summary>
                     <div className="history-card-details">
-                      <p className="solution-unavailable">No verified solution content is available for this saved detection.</p>
+                      <p className="solution-unavailable">Solution details are not available for this saved detection.</p>
                     </div>
                   </details>
                 )

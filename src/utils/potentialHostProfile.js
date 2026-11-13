@@ -30,7 +30,7 @@ export function buildPotentialHostDisplay(profile) {
     scientificName: profile.scientific_name,
     riskLevel: profile.risk_level,
     region: profile.region,
-    verificationLabel: 'Unverified · verification pending',
+    verificationLabel: 'Candidate profile',
     hostHeading: 'Potential hosts',
     hosts: profile.potential_host_crops.map((host) => ({
       cropId: host.crop_id,

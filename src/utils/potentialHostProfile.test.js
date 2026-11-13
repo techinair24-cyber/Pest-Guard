@@ -37,7 +37,7 @@ test('builds one unverified profile with all potential hosts together', () => {
 
   assert.equal(display.pestName, 'Pine weevil')
   assert.equal(display.hostHeading, 'Potential hosts')
-  assert.equal(display.verificationLabel, 'Unverified · verification pending')
+  assert.equal(display.verificationLabel, 'Candidate profile')
   assert.deepEqual(
     display.hosts.map((host) => host.cropName),
     ['Pine', 'Spruce', 'Fir', 'Douglas Fir', 'Hemlock'],
