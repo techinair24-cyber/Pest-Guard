@@ -126,7 +126,7 @@ function PestSolutionDetails({ label, value }) {
 }
 
 function HistorySolutionModal({ item, onClose }) {
-  const [solutionData, setSolutionData] = useState(null)
+  const [historyPestSolutions, setHistoryPestSolutions] = useState([])
   const [solutionLoading, setSolutionLoading] = useState(Boolean(item.pest_id))
   const [solutionError, setSolutionError] = useState('')
 
@@ -145,7 +145,11 @@ function HistorySolutionModal({ item, onClose }) {
     async function loadPestSolutions() {
       try {
         const result = await getPestSolutions(item.pest_id)
-        if (active) setSolutionData(result)
+        if (active) {
+          setHistoryPestSolutions(
+            Array.isArray(result.advisories) ? result.advisories : [],
+          )
+        }
       } catch (loadError) {
         if (active) {
           setSolutionError(
@@ -163,27 +167,6 @@ function HistorySolutionModal({ item, onClose }) {
       active = false
     }
   }, [item.pest_id])
-
-  const savedSolutionRecords = Array.isArray(item.solution_records)
-    ? item.solution_records
-    : []
-  const matchingSolutions = Array.isArray(solutionData?.solutions)
-    ? solutionData.solutions.filter(
-        (solution) => solution.pest_id === item.pest_id,
-      )
-    : []
-  const solutionRecords = matchingSolutions.length > 0
-    ? matchingSolutions
-    : savedSolutionRecords
-  const savedDetails = [
-    ['Pest description', item.pest_description],
-    ['Symptoms', item.pest_symptoms],
-    ['Solution description', item.solution_description],
-    ['Recommended action', item.recommended_action],
-    ['Prevention', item.prevention],
-  ]
-  const savedSources = getSources(item)
-  const hasSavedDetails = savedDetails.some(([, value]) => Boolean(value))
 
   return (
     <div
@@ -215,29 +198,18 @@ function HistorySolutionModal({ item, onClose }) {
           </button>
         </div>
         <div className="history-modal-content">
-          {solutionRecords.length > 0 ? (
-            <div className="history-modal-solutions">
-              {solutionRecords.map((solution, index) => (
-                <PestSolutionCard
-                  key={solution.solution_id || `${solution.crop_id}-${index}`}
-                  item={solution}
-                />
-              ))}
-            </div>
-          ) : solutionLoading ? (
-            <p className="solution-loading">Loading crop-specific solutions…</p>
-          ) : hasSavedDetails ? (
-            <>
-              <div className="potential-host-detail-grid history-modal-details">
-                {savedDetails.map(([label, value]) => (
-                  <PestSolutionDetails key={label} label={label} value={value} />
-                ))}
-              </div>
-              {savedSources.length > 0 && <SourceList sources={savedSources} />}
-            </>
+          {solutionLoading ? (
+            <p className="solution-loading">Loading pest solutions…</p>
+          ) : historyPestSolutions.length > 0 ? (
+            historyPestSolutions.map((solution, index) => (
+              <PestSolutionCard
+                key={solution.id || solution.pest_id || index}
+                item={solution}
+              />
+            ))
           ) : (
-            <p className="solution-unavailable">
-              Solution details are not available for this record.
+            <p>
+              Solution information is not available for this pest.
             </p>
           )}
           {solutionError && (
@@ -253,7 +225,6 @@ function HistorySolutionModal({ item, onClose }) {
 
 function PestSolutionCard({ item }) {
   const sources = getSources(item)
-  const risk = item.risk_level || item.risk
   const details = [
     ['Description', item.description],
     ['Habitat', item.habitat],
@@ -282,7 +253,7 @@ function PestSolutionCard({ item }) {
       <div className="potential-host-heading">
         <div>
           <p className="card-eyebrow">
-            Pest-specific solution{risk ? ` · ${risk} risk` : ''}
+            Pest-specific solution · {item.risk_level || item.risk} risk
           </p>
           <h3>{item.title || item.pest_name}</h3>
           {item.scientific_name && (
