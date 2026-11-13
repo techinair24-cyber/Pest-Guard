@@ -2,6 +2,7 @@ import asyncio
 import json
 import unittest
 from datetime import datetime, timedelta, timezone
+from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
@@ -388,7 +389,19 @@ class AudioPredictionSafetyTests(unittest.TestCase):
                 main.ai_predict(request, db=self.database)
             )
 
-        to_thread.assert_awaited_once_with(main.predict_pest, audio)
+        self.assertEqual(to_thread.await_count, 2)
+        self.assertEqual(
+            to_thread.await_args_list[0].args,
+            (main.predict_pest, audio),
+        )
+        self.assertIs(
+            to_thread.await_args_list[1].args[0],
+            main.send_fast2sms_alert,
+        )
+        self.assertEqual(
+            to_thread.await_args_list[1].args[1]["status"],
+            response["status"],
+        )
         self.assertEqual(response["pest"], ACTIVE_LABELS[0])
         self.assertEqual(response["status"], "UNKNOWN")
 
@@ -6992,7 +7005,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
 
         with (
             patch.object(main.manager, "broadcast", new_callable=AsyncMock),
-            patch.object(main, "Client") as twilio_client,
+            patch.object(main, "urlopen") as fast2sms_request,
         ):
             detection = asyncio.run(main.create_detection(payload, database))
 
@@ -7000,7 +7013,49 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         self.assertEqual(detection["identification_status"], "UNCONFIRMED")
         self.assertEqual(detection["risk"], "HIGH")
         self.assertFalse(detection["pest_verified"])
-        twilio_client.assert_not_called()
+        fast2sms_request.assert_not_called()
+
+    def test_fast2sms_sends_high_and_medium_alerts_without_network_requests(self):
+        detection = {
+            "status": "HARMFUL_PEST",
+            "identification_status": "MODEL_PREDICTED",
+            "pest_verified": True,
+            "common_name": "Test pest",
+        }
+
+        with patch.dict(
+            "os.environ",
+            {
+                "FAST2SMS_API_KEY": "test-key",
+                "FAST2SMS_ALERT_NUMBERS": "1111111111,2222222222",
+            },
+        ):
+            for risk in ("HIGH", "MEDIUM"):
+                with self.subTest(risk=risk):
+                    with patch.object(
+                        main,
+                        "urlopen",
+                        return_value=BytesIO(
+                            b'{"return": true, "request_id": "test-request"}'
+                        ),
+                    ) as send_request:
+                        main.send_fast2sms_alert({**detection, "risk": risk})
+
+                    request = send_request.call_args.args[0]
+                    payload = json.loads(request.data.decode("utf-8"))
+                    self.assertEqual(
+                        request.full_url,
+                        "https://www.fast2sms.com/dev/bulkV2",
+                    )
+                    self.assertEqual(payload["route"], "q")
+                    self.assertEqual(
+                        payload["message"],
+                        f"Pest Guard Alert: Test pest - {risk} RISK",
+                    )
+                    self.assertEqual(
+                        payload["numbers"],
+                        "1111111111,2222222222",
+                    )
 
     def test_device_high_risk_uses_catalog_risk_not_submitted_risk(self):
         database = Mock()
@@ -7018,7 +7073,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             patch.object(
                 main.manager, "broadcast", new_callable=AsyncMock
             ) as broadcast,
-            patch.object(main, "send_high_risk_sms"),
+            patch.object(main, "send_fast2sms_alert"),
         ):
             detection = asyncio.run(main.create_detection(payload, database))
 
@@ -7177,7 +7232,7 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
             patch.object(
                 main.manager, "broadcast", new_callable=AsyncMock
             ) as broadcast,
-            patch.object(main, "send_high_risk_sms"),
+            patch.object(main, "send_fast2sms_alert"),
         ):
             saved = asyncio.run(main.create_detection(payload, self.db))
 
@@ -7470,7 +7525,7 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
                         "broadcast",
                         new_callable=AsyncMock,
                     ) as broadcast,
-                    patch.object(main, "send_high_risk_sms"),
+                    patch.object(main, "send_fast2sms_alert"),
                 ):
                     response = asyncio.run(
                         main.create_detection(payload, self.db)
@@ -7607,7 +7662,7 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
         )
         with (
             patch.object(main.manager, "broadcast", new_callable=AsyncMock),
-            patch.object(main, "send_high_risk_sms"),
+            patch.object(main, "send_fast2sms_alert"),
         ):
             response = asyncio.run(main.create_detection(payload, self.db))
 

@@ -8,8 +8,6 @@ import os
 
 import uuid
 
-from twilio.rest import Client
-
 import difflib
 import csv
 import json
@@ -19,6 +17,10 @@ import numpy as np
 from pathlib import Path
 
 from typing import List
+
+from dotenv import load_dotenv
+from urllib.error import HTTPError, URLError
+from urllib.request import Request as URLRequest, urlopen
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 
@@ -74,6 +76,8 @@ from schemas import (
     PestAdvisoryResponse,
     PestResponse,
 )
+
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 logger = logging.getLogger(__name__)
 
@@ -1909,6 +1913,7 @@ async def ai_predict(
             tzinfo=timezone.utc
         ).isoformat()
 
+        await asyncio.to_thread(send_fast2sms_alert, prediction_data)
         await manager.broadcast(prediction_data)
         return prediction_data
 
@@ -1987,81 +1992,72 @@ def _high_risk_solution_history_response(item, db: Session) -> dict:
 
 # -------------------------------------------------------------------
 
-def send_high_risk_sms(detection):
-
-    """
-
-    Send a Twilio trial SMS for HIGH-risk pest detections.
-
-    """
-
+def send_fast2sms_alert(detection):
+    """Send customized HIGH or MEDIUM pest detection alerts."""
     if (
         detection.get("status") != "HARMFUL_PEST"
         or detection.get("identification_status") != "MODEL_PREDICTED"
         or detection.get("pest_verified") is not True
-        or detection.get("risk") != "HIGH"
     ):
         return
 
-    account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-
-    auth_token = os.getenv("TWILIO_AUTH_TOKEN")
-
-    from_number = os.getenv("TWILIO_FROM_NUMBER")
-
-    to_number_1 = os.getenv("TWILIO_TO_NUMBER")
-
-    to_number_2 = os.getenv("TWILIO_TO_NUMBER_2")
-
-    if not account_sid or not auth_token or not from_number:
-
-        print("Twilio is not configured.")
-
+    risk = str(detection.get("risk") or "").strip().upper()
+    if risk not in {"HIGH", "MEDIUM"}:
         return
 
-    recipients = [
+    pest_name = str(
+        detection.get("common_name") or detection.get("pest") or ""
+    ).strip()
 
-        number
-
-        for number in [to_number_1, to_number_2]
-
-        if number
-
+    api_key = os.getenv("FAST2SMS_API_KEY")
+    numbers = [
+        number.strip()
+        for number in os.getenv("FAST2SMS_ALERT_NUMBERS", "").split(",")
+        if number.strip()
     ]
 
-    if not recipients:
-
-        print("No Twilio recipient numbers configured.")
-
+    if not api_key or not numbers or not pest_name:
+        print("Fast2SMS alert skipped: missing configuration.")
         return
 
+    message = f"Pest Guard Alert: {pest_name} - {risk} RISK"
+
+    payload = {
+        "route": "q",
+        "message": message,
+        "numbers": ",".join(numbers),
+        "sms_details": "1",
+    }
+
+    request = URLRequest(
+        "https://www.fast2sms.com/dev/bulkV2",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": api_key,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+
     try:
+        with urlopen(request, timeout=30) as response:
+            result = json.loads(response.read().decode("utf-8"))
 
-        client = Client(account_sid, auth_token)
-
-        for recipient in recipients:
-
-            message = client.messages.create(
-
-                body="sms_internal_alerts",
-
-                from_=from_number,
-
-                to=recipient,
-
-            )
-
+        if result.get("return") is True:
             print(
-
-                f"Trial SMS sent to {recipient}. "
-
-                f"Message SID: {message.sid}"
-
+                f"Fast2SMS {risk} alert accepted. "
+                f"Request ID: {result.get('request_id')}"
             )
+        else:
+            print("Fast2SMS rejected the alert:", result.get("message"))
 
-    except Exception as error:
+    except HTTPError as error:
+        print("Fast2SMS HTTP error:", error.code)
+        print(error.read().decode("utf-8"))
 
-        print("Twilio SMS error:", repr(error))
+    except (URLError, TimeoutError, OSError) as error:
+        print("Fast2SMS connection error:", str(error))
 
 # -------------------------------------------------------------------
 
@@ -2256,9 +2252,9 @@ async def create_detection(
     if detection.detected_at:
         detection_data["detected_at"] = detection.detected_at.isoformat()
 
-    # Send SMS only for HIGH-risk detections.
+    # Send SMS only for verified HIGH- or MEDIUM-risk detections.
 
-    send_high_risk_sms(detection_data)
+    await asyncio.to_thread(send_fast2sms_alert, detection_data)
 
     # Send the new detection immediately to connected website clients.
 
