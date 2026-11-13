@@ -916,18 +916,24 @@
   box-shadow: 0 8px 24px rgba(28, 62, 47, 0.045);
 }
 
-.history-card summary {
+.history-card-trigger {
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
+  width: 100%;
   padding: 20px;
+  border: 0;
+  background: transparent;
+  color: inherit;
   cursor: pointer;
-  list-style: none;
+  font: inherit;
+  text-align: left;
 }
 
-.history-card summary::-webkit-details-marker {
-  display: none;
+.history-card-trigger:focus-visible {
+  outline: 3px solid #6c9077;
+  outline-offset: -3px;
 }
 
 .history-card .card-eyebrow {
@@ -993,8 +999,79 @@
   font-weight: 700;
 }
 
-.history-card-details {
-  padding: 0 20px 20px;
+.history-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(18, 35, 27, 0.62);
+}
+
+.history-modal {
+  width: min(760px, 100%);
+  max-height: min(86vh, 800px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid var(--solutions-line);
+  border-radius: 18px;
+  background: #fffefa;
+  box-shadow: 0 24px 70px rgba(13, 30, 21, 0.28);
+}
+
+.history-modal-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid var(--solutions-line);
+}
+
+.history-modal-heading .card-eyebrow {
+  margin-bottom: 6px;
+}
+
+.history-modal-heading h2 {
+  margin: 0;
+  color: var(--solutions-forest);
+  font-size: clamp(22px, 4vw, 30px);
+}
+
+.history-modal-close {
+  flex: 0 0 auto;
+}
+
+.history-modal-content {
+  display: grid;
+  gap: 16px;
+}
+
+.history-modal-solution {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--solutions-line);
+  border-radius: 13px;
+  background: #fff;
+}
+
+.history-modal-solution h3 {
+  margin: 0;
+  color: var(--solutions-forest);
+  font-size: 17px;
+}
+
+.history-modal-context {
+  margin: 6px 0 12px;
+  color: var(--solutions-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.history-modal-details {
+  margin-top: 12px;
 }
 
 @media (max-width: 850px) {
@@ -1159,8 +1236,21 @@
     flex: 1;
   }
 
-  .history-card summary {
+  .history-card-trigger {
     padding: 16px;
+  }
+
+  .history-modal-backdrop {
+    padding: 12px;
+  }
+
+  .history-modal {
+    max-height: 90vh;
+    padding: 18px;
+  }
+
+  .history-modal-heading {
+    gap: 10px;
   }
 
   .history-card-meta {

@@ -125,6 +125,129 @@ function PestSolutionDetails({ label, value }) {
   )
 }
 
+function HistorySolutionModal({ item, onClose }) {
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose()
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
+  const solutionRecords = Array.isArray(item.solution_records)
+    ? item.solution_records
+    : []
+  const savedDetails = [
+    ['Pest description', item.pest_description],
+    ['Symptoms', item.pest_symptoms],
+    ['Solution description', item.solution_description],
+    ['Recommended action', item.recommended_action],
+    ['Prevention', item.prevention],
+  ]
+  const savedSources = Array.isArray(item.source_references)
+    ? item.source_references
+    : []
+  const hasSavedDetails = savedDetails.some(([, value]) => Boolean(value))
+
+  return (
+    <div
+      className="history-modal-backdrop"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
+      <section
+        className="history-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="history-modal-title"
+      >
+        <div className="history-modal-heading">
+          <div>
+            <p className="card-eyebrow">Saved detection</p>
+            <h2 id="history-modal-title">
+              {item.common_name || item.pest}
+            </h2>
+          </div>
+          <button
+            type="button"
+            className="secondary-button history-modal-close"
+            onClick={onClose}
+            autoFocus
+          >
+            Close
+          </button>
+        </div>
+        <div className="history-modal-content">
+          {solutionRecords.length > 0 ? (
+            solutionRecords.map((solution, index) => {
+              const details = [
+                ['Description', solution.description],
+                ['Crop damage', solution.crop_damage],
+                ['Affected plant parts', solution.affected_plant_parts],
+                ['Identification details', solution.identification_signs],
+                ['Recommended treatment', solution.recommended_treatment],
+                ['Immediate control measures', solution.immediate_control_measures],
+                ['Biological control', solution.biological_control_options],
+                ['Cultural control', solution.cultural_control_methods],
+                ['Mechanical control', solution.mechanical_control_methods],
+                ['Chemical control', solution.chemical_control_options],
+                ['Monitoring', solution.monitoring],
+                ['Prevention', solution.prevention],
+                ['Safety precautions', solution.safety_precautions],
+                ['Expert advice', solution.expert_advice],
+              ]
+              const sources = Array.isArray(solution.source_references)
+                ? solution.source_references
+                : []
+
+              return (
+                <article
+                  className="history-modal-solution"
+                  key={solution.solution_id || `${solution.crop_id}-${index}`}
+                >
+                  <h3>{solution.crop_name || solution.crop_id}</h3>
+                  {(solution.crop_id || solution.risk_level || solution.region) && (
+                    <p className="history-modal-context">
+                      {solution.crop_id && `Crop ID: ${solution.crop_id}`}
+                      {solution.risk_level && ` · ${solution.risk_level} risk`}
+                      {solution.region && ` · ${solution.region}`}
+                    </p>
+                  )}
+                  <div className="potential-host-detail-grid history-modal-details">
+                    {details.map(([label, value]) => (
+                      <PestSolutionDetails
+                        key={label}
+                        label={label}
+                        value={value}
+                      />
+                    ))}
+                  </div>
+                  {sources.length > 0 && <SourceList sources={sources} />}
+                </article>
+              )
+            })
+          ) : hasSavedDetails ? (
+            <>
+              <div className="potential-host-detail-grid history-modal-details">
+                {savedDetails.map(([label, value]) => (
+                  <PestSolutionDetails key={label} label={label} value={value} />
+                ))}
+              </div>
+              {savedSources.length > 0 && <SourceList sources={savedSources} />}
+            </>
+          ) : (
+            <p className="solution-unavailable">
+              Saved solution details are not available for this record.
+            </p>
+          )}
+        </div>
+      </section>
+    </div>
+  )
+}
+
 function PestSolutionCard({ item }) {
   const sources = getSources(item)
   const details = [
@@ -398,6 +521,7 @@ function Solutions() {
   const [pestSolutionsError, setPestSolutionsError] = useState('')
   const [pestDirectoryError, setPestDirectoryError] = useState('')
   const [highRiskHistory, setHighRiskHistory] = useState([])
+  const [selectedHistoryItem, setSelectedHistoryItem] = useState(null)
   const [highRiskHistoryTotal, setHighRiskHistoryTotal] = useState(null)
   const [historyLoading, setHistoryLoading] = useState(true)
   const [historyError, setHistoryError] = useState('')
@@ -615,6 +739,7 @@ function Solutions() {
       }
       setHighRiskHistory([])
       setHighRiskHistoryTotal(0)
+      setSelectedHistoryItem(null)
       setConfirmClearHistory(false)
     } catch (clearError) {
       setClearHistoryError(
@@ -838,7 +963,10 @@ function Solutions() {
                   item.pest_verified === true &&
                   Boolean(item.pest_id) &&
                   item.pest_id === historyPestRecord?.pestId
-                const historyRisk = getDetectionRiskEstimate(item, pestDirectory)
+                const savedRisk = String(item.risk || '').toUpperCase()
+                const historyRisk = ['HIGH', 'MEDIUM'].includes(savedRisk)
+                  ? savedRisk
+                  : getDetectionRiskEstimate(item, pestDirectory).risk
                 const historyConfidence =
                   item.confidence === null || item.confidence === undefined || item.confidence === ''
                     ? Number.NaN
@@ -848,29 +976,37 @@ function Solutions() {
                   : 'Time not available'
 
                 return (
-                  <details key={item.id} className="history-card">
-                    <summary>
+                  <article key={item.id} className="history-card">
+                    <button
+                      type="button"
+                      className="history-card-trigger"
+                      aria-haspopup="dialog"
+                      onClick={() => setSelectedHistoryItem(item)}
+                    >
                       <div>
-                        <p className="card-eyebrow">{verifiedHistoryPest ? 'Pest identified' : 'Pest identity unavailable'}</p>
-                        <h3>{verifiedHistoryPest ? getCommonPestName(historyKey, pestDirectory, item) : 'Pest identity unavailable'}</h3>
+                        <p className="card-eyebrow">Saved field detection</p>
+                        <h3>{getCommonPestName(historyKey, pestDirectory, item)}</h3>
                       </div>
-                      <span className={`history-risk risk-${historyRisk.risk.toLowerCase()}`}>
-                        {historyRisk.risk === 'UNCONFIRMED' ? 'Not available' : historyRisk.risk}
+                      <span className={`history-risk risk-${historyRisk.toLowerCase()}`}>
+                        {historyRisk}
                       </span>
                       <div className="history-card-meta">
                         <span><small>Model score</small><strong>{verifiedHistoryPest && Number.isFinite(historyConfidence) ? formatModelScore(historyConfidence) : 'N/A'}</strong></span>
                         <span><small>Detected</small><strong>{detectedAt}</strong></span>
                         <span><small>Device</small><strong>{item.device_id || 'Unavailable'}</strong></span>
                       </div>
-                      <span className="history-card-toggle">View persisted detection record</span>
-                    </summary>
-                    <div className="history-card-details">
-                      <p className="solution-unavailable">Solution details are not available for this saved detection.</p>
-                    </div>
-                  </details>
+                      <span className="history-card-toggle">View saved solution details</span>
+                    </button>
+                  </article>
                 )
               })}
             </div>
+          )}
+          {selectedHistoryItem && (
+            <HistorySolutionModal
+              item={selectedHistoryItem}
+              onClose={() => setSelectedHistoryItem(null)}
+            />
           )}
         </section>
       </div>
