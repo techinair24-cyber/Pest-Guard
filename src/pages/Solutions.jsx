@@ -40,15 +40,144 @@ function SourceList({ sources = [] }) {
 
   return (
     <ul className="solution-sources">
-      {sources.map((source) => (
-        <li key={source.url}>
-          <a href={source.url} target="_blank" rel="noreferrer">
-            {source.title} — {source.organization}
-          </a>
-          {source.reviewed_on && <span>Reviewed {source.reviewed_on}</span>}
-        </li>
-      ))}
+      {sources.map((source, index) => {
+        const sourceUrl = typeof source === 'string' ? source : source.url
+        const sourceTitle =
+          typeof source === 'string'
+            ? source
+            : [source.title, source.organization].filter(Boolean).join(' — ')
+
+        return (
+          <li key={sourceUrl || `${sourceTitle}-${index}`}>
+            {sourceUrl ? (
+              <a href={sourceUrl} target="_blank" rel="noreferrer">
+                {sourceTitle || sourceUrl}
+              </a>
+            ) : (
+              sourceTitle
+            )}
+            {typeof source !== 'string' && source.reviewed_on && (
+              <span>Reviewed {source.reviewed_on}</span>
+            )}
+          </li>
+        )
+      })}
     </ul>
+  )
+}
+
+function getSources(item) {
+  return Array.isArray(item.source_refs)
+    ? item.source_refs
+    : Array.isArray(item.source_references)
+      ? item.source_references
+      : item.source
+        ? Array.isArray(item.source)
+          ? item.source
+          : [item.source]
+        : []
+}
+
+function AdvisoryDetails({ label, value }) {
+  if (!value) return null
+
+  if (Array.isArray(value)) {
+    if (!value.length) return null
+    return (
+      <section>
+        <h4>{label}</h4>
+        <ul>
+          {value.map((entry, index) => (
+            <li key={`${label}-${index}`}>{String(entry)}</li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+
+  if (typeof value === 'object') {
+    const entries = Object.entries(value).filter(([, entry]) => Boolean(entry))
+    if (!entries.length) return null
+    return (
+      <section>
+        <h4>{label}</h4>
+        {entries.map(([key, entry]) => (
+          <div className="advisory-subsection" key={key}>
+            <h5>{key.replaceAll('_', ' ')}</h5>
+            {Array.isArray(entry) ? (
+              <ul>
+                {entry.map((line, index) => (
+                  <li key={`${key}-${index}`}>{String(line)}</li>
+                ))}
+              </ul>
+            ) : (
+              <p>{String(entry)}</p>
+            )}
+          </div>
+        ))}
+      </section>
+    )
+  }
+
+  return (
+    <section>
+      <h4>{label}</h4>
+      <p>{String(value)}</p>
+    </section>
+  )
+}
+
+function AdvisoryCard({ item }) {
+  const sources = getSources(item)
+  const details = [
+    ['Description', item.description],
+    ['Habitat', item.habitat],
+    ['Crop context', item.crop_context],
+    ['Crop damage', item.crop_damage || item.damage_notes],
+    ['Affected plant parts', item.affected_plant_parts || item.affected_parts],
+    ['Identification', item.identification_signs],
+    ['Management', item.management || item.recommendations],
+    ['Biological control', item.biological_control_options || item.biological_control],
+    ['Cultural control', item.cultural_control_methods || item.cultural_control],
+    ['Mechanical control', item.mechanical_control_methods || item.mechanical_control],
+    ['Monitoring', item.monitoring],
+    ['Prevention', item.prevention],
+    ['Safety', item.safety_precautions],
+    ['Geographic qualification', item.geographic_qualification || item.geographic_limitation],
+    ['Economic threshold', item.economic_threshold || item.action_threshold],
+    ['Notes', item.notes],
+  ]
+
+  return (
+    <article className="potential-host-profile advisory-card">
+      <div className="potential-host-heading">
+        <div>
+          <p className="card-eyebrow">
+            Research advisory · {item.risk_level} risk
+          </p>
+          <h3>{item.title || item.pest_name}</h3>
+          {item.scientific_name && (
+            <p className="solution-scientific-name">{item.scientific_name}</p>
+          )}
+          {(item.geographic_scope || item.region) && (
+            <p className="solution-meta">{item.geographic_scope || item.region}</p>
+          )}
+        </div>
+        <span className="unverified-badge">Advisory · not verified crop guidance</span>
+      </div>
+      <div className="potential-host-detail-grid advisory-details">
+        {details.map(([label, value]) => (
+          <AdvisoryDetails key={label} label={label} value={value} />
+        ))}
+        {item.chemical_control_options && (
+          <AdvisoryDetails
+            label="Chemical control"
+            value={item.chemical_control_options}
+          />
+        )}
+      </div>
+      <SourceList sources={sources} />
+    </article>
   )
 }
 
@@ -112,7 +241,7 @@ function PotentialHostProfile({ profile }) {
 
 function RecommendationCard({ item, category }) {
   const recommendation = item[category.key]
-  const sources = item.source_references || []
+  const sources = getSources(item)
   const recommendationSources = sources.filter((source) =>
     source.supports?.includes(category.key),
   )
@@ -346,10 +475,14 @@ function Solutions() {
   const storedSolutions = Array.isArray(solution?.solutions)
     ? solution.solutions
     : []
+  const pestAdvisories = Array.isArray(pestSolutionData?.advisories)
+    ? pestSolutionData.advisories
+    : []
 
-  // Only display solutions matching the current crop and current live pest.
+  // Show all verified crop-linked records for an actionable
+  // live pest until the user selects a specific crop.
   const verifiedSolutions = storedSolutions.filter((item) => {
-    if (item.crop_id !== selectedCrop) return false
+    if (selectedCrop && item.crop_id !== selectedCrop) return false
 
     if (hasLiveDetection) {
       return (
@@ -425,11 +558,13 @@ function Solutions() {
         return
       }
 
-      const pestIdToLoad = hasActionableLiveDetection
-        ? detection.pest_id
-        : isPineWeevilProfileRequested
-          ? 'pine_weevil'
-          : null
+      const pestIdToLoad = queryPest
+        ? queryPest
+        : hasVerifiedLiveDetection
+          ? detection.pest_id
+          : isPineWeevilProfileRequested
+            ? 'pine_weevil'
+            : null
 
       if (pestIdToLoad) {
         try {
@@ -452,7 +587,8 @@ function Solutions() {
     }
   }, [
     pestDirectoryLoaded,
-    hasActionableLiveDetection,
+    queryPest,
+    hasVerifiedLiveDetection,
     isPineWeevilProfileRequested,
     detection?.pest_id,
     pestSolutionsRetryKey,
@@ -463,9 +599,22 @@ function Solutions() {
 
     async function loadSelectedCropSolutions() {
       if (!selectedCrop) {
-        setSolution(null)
-        setError('')
-        setCanRetry(false)
+        // Show all verified crop-linked records for an actionable live pest.
+        if (hasActionableLiveDetection && !pestSolutionsError) {
+          const allSolutions = Array.isArray(pestSolutionData?.solutions)
+            ? pestSolutionData.solutions
+            : []
+
+          setSolution({
+            solutions: allSolutions,
+            total: allSolutions.length,
+          })
+        } else {
+          setSolution(null)
+        }
+
+        setError(pestSolutionsError || '')
+        setCanRetry(Boolean(pestSolutionsError))
         setLoadingSolution(false)
         return
       }
@@ -751,7 +900,21 @@ function Solutions() {
             </div>
           )}
           <PotentialHostProfile profile={activePotentialHostProfile} />
-          {!selectedCrop ? (
+          {pestAdvisories.length > 0 && (
+            <section
+              className="advisory-list"
+              aria-labelledby="pest-advisories-title"
+            >
+              <h2 id="pest-advisories-title">Research-Based Pest Advisories</h2>
+              {pestAdvisories.map((advisory, index) => (
+                <AdvisoryCard
+                  key={advisory.id || `${advisory.pest_id}-${index}`}
+                  item={advisory}
+                />
+              ))}
+            </section>
+          )}
+          {!selectedCrop && !hasActionableLiveDetection ? (
             <div className="empty-guidance">
               <LeafIcon size={22} />
               <h3>Select a crop to view its guidance</h3>

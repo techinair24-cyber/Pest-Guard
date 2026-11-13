@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useEffect, useMemo, useState } from 'react'
 import {
   getDetectionHistory,
@@ -412,9 +413,12 @@ function Pests() {
                         AI detection target
                       </span>
 
-                      <span className="footer-arrow">
-                        →
-                      </span>
+                      <Link
+                        className="text-link"
+                        to={`/solutions?pest=${encodeURIComponent(pest.pest_id)}`}
+                      >
+                        View Solutions →
+                      </Link>
                     </div>
                   </article>
                 )

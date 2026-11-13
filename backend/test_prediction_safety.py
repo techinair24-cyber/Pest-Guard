@@ -6777,6 +6777,60 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             session.close()
             engine.dispose()
 
+    def test_solution_seed_removes_records_not_in_source_data(self):
+        from database import Base
+
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(bind=engine)
+        session = sessionmaker(bind=engine)()
+
+        try:
+            main.seed_pest_data(session)
+            source_identities = {
+                (item["pest_id"], item.get("crop_id"), item["risk_level"])
+                for item in main.SOLUTION_RECORDS
+            }
+            pest_id, crop_id, risk_level = next(
+                (pest["pest_id"], crop["crop_id"], pest["risk"])
+                for pest in main.PEST_DATA
+                for crop in main.CROP_DATA
+                if (
+                    pest["pest_id"],
+                    crop["crop_id"],
+                    pest["risk"],
+                )
+                not in source_identities
+            )
+            obsolete = main.PestCropSolution(
+                solution_id="obsolete_test_solution",
+                pest_id=pest_id,
+                crop_id=crop_id,
+                risk_level=risk_level,
+                status="NEEDS_REVIEW",
+            )
+            session.add(obsolete)
+            session.commit()
+
+            main.seed_pest_data(session)
+
+            stored_ids = {
+                item.solution_id
+                for item in session.query(main.PestCropSolution).all()
+            }
+            expected_ids = {
+                item["solution_id"]
+                for item in main.SOLUTION_RECORDS
+                if item.get("crop_id") is not None
+            }
+            self.assertEqual(stored_ids, expected_ids)
+        finally:
+            session.close()
+            engine.dispose()
+
     def test_untracked_history_guidance_is_not_served(self):
         catalog_item = real_active_catalog_item()
         pest_record = SimpleNamespace(**catalog_item)

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -32,18 +32,14 @@ class DeviceResponse(BaseModel):
 
 class DetectionCreate(BaseModel):
     device_id: str
-
     status: str
     pest: Optional[str] = None
     confidence: Optional[float] = None
     risk: Optional[str] = None
-
     temperature: Optional[float] = None
     humidity: Optional[float] = None
-
     audio_file: Optional[str] = None
     message: Optional[str] = None
-
     detected_at: Optional[datetime] = None
 
 
@@ -179,6 +175,17 @@ class PotentialHostProfileResponse(BaseModel):
     reviewed_on: Optional[str] = None
 
 
+class PestAdvisoryResponse(BaseModel):
+    """Standalone advisory data. This is never a verified crop solution."""
+    model_config = ConfigDict(extra="allow")
+
+    pest_id: str
+    pest_name: str
+    insect_group: str
+    risk_level: Literal["HIGH", "MEDIUM", "LOW"]
+    status: Literal["ADVISORY"]
+
+
 class PestSolutionsPestResponse(BaseModel):
     pest_id: str
     name: str
@@ -189,13 +196,36 @@ class PestSolutionsPestResponse(BaseModel):
     insect_group: str
 
 
+class PestEvidenceProfileResponse(BaseModel):
+    research_status: str = "NEEDS_REVIEW"
+    relationship_status: str = "NEEDS_REVIEW"
+    scientific_name: Optional[str] = None
+    crop_damage: Optional[str] = None
+    damage_status: Optional[str] = None
+    affected_plant_parts: Optional[str] = None
+    affected_plant_parts_status: Optional[str] = None
+    cultural_management: Optional[str] = None
+    cultural_management_status: Optional[str] = None
+    biological_management: Optional[str] = None
+    biological_management_status: Optional[str] = None
+    chemical_management: Optional[str] = None
+    chemical_management_status: Optional[str] = None
+    prevention_methods: Optional[str] = None
+    prevention_status: Optional[str] = None
+    missing_evidence_fields: list[str] = Field(default_factory=list)
+    management_source_references: list[dict] = Field(default_factory=list)
+
+
 class PestSolutionsResponse(BaseModel):
     pest: PestSolutionsPestResponse
     total_crops: int
     crops: list[CropResponse] = Field(default_factory=list)
     total_solutions: int
     solutions: list[PestCropSolutionResponse] = Field(default_factory=list)
+    total_advisories: int = 0
+    advisories: list[PestAdvisoryResponse] = Field(default_factory=list)
     potential_host_profile: Optional[PotentialHostProfileResponse] = None
+    evidence_profile: Optional[PestEvidenceProfileResponse] = None
 
 
 class HealthResponse(BaseModel):

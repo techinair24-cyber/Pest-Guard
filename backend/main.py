@@ -11,6 +11,7 @@ import uuid
 from twilio.rest import Client
 
 import difflib
+import csv
 import json
 
 import numpy as np
@@ -47,6 +48,7 @@ from models import (
 
 from crop_data import CROP_DATA
 from pest_data import PEST_DATA
+import solution_data
 from solution_data import PEST_COVERAGE_DATA, SOLUTION_RECORDS
 from pest_guard_hierarchy_inference_8class import (
     PestGuardHierarchy8Class as PestGuardHierarchy,
@@ -69,10 +71,114 @@ from schemas import (
     PestCropSolutionListResponse,
     PestCropSolutionResponse,
     PestSolutionsResponse,
+    PestAdvisoryResponse,
     PestResponse,
 )
 
 logger = logging.getLogger(__name__)
+
+def _load_pest_advisory_records() -> list[dict]:
+    records = []
+    for collection_name, collection in vars(solution_data).items():
+        if not collection_name.endswith("_ADVISORY_DATA"):
+            continue
+        if not isinstance(collection, list):
+            logger.warning("Ignoring non-list advisory collection: %s", collection_name)
+            continue
+        for record in collection:
+            if not isinstance(record, dict):
+                logger.warning("Ignoring invalid record in %s", collection_name)
+                continue
+            if str(record.get("status") or "").strip().upper() != "ADVISORY":
+                logger.warning(
+                    "Ignoring non-ADVISORY record in %s (pest_id=%s)",
+                    collection_name,
+                    record.get("pest_id"),
+                )
+                continue
+            records.append(record)
+    return records
+
+
+PEST_ADVISORY_RECORDS = _load_pest_advisory_records()
+logger.info("Loaded standalone pest advisories: %d records", len(PEST_ADVISORY_RECORDS))
+
+
+EVIDENCE_MATRIX_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "pest_crop_evidence_matrix.csv"
+)
+
+
+def _load_pest_evidence_matrix() -> dict:
+    evidence = {}
+
+    if not EVIDENCE_MATRIX_PATH.is_file():
+        logger.warning(
+            "Pest evidence matrix not found: %s",
+            EVIDENCE_MATRIX_PATH,
+        )
+        return evidence
+
+    with EVIDENCE_MATRIX_PATH.open(
+        "r", encoding="utf-8-sig", newline=""
+    ) as file:
+        for row in csv.DictReader(file):
+            pest_id = (row.get("pest_id") or "").strip()
+            if not pest_id:
+                continue
+
+            def value(field):
+                return (row.get(field) or "").strip() or None
+
+            try:
+                missing_fields = json.loads(
+                    row.get("missing_evidence_fields") or "[]"
+                )
+            except (TypeError, ValueError):
+                missing_fields = []
+
+            try:
+                source_references = json.loads(
+                    row.get("management_source_references") or "[]"
+                )
+            except (TypeError, ValueError):
+                source_references = []
+
+            evidence[pest_id] = {
+                "research_status": value("research_status") or "NEEDS_REVIEW",
+                "relationship_status": value("relationship_status") or "NEEDS_REVIEW",
+                "scientific_name": value("scientific_name"),
+                "crop_damage": value("crop_damage"),
+                "damage_status": value("damage_status"),
+                "affected_plant_parts": value("affected_plant_parts"),
+                "affected_plant_parts_status": value("affected_plant_parts_status"),
+                "cultural_management": value("cultural_management"),
+                "cultural_management_status": value("cultural_management_status"),
+                "biological_management": value("biological_management"),
+                "biological_management_status": value("biological_management_status"),
+                "chemical_management": value("chemical_management"),
+                "chemical_management_status": value("chemical_management_status"),
+                "prevention_methods": value("prevention_methods"),
+                "prevention_status": value("prevention_status"),
+                "missing_evidence_fields": missing_fields,
+                "management_source_references": (
+                    source_references
+                    if isinstance(source_references, list)
+                    else []
+                ),
+            }
+
+    return evidence
+
+
+PEST_EVIDENCE_MATRIX = _load_pest_evidence_matrix()
+
+logger.info(
+    "Loaded pest evidence matrix: %d pest records",
+    len(PEST_EVIDENCE_MATRIX),
+)
+
 
 def _normalize_pest_label(value: str | None) -> str:
     return "".join(
@@ -1104,6 +1210,11 @@ def seed_pest_data(db: Session):
                 setattr(existing, key, value)
         else:
             db.add(PestCropSolution(**item))
+    # Remove obsolete solution records no longer present in source data.
+    db.flush()
+    db.query(PestCropSolution).filter(
+        ~PestCropSolution.solution_id.in_(solution_ids)
+    ).delete(synchronize_session=False)
     db.commit()
 
 def startup_event():
@@ -2257,31 +2368,70 @@ def get_solutions(
     if not crop:
         raise HTTPException(status_code=404, detail="Supported crop not found")
 
-    query = (
+    base_query = (
         db.query(PestCropSolution, Pest)
         .join(Pest, Pest.pest_id == PestCropSolution.pest_id)
-        .filter(
-            PestCropSolution.crop_id == crop.crop_id,
-            PestCropSolution.status == "VERIFIED",
-            PestCropSolution.risk_level.in_(("HIGH", "MEDIUM", "LOW")),
-            PestCropSolution.risk_level == Pest.risk,
-            Pest.pest_id.in_(item["pest_id"] for item in PEST_DATA),
-        )
+        .filter(PestCropSolution.crop_id == crop.crop_id)
     )
-    if pest_id:
-        query = query.filter(PestCropSolution.pest_id == pest_id)
 
-    records = query.order_by(Pest.name.asc()).all()
-    serialized = [
-        _serialize_pest_crop_solution(solution, pest, crop)
+    verified_query = base_query.filter(
+        PestCropSolution.status == "VERIFIED"
+    )
+
+    valid_risk_query = verified_query.filter(
+        PestCropSolution.risk_level.in_(("HIGH", "MEDIUM", "LOW"))
+    )
+
+    matching_risk_query = valid_risk_query.filter(
+        PestCropSolution.risk_level == Pest.risk
+    )
+
+    catalog_query = matching_risk_query.filter(
+        Pest.pest_id.in_(item["pest_id"] for item in PEST_DATA)
+    )
+
+    if pest_id:
+        catalog_query = catalog_query.filter(
+            PestCropSolution.pest_id == pest_id
+        )
+
+    records = catalog_query.order_by(Pest.name.asc()).all()
+
+    evidence_passed = [
+        (solution, pest)
         for solution, pest in records
         if _has_verified_solution_evidence(solution)
+    ]
+
+    print("\n========== SOLUTION DEBUG ==========")
+    print("Selected crop:", crop.crop_id)
+    print("Records for crop:", base_query.count())
+    print("VERIFIED records:", verified_query.count())
+    print("Valid risk records:", valid_risk_query.count())
+    print("Matching pest risk:", matching_risk_query.count())
+    print("Pests in catalogue:", catalog_query.count())
+    print("Passed evidence check:", len(evidence_passed))
+    print("Rejected by evidence:", len(records) - len(evidence_passed))
+    print("====================================\n")
+
+    serialized = [
+        _serialize_pest_crop_solution(solution, pest, crop)
+        for solution, pest in evidence_passed
     ]
     return {
         "crop": _serialize_crop(crop),
         "total": len(serialized),
         "solutions": serialized,
     }
+
+
+def _serialize_pest_advisory(record: dict, pest_record: dict) -> dict:
+    """Serialize an explicitly labelled advisory without treating it as verified."""
+    serialized = dict(record)
+    serialized["pest_name"] = pest_record["name"]
+    serialized["insect_group"] = pest_record["insect_group"]
+    serialized["status"] = "ADVISORY"
+    return serialized
 
 
 @app.get(
@@ -2302,11 +2452,6 @@ def get_pest_solutions(
         raise HTTPException(status_code=404, detail="Pest not found")
 
     risk = str(pest.risk or "").strip().upper()
-    if risk not in {"HIGH", "MEDIUM"}:
-        raise HTTPException(
-            status_code=404,
-            detail="Solutions are available only for HIGH- and MEDIUM-risk pests",
-        )
 
     records = (
         db.query(PestCropSolution, Crop)
@@ -2355,6 +2500,12 @@ def get_pest_solutions(
         if potential_host_record
         else None
     )
+    evidence_profile = PEST_EVIDENCE_MATRIX.get(pest_id)
+    advisory_records = [
+        _serialize_pest_advisory(record, active_pests[pest_id])
+        for record in PEST_ADVISORY_RECORDS
+        if record.get("pest_id") == pest_id
+    ]
 
     return {
         "pest": {
@@ -2370,7 +2521,10 @@ def get_pest_solutions(
         "crops": sorted(crops_by_id.values(), key=lambda item: item["name"].casefold()),
         "total_solutions": len(serialized_solutions),
         "solutions": serialized_solutions,
+        "total_advisories": len(advisory_records),
+        "advisories": advisory_records,
         "potential_host_profile": potential_host_profile,
+        "evidence_profile": evidence_profile,
     }
 
 # -------------------------------------------------------------------

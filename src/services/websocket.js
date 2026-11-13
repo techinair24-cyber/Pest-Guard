@@ -3,6 +3,7 @@ import { API_BASE_URL } from './api'
 
 const defaultWsUrl =
   API_BASE_URL
+    .replace(/\/+$/, '')
     .replace(/^https:/i, 'wss:')
     .replace(/^http:/i, 'ws:') + '/ws/detections'
 
