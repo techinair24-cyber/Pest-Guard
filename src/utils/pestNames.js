@@ -52,8 +52,9 @@ export function buildPestDirectory(items) {
       symptoms: item?.symptoms || '',
       risk: String(item?.risk || '').toUpperCase(),
     }
+    const aliases = Array.isArray(item?.aliases) ? item.aliases : []
 
-    ;[name, scientificName, entry.pestId].forEach(
+    ;[name, scientificName, entry.pestId, ...aliases].forEach(
       (candidate) => {
         const key = normalizePestName(candidate)
         if (key) directory[key] = entry
