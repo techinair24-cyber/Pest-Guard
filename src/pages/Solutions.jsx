@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
 import { ArrowIcon, LeafIcon, SignalIcon, SparkIcon } from '../components/Icons'
@@ -566,6 +566,109 @@ function VerifiedSolution({ item, isLiveMatch }) {
   )
 }
 
+function CropSolutionAccordion({ item, isLiveMatch }) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  const panelId = useId()
+  const cropName = item.crop_name || item.crop_id || 'Crop-specific solution'
+
+  return (
+    <section
+      className={`crop-solution-accordion${isExpanded ? ' is-expanded' : ''}`}
+    >
+      <h4 className="crop-solution-accordion-title">
+        <button
+          type="button"
+          className="crop-solution-accordion-toggle"
+          aria-expanded={isExpanded}
+          aria-controls={panelId}
+          onClick={() => setIsExpanded((expanded) => !expanded)}
+        >
+          <span>{cropName}</span>
+          <span className="crop-solution-accordion-icon" aria-hidden="true">
+            {isExpanded ? '−' : '+'}
+          </span>
+        </button>
+      </h4>
+      <div
+        id={panelId}
+        className="crop-solution-accordion-panel"
+        aria-hidden={!isExpanded}
+        inert={!isExpanded}
+      >
+        <div className="crop-solution-accordion-panel-inner">
+          <VerifiedSolution item={item} isLiveMatch={isLiveMatch} />
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function PestCropSolutionGroup({ items, isLiveMatch }) {
+  const headingId = useId()
+  const pest = items[0]
+
+  return (
+    <section
+      className="verified-solution-group"
+      aria-labelledby={headingId}
+    >
+      <div className="verified-solution-group-heading">
+        <p className="card-eyebrow">Crop-specific solutions</p>
+        <h3 id={headingId}>
+          {pest.pest_name || pest.pest_id || 'Pest solutions'}
+        </h3>
+        {pest.scientific_name && (
+          <p className="solution-scientific-name">{pest.scientific_name}</p>
+        )}
+      </div>
+      <div className="crop-solution-accordion-list">
+        {items.map((item) => (
+          <CropSolutionAccordion
+            key={item.solution_id}
+            item={item}
+            isLiveMatch={isLiveMatch && item.pest_id === pest.pest_id}
+          />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function VerifiedSolutionGroups({ items, isLiveMatch }) {
+  const groups = new Map()
+
+  items.forEach((item, index) => {
+    const key =
+      item.pest_id || item.pest_name || item.solution_id || `solution-${index}`
+    const group = groups.get(key)
+    if (group) {
+      group.push(item)
+    } else {
+      groups.set(key, [item])
+    }
+  })
+
+  return (
+    <div className="verified-solution-list">
+      {Array.from(groups, ([key, group]) =>
+        group.length > 1 ? (
+          <PestCropSolutionGroup
+            key={key}
+            items={group}
+            isLiveMatch={isLiveMatch}
+          />
+        ) : (
+          <VerifiedSolution
+            key={group[0].solution_id || key}
+            item={group[0]}
+            isLiveMatch={isLiveMatch && group[0].pest_id === key}
+          />
+        ),
+      )}
+    </div>
+  )
+}
+
 function Solutions() {
   const location = useLocation()
   const { detection, loading: detectionLoading } = useLiveDetection()
@@ -949,15 +1052,10 @@ function Solutions() {
               <h2 id="crop-guidance-title">Crop Damage &amp; Management</h2>
               <p>Recommendations are tied to their pest, crop, risk and sources. Candidate profiles are clearly separated.</p>
             </div>
-            <div className="verified-solution-list">
-              {verifiedSolutions.map((item) => (
-                <VerifiedSolution
-                  key={item.solution_id}
-                  item={item}
-                  isLiveMatch={hasVerifiedLiveDetection && item.pest_id === detection.pest_id}
-                />
-              ))}
-            </div>
+            <VerifiedSolutionGroups
+              items={verifiedSolutions}
+              isLiveMatch={hasVerifiedLiveDetection}
+            />
           </section>
         )}
 
