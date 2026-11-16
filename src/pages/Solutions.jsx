@@ -54,6 +54,12 @@ function SourceList({ sources = [] }) {
             ) : (
               sourceTitle
             )}
+            {typeof source !== 'string' && source.authors && (
+              <span>{source.authors}</span>
+            )}
+            {typeof source !== 'string' && source.published_on && (
+              <span>Published {source.published_on}</span>
+            )}
             {typeof source !== 'string' && source.reviewed_on && (
               <span>Reviewed {source.reviewed_on}</span>
             )}
@@ -61,6 +67,56 @@ function SourceList({ sources = [] }) {
         )
       })}
     </ul>
+  )
+}
+
+function ChemicalControlOptions({ options, sources }) {
+  const sourcesById = new Map(
+    sources
+      .filter((source) => source.source_id)
+      .map((source) => [source.source_id, source]),
+  )
+
+  return (
+    <div className="chemical-control-options">
+      {options.map((option) => {
+        const optionSources = (option.source_ids || [])
+          .map((sourceId) => sourcesById.get(sourceId))
+          .filter(Boolean)
+        const details = [
+          ['Product', option.product],
+          ['Study formulation', option.study_formulation],
+          ['Evidence type', option.evidence_type],
+          ['Country / jurisdiction', option.country],
+          ['Target pest', option.target_pest],
+          ['Crop scope', option.crop_scope],
+          ['Research result', option.research_result],
+          ['Application method', option.application_method],
+          ['Dosage', option.dosage],
+          ['Pre-harvest interval', option.pre_harvest_interval],
+          ['Crop registration status', option.crop_registration_status],
+          ['Safety', option.safety_notes],
+        ].filter(([, value]) => value)
+
+        return (
+          <section className="chemical-control-option" key={option.id}>
+            <div className="chemical-control-option-heading">
+              <h5>{option.active_ingredient}</h5>
+              <span className="unverified-badge">{option.status_label}</span>
+            </div>
+            <dl>
+              {details.map(([label, value]) => (
+                <div key={label}>
+                  <dt>{label}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
+            <SourceList sources={optionSources} />
+          </section>
+        )
+      })}
+    </div>
   )
 }
 
@@ -343,7 +399,9 @@ function RecommendationCard({ item, category }) {
   const recommendationSources = sources.filter((source) =>
     source.supports?.includes(category.key),
   )
-  const isUserApproved = item.status === 'VERIFIED' && sources.length === 0
+  const isUserApproved =
+    item.user_approved === true ||
+    (item.status === 'VERIFIED' && sources.length === 0)
   const isVerified = Boolean(
     recommendation && (recommendationSources.length || isUserApproved),
   )
@@ -357,14 +415,18 @@ function RecommendationCard({ item, category }) {
         <h4>{category.title}</h4>
         <span className={isVerified ? 'verification-badge' : 'unverified-badge'}>
           {isVerified
-            ? isUserApproved
-              ? 'User approved'
-              : 'Sources available'
+            ? recommendationSources.length
+              ? 'Sources available'
+              : 'User approved'
             : 'Sources unavailable'}
         </span>
       </div>
       {isVerified ? (
-        <p>{recommendation}</p>
+        Array.isArray(recommendation) ? (
+          <ChemicalControlOptions options={recommendation} sources={sources} />
+        ) : (
+          <p>{recommendation}</p>
+        )
       ) : (
         <p className="solution-unavailable">Solution details are not available.</p>
       )}
@@ -373,7 +435,9 @@ function RecommendationCard({ item, category }) {
           <strong>Safety:</strong> {item[category.safetyKey]}
         </p>
       )}
-      {isVerified && <SourceList sources={recommendationSources} />}
+      {isVerified && !Array.isArray(recommendation) && (
+        <SourceList sources={recommendationSources} />
+      )}
       {isVerified && category.safetyKey && item[category.safetyKey] && safetySources.length > 0 && (
         <SourceList sources={safetySources} />
       )}
@@ -383,7 +447,9 @@ function RecommendationCard({ item, category }) {
 
 function VerifiedSolution({ item, isLiveMatch }) {
   const sources = Array.isArray(item.source_references) ? item.source_references : []
-  const isUserApproved = item.status === 'VERIFIED' && sources.length === 0
+  const isUserApproved =
+    item.user_approved === true ||
+    (item.status === 'VERIFIED' && sources.length === 0)
   const hasEvidence = (key) => sources.some((source) => source.supports?.includes(key))
   const renderEvidence = (title, value, evidenceKey, className = '') => {
     const verified = Boolean(value && (hasEvidence(evidenceKey) || isUserApproved))

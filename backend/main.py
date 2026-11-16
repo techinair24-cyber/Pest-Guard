@@ -2465,6 +2465,18 @@ def get_crops(
     return [_serialize_crop(crop) for crop in crops]
 
 
+def _parse_chemical_control_options(value):
+    if not isinstance(value, str):
+        return value
+
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return value
+
+    return parsed if isinstance(parsed, list) else value
+
+
 def _serialize_pest_crop_solution(solution, pest, crop) -> dict:
     return {
         "solution_id": solution.solution_id,
@@ -2477,6 +2489,7 @@ def _serialize_pest_crop_solution(solution, pest, crop) -> dict:
         ),
         "risk": pest.risk,
         "status": solution.status,
+        "user_approved": solution.solution_id in USER_APPROVED_SOLUTION_IDS,
         "crop_id": crop.crop_id,
         "crop_name": crop.name,
         "region": solution.region,
@@ -2489,7 +2502,9 @@ def _serialize_pest_crop_solution(solution, pest, crop) -> dict:
         "biological_control_options": solution.biological_control_options,
         "cultural_control_methods": solution.cultural_control_methods,
         "mechanical_control_methods": solution.mechanical_control_methods,
-        "chemical_control_options": solution.chemical_control_options,
+        "chemical_control_options": _parse_chemical_control_options(
+            solution.chemical_control_options
+        ),
         "prevention": solution.prevention,
         "monitoring": solution.monitoring,
         "safety_precautions": solution.safety_precautions,

@@ -6641,6 +6641,64 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             )
 
             for item in european_solutions:
+                options = json.loads(item["chemical_control_options"])
+                expected_ingredients = {"Fipronil", "Carbaryl"}
+                if item["crop_id"] == "tomato":
+                    expected_ingredients.add("Cypermethrin")
+                self.assertEqual(
+                    {option["active_ingredient"] for option in options},
+                    expected_ingredients,
+                )
+                source_ids = {
+                    source["source_id"] for source in item["source_references"]
+                }
+                for option in options:
+                    with self.subTest(
+                        crop_id=item["crop_id"],
+                        active_ingredient=option["active_ingredient"],
+                    ):
+                        self.assertEqual(
+                            option["target_pest"],
+                            "Gryllotalpa gryllotalpa",
+                        )
+                        self.assertEqual(
+                            option["crop_registration_status"],
+                            "Research evidence available; current local registration must be checked.",
+                        )
+                        self.assertTrue(set(option["source_ids"]).issubset(source_ids))
+                        self.assertIsNone(option["application_method"])
+                        self.assertIsNone(option["dosage"])
+                        self.assertIsNone(option["pre_harvest_interval"])
+                carbaryl = next(
+                    option
+                    for option in options
+                    if option["active_ingredient"] == "Carbaryl"
+                )
+                self.assertIn("banned in Iran", carbaryl["safety_notes"])
+                self.assertIn("80.72%", carbaryl["research_result"])
+                self.assertIn("melon", carbaryl["crop_scope"])
+                fipronil = next(
+                    option
+                    for option in options
+                    if option["active_ingredient"] == "Fipronil"
+                )
+                self.assertIn("64.43%", fipronil["research_result"])
+                self.assertIn("melon", fipronil["crop_scope"])
+                if item["crop_id"] == "tomato":
+                    cypermethrin = next(
+                        option
+                        for option in options
+                        if option["active_ingredient"] == "Cypermethrin"
+                    )
+                    self.assertEqual(
+                        cypermethrin["status_label"],
+                        "Registration not verified",
+                    )
+                    self.assertEqual(
+                        cypermethrin["source_ids"],
+                        ["bulgarian-tomato-guidance-2024"],
+                    )
+
                 stored = session.query(main.PestCropSolution).filter_by(
                     solution_id=item["solution_id"]
                 ).one()
@@ -6671,6 +6729,18 @@ class AudioPredictionSafetyTests(unittest.TestCase):
                     self.assertEqual(
                         validated.solutions[0].status,
                         "VERIFIED",
+                    )
+                    self.assertTrue(validated.solutions[0].user_approved)
+                    self.assertIsInstance(
+                        validated.solutions[0].chemical_control_options,
+                        list,
+                    )
+                    self.assertTrue(
+                        all(
+                            "chemical_control_options" in source.supports
+                            and source.published_on
+                            for source in validated.solutions[0].source_references
+                        )
                     )
         finally:
             session.close()

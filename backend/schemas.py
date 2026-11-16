@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -101,11 +101,33 @@ class CropResponse(BaseModel):
 
 
 class SolutionSourceResponse(BaseModel):
+    source_id: Optional[str] = None
     title: str
     organization: str
+    authors: Optional[str] = None
     url: str
+    published_on: Optional[str] = None
     reviewed_on: Optional[str] = None
     supports: list[str] = Field(default_factory=list)
+
+
+class ChemicalControlOptionResponse(BaseModel):
+    id: str
+    active_ingredient: str
+    product: Optional[str] = None
+    study_formulation: Optional[str] = None
+    status_label: str
+    evidence_type: str
+    country: str
+    target_pest: str
+    crop_scope: str
+    research_result: Optional[str] = None
+    crop_registration_status: str
+    application_method: Optional[str] = None
+    dosage: Optional[str] = None
+    pre_harvest_interval: Optional[str] = None
+    safety_notes: str
+    source_ids: list[str] = Field(default_factory=list)
 
 
 class PestCropSolutionResponse(BaseModel):
@@ -115,6 +137,7 @@ class PestCropSolutionResponse(BaseModel):
     insect_group: str
     risk: Literal["HIGH", "MEDIUM", "LOW"]
     status: Literal["VERIFIED"]
+    user_approved: bool = False
     crop_id: str
     crop_name: str
     region: Optional[str] = None
@@ -127,7 +150,9 @@ class PestCropSolutionResponse(BaseModel):
     biological_control_options: Optional[str] = None
     cultural_control_methods: Optional[str] = None
     mechanical_control_methods: Optional[str] = None
-    chemical_control_options: Optional[str] = None
+    chemical_control_options: Optional[
+        Union[str, list[ChemicalControlOptionResponse]]
+    ] = None
     prevention: Optional[str] = None
     monitoring: Optional[str] = None
     safety_precautions: Optional[str] = None

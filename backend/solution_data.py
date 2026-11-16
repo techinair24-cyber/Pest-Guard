@@ -5,7 +5,7 @@ from pathlib import Path
 from pest_data import PEST_DATA
 
 
-# User approval applies to these existing records; their source references remain unchanged.
+# User approval applies only to these existing solution records.
 USER_APPROVED_SOLUTION_IDS = frozenset(
     {
         "european_mole_cricket_potato_2026_11_12",
@@ -15,6 +15,158 @@ USER_APPROVED_SOLUTION_IDS = frozenset(
         "european_mole_cricket_tobacco_2026_11_12",
     }
 )
+
+
+_EUROPEAN_MOLE_CRICKET_CROP_NAMES = {
+    "potato": "Potato",
+    "cabbage": "Cabbage",
+    "tomato": "Tomato",
+    "onion": "Onion",
+    "tobacco": "Tobacco",
+}
+
+
+def _european_mole_cricket_chemical_control_options(crop_id):
+    crop_name = _EUROPEAN_MOLE_CRICKET_CROP_NAMES[crop_id]
+    options = [
+        {
+            "id": "fipronil-research-2017",
+            "active_ingredient": "Fipronil",
+            "product": None,
+            "study_formulation": "GR 0.2% (research formulation only)",
+            "status_label": "Research-supported",
+            "evidence_type": "Direct field research; not a registered-use recommendation",
+            "country": "Iran (Moghan, Ardabil field trial)",
+            "target_pest": "Gryllotalpa gryllotalpa",
+            "crop_scope": (
+                "The 2007 field trial was conducted in melon. This is "
+                f"species-level evidence, not a {crop_name} use recommendation."
+            ),
+            "research_result": (
+                "Reported efficacy on day 7: 64.43% for the highest tested "
+                "treatment. This is a research result, not a recommended rate."
+            ),
+            "crop_registration_status": (
+                "Research evidence available; current local registration must be checked."
+            ),
+            "application_method": None,
+            "dosage": None,
+            "pre_harvest_interval": None,
+            "safety_notes": (
+                "Do not use experimental study rates as field directions. "
+                "Use only if a current local product label authorizes this "
+                "crop and target pest; follow all label safety and harvest "
+                "restrictions."
+            ),
+            "source_ids": ["javadzadeh-2017"],
+        },
+        {
+            "id": "carbaryl-research-2017",
+            "active_ingredient": "Carbaryl",
+            "product": None,
+            "study_formulation": "EC 85% toxic bait (research formulation only)",
+            "status_label": "Research-supported",
+            "evidence_type": "Direct field research; not a registered-use recommendation",
+            "country": "Iran (Moghan, Ardabil field trial)",
+            "target_pest": "Gryllotalpa gryllotalpa",
+            "crop_scope": (
+                "The 2007 field trial was conducted in melon. This is "
+                f"species-level evidence, not a {crop_name} use recommendation."
+            ),
+            "research_result": (
+                "Reported efficacy on day 7: 80.72%. This is a research "
+                "result, not a recommended rate."
+            ),
+            "crop_registration_status": (
+                "Research evidence available; current local registration must be checked."
+            ),
+            "application_method": None,
+            "dosage": None,
+            "pre_harvest_interval": None,
+            "safety_notes": (
+                "The study reports carbaryl use was banned in Iran. Research "
+                "only: do not use where prohibited or unless current "
+                "crop-and-pest registration is verified."
+            ),
+            "source_ids": ["javadzadeh-2017"],
+        },
+    ]
+
+    if crop_id == "tomato":
+        options.append(
+            {
+                "id": "cypermethrin-bulgarian-guidance-2024",
+                "active_ingredient": "Cypermethrin",
+                "product": "Belem 0.8 MG / Colombo 0.8 MG",
+                "study_formulation": None,
+                "status_label": "Registration not verified",
+                "evidence_type": (
+                    "Registered product guidance reported in the 2024 Bulgarian "
+                    "tomato article; current official product label not verified"
+                ),
+                "country": "Bulgaria",
+                "target_pest": "Gryllotalpa gryllotalpa",
+                "crop_scope": (
+                    "Tomato only: the source's European Mole Cricket section "
+                    "addresses tomato crops."
+                ),
+                "research_result": None,
+                "crop_registration_status": (
+                    "Research evidence available; current local registration must be checked."
+                ),
+                "application_method": None,
+                "dosage": None,
+                "pre_harvest_interval": None,
+                "safety_notes": (
+                    "The 2024 article lists these products but is not a current "
+                    "official label. Do not apply based on this article alone; "
+                    "verify current Bulgarian registration, crop and pest use, "
+                    "label directions, protective equipment and pre-harvest "
+                    "interval first."
+                ),
+                "source_ids": ["bulgarian-tomato-guidance-2024"],
+            }
+        )
+
+    return json.dumps(options, ensure_ascii=False)
+
+
+def _european_mole_cricket_source_references(crop_id):
+    sources = [
+        {
+            "source_id": "javadzadeh-2017",
+            "title": (
+                "Studying the Efficacy of Fipronil (GR 0.2%) against European "
+                "Mole Cricket, Gryllotalpa gryllotalpa (Orthoptera: Gryllotalpidae)"
+            ),
+            "organization": "Acta Phytopathologica et Entomologica Hungarica",
+            "authors": "M. Javadzadeh, M. Taghizadeh, A. Hosseini-Gharalari",
+            "url": "https://doi.org/10.1556/038.52.2017.001",
+            "published_on": "2017-02-10",
+            "reviewed_on": "2026-11-16",
+            "supports": ["chemical_control_options"],
+        }
+    ]
+    if crop_id == "tomato":
+        sources.append(
+            {
+                "source_id": "bulgarian-tomato-guidance-2024",
+                "title": (
+                    "Diseases and Pests of Tomatoes in Conditions of Changing "
+                    "Climate and Intensive Technologies"
+                ),
+                "organization": "Plant Protection journal (ISSN 2815-522X), Bulgaria",
+                "authors": "Stoyka Masheva and Vinelina Yankova",
+                "url": (
+                    "https://www.plant-protection.com/resources/pdfs/articles/"
+                    "en/article-2002.pdf"
+                ),
+                "published_on": "2024-05-04",
+                "reviewed_on": "2026-11-16",
+                "supports": ["chemical_control_options"],
+            }
+        )
+    return sources
 
 
 SOLUTION_RECORDS = [
@@ -208,13 +360,8 @@ SOLUTION_RECORDS = [
             "expose insects, but should be appropriate for the crop and its "
             "growth stage."
         ),
-        "chemical_control_options": (
-            "No specific pesticide or dose is recommended here. If infestation "
-            "is economically significant, consult current Indian registration "
-            "and product-label information. Use only a product approved for "
-            "the target pest and crop, following its labelled dose, application "
-            "method, protective equipment and waiting period. Do not treat "
-            "foreign-study treatments as Indian recommendations."
+        "chemical_control_options": _european_mole_cricket_chemical_control_options(
+            "potato"
         ),
         "prevention": (
             "Maintain suitable drainage, avoid excessive soil moisture, remove "
@@ -242,7 +389,7 @@ SOLUTION_RECORDS = [
             "Consult a local agricultural extension officer or entomologist "
             "if damage persists or identification is uncertain."
         ),
-        "source_references": [],
+        "source_references": _european_mole_cricket_source_references("potato"),
         "reviewed_on": None,
     },
     {
@@ -299,11 +446,8 @@ SOLUTION_RECORDS = [
             "monitor activity. Use shallow soil disturbance only when suitable "
             "for the crop stage."
         ),
-        "chemical_control_options": (
-            "No specific pesticide or dose is recommended here. If control is "
-            "necessary, check current Indian registration and product labels "
-            "for cabbage and the target pest. Follow the approved dose, "
-            "application method, protective equipment and waiting period."
+        "chemical_control_options": _european_mole_cricket_chemical_control_options(
+            "cabbage"
         ),
         "prevention": (
             "Maintain suitable drainage, avoid excessive soil moisture, "
@@ -326,7 +470,7 @@ SOLUTION_RECORDS = [
             "before choosing control measures. Seek local agricultural advice "
             "if damage continues."
         ),
-        "source_references": [],
+        "source_references": _european_mole_cricket_source_references("cabbage"),
         "reviewed_on": None,
     },
     {
@@ -384,12 +528,8 @@ SOLUTION_RECORDS = [
             "monitor activity. Use shallow soil disturbance only when suitable "
             "for the crop and growth stage."
         ),
-        "chemical_control_options": (
-            "No specific pesticide or dose is recommended here. If infestation "
-            "requires chemical control, check current Indian registration and "
-            "the product label for tomato and the target pest. Follow the "
-            "approved dose, application method, protective equipment and "
-            "waiting period."
+        "chemical_control_options": _european_mole_cricket_chemical_control_options(
+            "tomato"
         ),
         "prevention": (
             "Maintain suitable drainage, avoid excessive soil moisture, "
@@ -412,7 +552,7 @@ SOLUTION_RECORDS = [
             "and seedling injury. Seek local agricultural advice if damage "
             "persists."
         ),
-        "source_references": [],
+        "source_references": _european_mole_cricket_source_references("tomato"),
         "reviewed_on": None,
     },
     {
@@ -469,11 +609,8 @@ SOLUTION_RECORDS = [
             "monitor activity. Use shallow soil disturbance only when suitable "
             "for the crop and growth stage."
         ),
-        "chemical_control_options": (
-            "No specific pesticide or dose is recommended here. If chemical "
-            "control is necessary, check current Indian registration and "
-            "product labels for onion and the target pest. Follow the approved "
-            "dose, application method, protective equipment and waiting period."
+        "chemical_control_options": _european_mole_cricket_chemical_control_options(
+            "onion"
         ),
         "prevention": (
             "Maintain suitable drainage, avoid excessive soil moisture, "
@@ -496,7 +633,7 @@ SOLUTION_RECORDS = [
             "damage before choosing control measures. Seek local agricultural "
             "advice if damage continues."
         ),
-        "source_references": [],
+        "source_references": _european_mole_cricket_source_references("onion"),
         "reviewed_on": None,
     },
     {
@@ -554,12 +691,8 @@ SOLUTION_RECORDS = [
             "monitor activity. Use shallow soil disturbance only when suitable "
             "for the crop and growth stage."
         ),
-        "chemical_control_options": (
-            "No specific pesticide or dose is recommended here. If chemical "
-            "control is necessary, check current Indian registration and "
-            "product labels for tobacco and the target pest. Follow the "
-            "approved dose, application method, protective equipment and "
-            "waiting period."
+        "chemical_control_options": _european_mole_cricket_chemical_control_options(
+            "tobacco"
         ),
         "prevention": (
             "Maintain suitable drainage, avoid excessive soil moisture, "
@@ -582,7 +715,7 @@ SOLUTION_RECORDS = [
             "injury before choosing control measures. Seek local agricultural "
             "advice if damage persists."
         ),
-        "source_references": [],
+        "source_references": _european_mole_cricket_source_references("tobacco"),
         "reviewed_on": None,
     },
     {
