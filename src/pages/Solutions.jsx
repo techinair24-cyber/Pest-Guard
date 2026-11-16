@@ -181,10 +181,30 @@ function PestSolutionDetails({ label, value }) {
   )
 }
 
-function HistorySolutionModal({ item, onClose }) {
-  const [historyPestSolutions, setHistoryPestSolutions] = useState([])
-  const [solutionLoading, setSolutionLoading] = useState(Boolean(item.pest_id))
-  const [solutionError, setSolutionError] = useState('')
+function resolveHistoryPestId(item, pestDirectory) {
+  for (const candidate of [item.pest_id, item.pest, item.common_name]) {
+    const pestId = pestDirectory[normalizePestName(candidate)]?.pestId
+    if (pestId) return pestId
+  }
+
+  return String(item.pest_id || '').trim()
+}
+
+function HistorySolutionModal({ item, onClose, pestDirectory }) {
+  const pestId = resolveHistoryPestId(item, pestDirectory)
+  const cropId = String(item.crop_id || '').trim()
+  const requestKey = `${pestId}\u0000${cropId}`
+  const [solutionResult, setSolutionResult] = useState({
+    requestKey: '',
+    solutions: [],
+    error: '',
+  })
+  const isCurrentResult = solutionResult.requestKey === requestKey
+  const historyPestSolutions = isCurrentResult
+    ? solutionResult.solutions
+    : []
+  const solutionLoading = Boolean(pestId) && !isCurrentResult
+  const solutionError = isCurrentResult ? solutionResult.error : ''
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -200,29 +220,41 @@ function HistorySolutionModal({ item, onClose }) {
 
     async function loadPestSolutions() {
       try {
-        const result = await getPestSolutions(item.pest_id)
+        const result = await getPestSolutions(pestId)
+        const verifiedSolutions = Array.isArray(result.solutions)
+          ? result.solutions.filter(
+              (solution) => solution.status === 'VERIFIED',
+            )
+          : []
+        const cropSolutions = cropId
+          ? verifiedSolutions.filter((solution) => solution.crop_id === cropId)
+          : verifiedSolutions
+
         if (active) {
-          setHistoryPestSolutions(
-            Array.isArray(result.advisories) ? result.advisories : [],
-          )
+          setSolutionResult({
+            requestKey,
+            solutions: cropSolutions,
+            error: '',
+          })
         }
       } catch (loadError) {
         if (active) {
-          setSolutionError(
-            loadError.message || 'Unable to load crop-specific solutions.',
-          )
+          setSolutionResult({
+            requestKey,
+            solutions: [],
+            error:
+              loadError.message || 'Unable to load crop-specific solutions.',
+          })
         }
-      } finally {
-        if (active) setSolutionLoading(false)
       }
     }
 
-    if (item.pest_id) loadPestSolutions()
+    if (pestId) loadPestSolutions()
 
     return () => {
       active = false
     }
-  }, [item.pest_id])
+  }, [cropId, pestId, requestKey])
 
   return (
     <div
@@ -254,23 +286,24 @@ function HistorySolutionModal({ item, onClose }) {
           </button>
         </div>
         <div className="history-modal-content">
-          {solutionLoading ? (
+          {solutionError ? (
+            <p className="inline-error" role="alert">{solutionError}</p>
+          ) : solutionLoading ? (
             <p className="solution-loading">Loading pest solutions…</p>
           ) : historyPestSolutions.length > 0 ? (
-            historyPestSolutions.map((solution, index) => (
-              <PestSolutionCard
-                key={solution.id || solution.pest_id || index}
-                item={solution}
-              />
-            ))
-          ) : (
-            <p>
-              Solution information is not available for this pest.
+            <VerifiedSolutionGroups
+              items={historyPestSolutions}
+              isLiveMatch={false}
+            />
+          ) : !pestId ? (
+            <p className="solution-unavailable">
+              The saved pest identity could not be matched to the pest catalogue.
             </p>
-          )}
-          {solutionError && (
-            <p className="inline-error" role="alert">
-              {solutionError}
+          ) : (
+            <p className="solution-unavailable">
+              {item.crop_id
+                ? `No verified solution is currently available for crop ${item.crop_id} for this pest.`
+                : 'No verified solution is currently available for this pest.'}
             </p>
           )}
         </div>
@@ -1162,6 +1195,7 @@ function Solutions() {
           {selectedHistoryItem && (
             <HistorySolutionModal
               item={selectedHistoryItem}
+              pestDirectory={pestDirectory}
               onClose={() => setSelectedHistoryItem(null)}
             />
           )}
