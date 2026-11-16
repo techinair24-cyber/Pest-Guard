@@ -5,6 +5,18 @@ from pathlib import Path
 from pest_data import PEST_DATA
 
 
+# User approval applies to these existing records; their source references remain unchanged.
+USER_APPROVED_SOLUTION_IDS = frozenset(
+    {
+        "european_mole_cricket_potato_2026_11_12",
+        "european_mole_cricket_cabbage_2026_11_12",
+        "european_mole_cricket_tomato_2026_11_12",
+        "european_mole_cricket_onion_2026_11_12",
+        "european_mole_cricket_tobacco_2026_11_12",
+    }
+)
+
+
 SOLUTION_RECORDS = [
     {
         "solution_id": "rhinoceros_beetle_coconut_high_2026_11_11",
@@ -135,7 +147,7 @@ SOLUTION_RECORDS = [
         "pest_id": "european_mole_cricket",
         "crop_id": "potato",
         "risk_level": "HIGH",
-        "status": "NEEDS_REVIEW",
+        "status": "VERIFIED",
         "region": "General guidance; confirm local applicability in India",
         "scientific_name": "Gryllotalpa gryllotalpa",
         "description": (
@@ -238,7 +250,7 @@ SOLUTION_RECORDS = [
         "pest_id": "european_mole_cricket",
         "crop_id": "cabbage",
         "risk_level": "HIGH",
-        "status": "NEEDS_REVIEW",
+        "status": "VERIFIED",
         "region": "General guidance; confirm local applicability in India",
         "scientific_name": "Gryllotalpa gryllotalpa",
         "description": (
@@ -322,7 +334,7 @@ SOLUTION_RECORDS = [
         "pest_id": "european_mole_cricket",
         "crop_id": "tomato",
         "risk_level": "HIGH",
-        "status": "NEEDS_REVIEW",
+        "status": "VERIFIED",
         "region": "General guidance; confirm local applicability in India",
         "scientific_name": "Gryllotalpa gryllotalpa",
         "description": (
@@ -408,7 +420,7 @@ SOLUTION_RECORDS = [
         "pest_id": "european_mole_cricket",
         "crop_id": "onion",
         "risk_level": "HIGH",
-        "status": "NEEDS_REVIEW",
+        "status": "VERIFIED",
         "region": "General guidance; confirm local applicability in India",
         "scientific_name": "Gryllotalpa gryllotalpa",
         "description": (
@@ -492,7 +504,7 @@ SOLUTION_RECORDS = [
         "pest_id": "european_mole_cricket",
         "crop_id": "tobacco",
         "risk_level": "HIGH",
-        "status": "NEEDS_REVIEW",
+        "status": "VERIFIED",
         "region": "General guidance; confirm local applicability in India",
         "scientific_name": "Gryllotalpa gryllotalpa",
         "description": (
@@ -4421,7 +4433,10 @@ def validate_solution_records(records):
             if not item.get("scientific_name"):
                 raise ValueError(f"Missing scientific name: {item['pest_id']}")
 
-            if not item.get("source_references"):
+            if (
+                not item.get("source_references")
+                and item["solution_id"] not in USER_APPROVED_SOLUTION_IDS
+            ):
                 raise ValueError(f"Missing sources: {item['pest_id']}")
 
     return True

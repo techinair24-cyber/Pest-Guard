@@ -2984,24 +2984,36 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         verified_records = [
             item for item in SOLUTION_RECORDS if item["status"] == "VERIFIED"
         ]
-        self.assertEqual(len(verified_records), 1)
-        self.assertEqual(
-            verified_records[0]["solution_id"],
-            "rhinoceros_beetle_coconut_high_2026_11_11",
+        self.assertEqual(len(verified_records), 6)
+        verified_coconut = next(
+            item
+            for item in verified_records
+            if item["solution_id"] == "rhinoceros_beetle_coconut_high_2026_11_11"
         )
-        self.assertEqual(verified_records[0]["pest_id"], "rhinoceros_beetle")
-        self.assertEqual(verified_records[0]["crop_id"], "coconut")
-        self.assertEqual(verified_records[0]["risk_level"], "HIGH")
-        self.assertEqual(verified_records[0]["status"], "VERIFIED")
-        self.assertTrue(main._has_verified_solution_evidence(verified_records[0]))
-        self.assertIsNone(verified_records[0]["chemical_control_options"])
+        self.assertEqual(verified_coconut["pest_id"], "rhinoceros_beetle")
+        self.assertEqual(verified_coconut["crop_id"], "coconut")
+        self.assertEqual(verified_coconut["risk_level"], "HIGH")
+        self.assertEqual(verified_coconut["status"], "VERIFIED")
+        self.assertTrue(main._has_verified_solution_evidence(verified_coconut))
+        self.assertIsNone(verified_coconut["chemical_control_options"])
         self.assertIn(
             "mechanical_control_methods",
-            verified_records[0]["source_references"][0]["supports"],
+            verified_coconut["source_references"][0]["supports"],
         )
         self.assertIn(
             "Rhinolure pheromone traps",
-            verified_records[0]["mechanical_control_methods"],
+            verified_coconut["mechanical_control_methods"],
+        )
+        european_solutions = [
+            item for item in verified_records
+            if item["pest_id"] == "european_mole_cricket"
+        ]
+        self.assertEqual(
+            {item["crop_id"] for item in european_solutions},
+            {"potato", "cabbage", "tomato", "onion", "tobacco"},
+        )
+        self.assertTrue(
+            all(main._has_verified_solution_evidence(item) for item in european_solutions)
         )
         pine_weevil = next(
             item
@@ -6605,6 +6617,65 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             session.close()
             engine.dispose()
 
+    def test_user_approved_european_solutions_are_returned_for_each_crop(self):
+        from database import Base
+
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(bind=engine)
+        session = sessionmaker(bind=engine)()
+        try:
+            main.seed_pest_data(session)
+            european_solutions = [
+                item
+                for item in main.SOLUTION_RECORDS
+                if item["pest_id"] == "european_mole_cricket"
+                and item.get("crop_id")
+            ]
+            self.assertEqual(
+                {item["crop_id"] for item in european_solutions},
+                {"potato", "cabbage", "tomato", "onion", "tobacco"},
+            )
+
+            for item in european_solutions:
+                stored = session.query(main.PestCropSolution).filter_by(
+                    solution_id=item["solution_id"]
+                ).one()
+                stored.status = "NEEDS_REVIEW"
+            session.commit()
+
+            main.seed_pest_data(session)
+
+            for item in european_solutions:
+                with self.subTest(crop_id=item["crop_id"]):
+                    response = main.get_solutions(
+                        crop_id=item["crop_id"],
+                        pest_id=None,
+                        db=session,
+                    )
+                    validated = main.PestCropSolutionListResponse.model_validate(
+                        response
+                    )
+                    self.assertEqual(response["total"], 1)
+                    self.assertEqual(
+                        response["solutions"][0]["solution_id"],
+                        item["solution_id"],
+                    )
+                    self.assertEqual(
+                        response["solutions"][0]["status"],
+                        "VERIFIED",
+                    )
+                    self.assertEqual(
+                        validated.solutions[0].status,
+                        "VERIFIED",
+                    )
+        finally:
+            session.close()
+            engine.dispose()
+
     def test_solution_response_omits_scientific_name_and_allows_missing_fields(self):
         response = main.PestCropSolutionResponse.model_validate(
             {
@@ -6613,6 +6684,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
                 "pest_name": "Rhinoceros Beetle",
                 "insect_group": "Beetles",
                 "risk": "HIGH",
+                "status": "VERIFIED",
                 "crop_id": "coconut",
                 "crop_name": "Coconut",
                 "source_references": [],

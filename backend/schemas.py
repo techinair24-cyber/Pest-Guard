@@ -114,6 +114,7 @@ class PestCropSolutionResponse(BaseModel):
     pest_name: str
     insect_group: str
     risk: Literal["HIGH", "MEDIUM", "LOW"]
+    status: Literal["VERIFIED"]
     crop_id: str
     crop_name: str
     region: Optional[str] = None

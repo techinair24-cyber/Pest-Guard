@@ -343,7 +343,10 @@ function RecommendationCard({ item, category }) {
   const recommendationSources = sources.filter((source) =>
     source.supports?.includes(category.key),
   )
-  const isVerified = Boolean(recommendation && recommendationSources.length)
+  const isUserApproved = item.status === 'VERIFIED' && sources.length === 0
+  const isVerified = Boolean(
+    recommendation && (recommendationSources.length || isUserApproved),
+  )
   const safetySources = sources.filter((source) =>
     source.supports?.includes('safety_precautions'),
   )
@@ -353,7 +356,11 @@ function RecommendationCard({ item, category }) {
       <div className="recommendation-heading">
         <h4>{category.title}</h4>
         <span className={isVerified ? 'verification-badge' : 'unverified-badge'}>
-          {isVerified ? 'Sources available' : 'Sources unavailable'}
+          {isVerified
+            ? isUserApproved
+              ? 'User approved'
+              : 'Sources available'
+            : 'Sources unavailable'}
         </span>
       </div>
       {isVerified ? (
@@ -376,9 +383,10 @@ function RecommendationCard({ item, category }) {
 
 function VerifiedSolution({ item, isLiveMatch }) {
   const sources = Array.isArray(item.source_references) ? item.source_references : []
+  const isUserApproved = item.status === 'VERIFIED' && sources.length === 0
   const hasEvidence = (key) => sources.some((source) => source.supports?.includes(key))
   const renderEvidence = (title, value, evidenceKey, className = '') => {
-    const verified = Boolean(value && hasEvidence(evidenceKey))
+    const verified = Boolean(value && (hasEvidence(evidenceKey) || isUserApproved))
 
     return (
       <EvidenceCard title={title} className={className}>
@@ -404,7 +412,9 @@ function VerifiedSolution({ item, isLiveMatch }) {
   const preventionSources = (item.source_references || []).filter(
     (source) => source.supports?.includes('prevention'),
   )
-  const preventionIsVerified = Boolean(item.prevention && preventionSources.length)
+  const preventionIsVerified = Boolean(
+    item.prevention && (preventionSources.length || isUserApproved),
+  )
 
   return (
     <article className="verified-solution">
@@ -421,7 +431,9 @@ function VerifiedSolution({ item, isLiveMatch }) {
             {item.insect_group} <span aria-hidden="true">·</span> {item.risk} risk
           </p>
         </div>
-        <span className="verification-badge">Sources available</span>
+        <span className="verification-badge">
+          {isUserApproved ? 'User approved' : 'Sources available'}
+        </span>
       </div>
       {isLiveMatch && (
         <p className="match-note">Matches the current pest identification.</p>
@@ -470,7 +482,11 @@ function VerifiedSolution({ item, isLiveMatch }) {
         </EvidenceCard>
         <EvidenceCard title="Prevention" className="prevention-panel">
           <span className={preventionIsVerified ? 'verification-badge' : 'unverified-badge'}>
-            {preventionIsVerified ? 'Sources available' : 'Sources unavailable'}
+            {preventionIsVerified
+              ? isUserApproved
+                ? 'User approved'
+                : 'Sources available'
+              : 'Sources unavailable'}
           </span>
           {preventionIsVerified ? (
             <p>{item.prevention}</p>
@@ -518,6 +534,8 @@ function Solutions() {
     supportedRisk
 
   const normalizedQueryPest = normalizePestName(queryPest)
+  const queryPestId =
+    pestDirectory[normalizedQueryPest]?.pestId || queryPest
   const normalizedDetectionPestId = normalizePestName(detection?.pest_id)
   const normalizedDetectionName = normalizePestName(detection?.pest)
   const isPineWeevilProfileRequested =
@@ -570,6 +588,8 @@ function Solutions() {
     : []
 
   const verifiedSolutions = storedSolutions.filter((item) => {
+    if (queryPestId) return item.pest_id === queryPestId
+
     if (hasLiveDetection) {
       return (
         hasActionableLiveDetection &&
@@ -625,8 +645,8 @@ function Solutions() {
       setPestSolutionsError('')
       setPestSolutionData(null)
 
-      const pestIdToLoad = queryPest
-        ? queryPest
+      const pestIdToLoad = queryPestId
+        ? queryPestId
         : hasVerifiedLiveDetection
           ? detection.pest_id
           : isPineWeevilProfileRequested
@@ -654,7 +674,7 @@ function Solutions() {
     }
   }, [
     pestDirectoryLoaded,
-    queryPest,
+    queryPestId,
     hasVerifiedLiveDetection,
     isPineWeevilProfileRequested,
     detection?.pest_id,

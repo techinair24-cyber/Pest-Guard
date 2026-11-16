@@ -51,7 +51,11 @@ from models import (
 from crop_data import CROP_DATA
 from pest_data import PEST_DATA
 import solution_data
-from solution_data import PEST_COVERAGE_DATA, SOLUTION_RECORDS
+from solution_data import (
+    PEST_COVERAGE_DATA,
+    SOLUTION_RECORDS,
+    USER_APPROVED_SOLUTION_IDS,
+)
 from pest_guard_hierarchy_inference_8class import (
     PestGuardHierarchy8Class as PestGuardHierarchy,
 )
@@ -1044,6 +1048,12 @@ def _solution_value(solution, field):
 
 
 def _has_verified_solution_evidence(solution) -> bool:
+    if (
+        _solution_value(solution, "solution_id") in USER_APPROVED_SOLUTION_IDS
+        and _solution_value(solution, "status") == "VERIFIED"
+    ):
+        return True
+
     if any(
         not isinstance(value, str) or not value.strip()
         for value in (_solution_value(solution, field) for field in SOLUTION_REQUIRED_FIELDS)
@@ -2466,6 +2476,7 @@ def _serialize_pest_crop_solution(solution, pest, crop) -> dict:
             if item["pest_id"] == pest.pest_id
         ),
         "risk": pest.risk,
+        "status": solution.status,
         "crop_id": crop.crop_id,
         "crop_name": crop.name,
         "region": solution.region,
