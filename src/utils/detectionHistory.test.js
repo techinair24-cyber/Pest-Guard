@@ -241,6 +241,8 @@ test('classification display distinguishes confirmed, uncertain, non-pest, and i
   assert.equal(
     getDetectionDisplayStatus({
       pest: 'Acheta domesticus',
+      status: 'HARMFUL_PEST',
+      pest_verified: true,
       identification_status: 'CONFIRMED',
     }),
     'Confirmed pest identification',
@@ -248,7 +250,24 @@ test('classification display distinguishes confirmed, uncertain, non-pest, and i
   assert.equal(
     getDetectionDisplayStatus({
       pest: 'Acheta domesticus',
+      status: 'HARMFUL_PEST',
+      pest_verified: true,
+      identification_status: 'MODEL_PREDICTED',
+    }),
+    'Accepted model prediction',
+  )
+  assert.equal(
+    getDetectionDisplayStatus({
+      pest: 'Acheta domesticus',
       identification_status: 'UNCONFIRMED',
+    }),
+    'Possible match - not confirmed',
+  )
+  assert.equal(
+    getDetectionDisplayStatus({
+      pest: 'Acheta domesticus',
+      status: 'HARMFUL_PEST',
+      identification_status: 'CONFIRMED',
     }),
     'Possible match - not confirmed',
   )

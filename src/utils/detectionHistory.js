@@ -69,10 +69,22 @@ export function getDetectionDisplayStatus(item) {
   }
 
   const message = String(item.message || '')
-  const status = String(item.status || '').toUpperCase()
+  const status = String(item.status || '')
+    .trim()
+    .toUpperCase()
+
   const identificationStatus = String(
     item.identification_status || '',
-  ).toUpperCase()
+  ).trim().toUpperCase()
+
+  const hasPest =
+    typeof item.pest === 'string' &&
+    item.pest.trim() !== ''
+
+  const acceptedPest =
+    status === 'HARMFUL_PEST' &&
+    item.pest_verified === true &&
+    hasPest
 
   if (
     identificationStatus === 'ERROR' ||
@@ -83,12 +95,22 @@ export function getDetectionDisplayStatus(item) {
   if (status === 'NON_PEST') {
     return 'Non-pest sound'
   }
-  if (identificationStatus === 'CONFIRMED') {
+
+  if (
+    acceptedPest &&
+    identificationStatus === 'CONFIRMED'
+  ) {
     return 'Confirmed pest identification'
   }
-  if (item.pest) {
+
+  if (acceptedPest) {
+    return 'Accepted model prediction'
+  }
+
+  if (hasPest) {
     return 'Possible match - not confirmed'
   }
+
   return 'Rejected or uncertain classification'
 }
 

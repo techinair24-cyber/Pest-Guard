@@ -1,6 +1,7 @@
 import asyncio
 import json
 import unittest
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
@@ -8,12 +9,38 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import numpy as np
-from fastapi import HTTPException
+from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import main
+
+
+async def _test_ai_predict(
+    request,
+    *,
+    db=None,
+    background_gate_bypass="false",
+):
+    with patch.dict(
+        main.os.environ,
+        {"PEST_BACKGROUND_GATE_BYPASS": background_gate_bypass},
+    ):
+        return await main.ai_predict(
+            request,
+            BackgroundTasks(),
+            db=db if db is not None else Mock(),
+        )
+
+
+async def _test_create_detection(payload, db):
+    return await main.create_detection(
+        payload,
+        BackgroundTasks(),
+        db=db,
+    )
+
 
 ACTIVE_LABELS = [
     label
@@ -140,6 +167,34 @@ class FakeRequest:
         return self._payload
 
 
+@contextmanager
+def background_gate_enabled(*, score, threshold=0.25):
+    with (
+        patch.dict(
+            main.os.environ,
+            {"PEST_BACKGROUND_GATE_BYPASS": "false"},
+        ),
+        patch.object(main, "_PEST_LIGHT_GATE_THRESHOLD", threshold),
+        patch.object(
+            main,
+            "_pest_light_gate_score",
+            return_value=score,
+        ),
+    ):
+        yield
+
+
+def database_with_no_verified_solution_rows():
+    database = Mock()
+    solution_query = Mock()
+    solution_query.join.return_value = solution_query
+    solution_query.filter.return_value = solution_query
+    solution_query.order_by.return_value = solution_query
+    solution_query.all.return_value = []
+    database.query.return_value = solution_query
+    return database
+
+
 class AudioPredictionSafetyTests(unittest.TestCase):
     def setUp(self):
         self.database = Mock()
@@ -181,6 +236,10 @@ class AudioPredictionSafetyTests(unittest.TestCase):
     def test_subtype_allowlist_maps_to_actual_dataset_folders(self):
         manifest = main._PEST_GUARD_HIERARCHY.manifest
         dataset_root = Path(manifest["dataset_root"])
+        if not dataset_root.is_dir():
+            self.skipTest(
+                f"Training dataset is unavailable at {dataset_root}"
+            )
         mappings = manifest["dataset_provenance"]["subclass_label_mappings"]
         verified_count = 0
         for group, model_to_dataset in mappings.items():
@@ -357,7 +416,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         )
 
         with self.assertRaises(HTTPException) as raised:
-            asyncio.run(main.ai_predict(request))
+            asyncio.run(_test_ai_predict(request))
 
         self.assertEqual(raised.exception.status_code, 422)
 
@@ -378,6 +437,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             payload={"audio": audio},
         )
         result = {"pest": ACTIVE_LABELS[0], "confidence": 0.8}
+        background_tasks = BackgroundTasks()
 
         with patch.object(
             main.asyncio,
@@ -386,20 +446,22 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             return_value=result,
         ) as to_thread:
             response = asyncio.run(
-                main.ai_predict(request, db=self.database)
+                main.ai_predict(
+                    request,
+                    background_tasks=background_tasks,
+                    db=self.database,
+                )
             )
 
-        self.assertEqual(to_thread.await_count, 2)
+        # Prediction inference must run outside the event loop.
+        to_thread.assert_awaited_once_with(main.predict_pest, audio)
+
+        # SMS must be scheduled instead of blocking the response.
+        self.assertEqual(len(background_tasks.tasks), 1)
+        sms_task = background_tasks.tasks[0]
+        self.assertIs(sms_task.func, main.send_fast2sms_alert)
         self.assertEqual(
-            to_thread.await_args_list[0].args,
-            (main.predict_pest, audio),
-        )
-        self.assertIs(
-            to_thread.await_args_list[1].args[0],
-            main.send_fast2sms_alert,
-        )
-        self.assertEqual(
-            to_thread.await_args_list[1].args[1]["status"],
+            sms_task.args[0]["status"],
             response["status"],
         )
         self.assertEqual(response["pest"], ACTIVE_LABELS[0])
@@ -415,7 +477,10 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             payload={"audio": audio.tolist()},
         )
 
-        response = asyncio.run(main.ai_predict(request, db=self.database))
+        with background_gate_enabled(score=0.0):
+            response = asyncio.run(
+                _test_ai_predict(request, db=self.database)
+            )
 
         self.assertEqual(
             {
@@ -432,6 +497,10 @@ class AudioPredictionSafetyTests(unittest.TestCase):
                 "broad_group_prediction",
                 "broad_group_confidence",
                 "broad_group_top_predictions",
+                "background_gate_score",
+                "background_gate_threshold",
+                "background_gate_passed",
+                "background_gate_bypassed",
                 "risk",
                 "risk_rationale",
                 "affected_crops",
@@ -450,6 +519,10 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             },
             set(response),
         )
+        self.assertEqual(response["background_gate_score"], 0.0)
+        self.assertEqual(response["background_gate_threshold"], 0.25)
+        self.assertIs(response["background_gate_passed"], False)
+        self.assertIs(response["background_gate_bypassed"], False)
         if response["status"] == "HARMFUL_PEST":
             self.assertEqual(
                 response["identification_status"], "MODEL_PREDICTED"
@@ -478,6 +551,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             "insect_group": main.MODEL_SPECIES_GROUPS[
                 main._normalize_pest_label(ACTIVE_LABELS[0])
             ],
+            "background_gate_passed": True,
         }
 
         with (
@@ -493,7 +567,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             ) as broadcast,
         ):
             response = asyncio.run(
-                main.ai_predict(request, db=self.database)
+                _test_ai_predict(request, db=self.database)
             )
 
         detection = self.database.add.call_args.args[0]
@@ -519,6 +593,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             "insect_group": main.MODEL_SPECIES_GROUPS[
                 main._normalize_pest_label(ACTIVE_LABELS[0])
             ],
+            "background_gate_passed": True,
         }
         pest_record = SimpleNamespace(
             risk=" high ",
@@ -545,7 +620,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             ) as broadcast,
         ):
             response = asyncio.run(
-                main.ai_predict(request, db=self.database)
+                _test_ai_predict(request, db=self.database)
             )
 
         detection = self.database.add.call_args.args[0]
@@ -571,6 +646,10 @@ class AudioPredictionSafetyTests(unittest.TestCase):
                         main._normalize_pest_label(ACTIVE_LABELS[0])
                     ],
                     "group_score": 0.44,
+                    "background_gate_score": 0.8,
+                    "background_gate_threshold": 0.25,
+                    "background_gate_passed": True,
+                    "background_gate_bypassed": False,
                     "top_predictions": [
                         {
                             "pest": ACTIVE_LABELS[0],
@@ -587,7 +666,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             ) as broadcast,
         ):
             response = asyncio.run(
-                main.ai_predict(request, db=self.database)
+                _test_ai_predict(request, db=self.database)
             )
 
         detection = self.database.add.call_args.args[0]
@@ -599,6 +678,11 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             response["affected_crops"],
             json.loads(detection.affected_crops),
         )
+        gate_metadata = json.loads(detection.top_predictions)
+        self.assertEqual(gate_metadata["background_gate_score"], 0.8)
+        self.assertEqual(gate_metadata["background_gate_threshold"], 0.25)
+        self.assertIs(gate_metadata["background_gate_passed"], True)
+        self.assertIs(gate_metadata["background_gate_bypassed"], False)
         broadcast.assert_awaited_once_with(response)
 
 
@@ -610,7 +694,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         expected = {"pest": ACTIVE_LABELS[0], "confidence": 0.8}
 
         with (
-            patch.object(main, "_pest_light_gate_score", return_value=1.0),
+            background_gate_enabled(score=1.0),
             patch.object(
                 main._PEST_GUARD_HIERARCHY,
                 "predict",
@@ -621,27 +705,33 @@ class AudioPredictionSafetyTests(unittest.TestCase):
 
         hierarchy_predict.assert_called_once()
         self.assertIn("background_gate_score", result)
+        self.assertTrue(result["background_gate_passed"])
         self.assertEqual(result["pest"], expected["pest"])
 
-    def test_low_level_background_noise_uses_hierarchy_acceptance_status(self):
+    def test_low_level_background_noise_is_not_accepted_as_harmful_pest(self):
         audio = np.random.default_rng(1).integers(
             -4, 5, size=80000, dtype=np.int16
         )
+
         request = FakeRequest(
             "application/octet-stream",
             body=audio.tobytes(),
         )
 
-        response = asyncio.run(main.ai_predict(request, db=self.database))
+        with background_gate_enabled(score=0.0):
+            response = asyncio.run(
+                _test_ai_predict(request, db=self.database)
+            )
 
-        self.assertEqual(response["status"], "HARMFUL_PEST")
-        self.assertEqual(response["identification_status"], "MODEL_PREDICTED")
-        self.assertIn(response["pest"], ACTIVE_LABELS)
+        self.assertEqual(response["status"], "UNKNOWN")
         self.assertEqual(
-            response["identification_label"], response["common_name"]
+            response["identification_status"],
+            "UNCONFIRMED",
         )
-        self.assertEqual(
-            response["message"], "Model-predicted harmful pest"
+        self.assertFalse(response["pest_verified"])
+        self.assertIn(
+            "background gate rejected",
+            response["message"].lower(),
         )
 
     def test_low_score_prediction_is_kept_as_an_unverified_possible_match(self):
@@ -649,11 +739,12 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         candidate_result = {
             "pest": ACTIVE_LABELS[17],
             "confidence": 0.2,
+            "background_gate_passed": True,
         }
 
         with patch.object(main, "predict_pest", return_value=candidate_result):
             response = asyncio.run(
-                main.ai_predict(request, db=self.database)
+                _test_ai_predict(request, db=self.database)
             )
 
         self.assertEqual(response["pest"], ACTIVE_LABELS[17])
@@ -671,7 +762,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         for request in (malformed_pcm, malformed_json):
             with self.subTest(content_type=request.headers["content-type"]):
                 with self.assertRaises(HTTPException) as raised:
-                    asyncio.run(main.ai_predict(request))
+                    asyncio.run(_test_ai_predict(request))
                 self.assertEqual(raised.exception.status_code, 400)
 
     def test_high_model_score_keeps_class_as_unverified_suggestion(self):
@@ -679,11 +770,12 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         candidate_result = {
             "pest": ACTIVE_LABELS[0],
             "confidence": 0.99,
+            "background_gate_passed": True,
         }
 
         with patch.object(main, "predict_pest", return_value=candidate_result):
             response = asyncio.run(
-                main.ai_predict(request, db=self.database)
+                _test_ai_predict(request, db=self.database)
             )
 
         self.assertEqual(response["status"], "UNKNOWN")
@@ -701,11 +793,12 @@ class AudioPredictionSafetyTests(unittest.TestCase):
                 main._normalize_pest_label(pest)
             ],
             "rejection_reason": None,
+            "background_gate_passed": True,
         }
 
         with patch.object(main, "predict_pest", return_value=candidate_result):
             response = asyncio.run(
-                main.ai_predict(request, db=self.database)
+                _test_ai_predict(request, db=self.database)
             )
 
         detection = self.database.add.call_args.args[0]
@@ -713,6 +806,72 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         self.assertEqual(response["status"], "HARMFUL_PEST")
         self.assertEqual(response["identification_status"], "MODEL_PREDICTED")
         self.database.commit.assert_called_once()
+
+    def test_background_gate_rejection_is_saved_as_unverified_diagnostic(self):
+        pest = ACTIVE_LABELS[0]
+        request = FakeRequest("application/json", payload={"audio": []})
+        candidate_result = {
+            "pest": pest,
+            "confidence": 0.91,
+            "insect_group": main.MODEL_SPECIES_GROUPS[
+                main._normalize_pest_label(pest)
+            ],
+            "rejection_reason": "background_gate_rejected",
+            "background_gate_score": 0.1,
+            "background_gate_threshold": 0.25,
+            "background_gate_passed": False,
+            "background_gate_bypassed": False,
+        }
+
+        with patch.object(main, "predict_pest", return_value=candidate_result):
+            response = asyncio.run(
+                _test_ai_predict(request, db=self.database)
+            )
+
+        detection = self.database.add.call_args.args[0]
+        gate_metadata = json.loads(detection.top_predictions)
+        self.assertEqual(detection.status, "UNKNOWN")
+        self.assertEqual(detection.pest, pest)
+        self.assertEqual(
+            detection.message,
+            "Unverified model prediction: background gate rejected audio",
+        )
+        self.assertEqual(gate_metadata["background_gate_score"], 0.1)
+        self.assertEqual(gate_metadata["background_gate_threshold"], 0.25)
+        self.assertIs(gate_metadata["background_gate_passed"], False)
+        self.assertIs(gate_metadata["background_gate_bypassed"], False)
+        self.assertEqual(response["status"], "UNKNOWN")
+
+    def test_bypassed_gate_prediction_remains_diagnostic(self):
+        pest = ACTIVE_LABELS[0]
+        request = FakeRequest("application/json", payload={"audio": []})
+        candidate_result = {
+            "pest": pest,
+            "confidence": 0.91,
+            "insect_group": main.MODEL_SPECIES_GROUPS[
+                main._normalize_pest_label(pest)
+            ],
+            "background_gate_score": None,
+            "background_gate_threshold": None,
+            "background_gate_passed": None,
+            "background_gate_bypassed": True,
+        }
+
+        with patch.object(main, "predict_pest", return_value=candidate_result):
+            response = asyncio.run(
+                _test_ai_predict(request, db=self.database)
+            )
+
+        detection = self.database.add.call_args.args[0]
+        gate_metadata = json.loads(detection.top_predictions)
+        self.assertEqual(detection.status, "UNKNOWN")
+        self.assertEqual(
+            detection.message,
+            "Unverified model prediction: diagnostic background-gate bypass",
+        )
+        self.assertIsNone(gate_metadata["background_gate_passed"])
+        self.assertIs(gate_metadata["background_gate_bypassed"], True)
+        self.assertEqual(response["status"], "UNKNOWN")
 
     def test_hierarchy_acceptance_does_not_add_an_overall_score_threshold(self):
         pest = ACTIVE_LABELS[0]
@@ -724,11 +883,12 @@ class AudioPredictionSafetyTests(unittest.TestCase):
                 main._normalize_pest_label(pest)
             ],
             "rejection_reason": None,
+            "background_gate_passed": True,
         }
 
         with patch.object(main, "predict_pest", return_value=candidate_result):
             response = asyncio.run(
-                main.ai_predict(request, db=self.database)
+                _test_ai_predict(request, db=self.database)
             )
 
         self.assertEqual(response["status"], "HARMFUL_PEST")
@@ -745,11 +905,12 @@ class AudioPredictionSafetyTests(unittest.TestCase):
                 main._normalize_pest_label(pest)
             ],
             "rejection_reason": "subtype_confidence_below_validation_threshold",
+            "background_gate_passed": True,
         }
 
         with patch.object(main, "predict_pest", return_value=candidate_result):
             response = asyncio.run(
-                main.ai_predict(request, db=self.database)
+                _test_ai_predict(request, db=self.database)
             )
 
         detection = self.database.add.call_args.args[0]
@@ -765,11 +926,12 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             "confidence": 0.99,
             "insect_group": group,
             "rejection_reason": None,
+            "background_gate_passed": True,
         }
 
         with patch.object(main, "predict_pest", return_value=candidate_result):
             response = asyncio.run(
-                main.ai_predict(request, db=self.database)
+                _test_ai_predict(request, db=self.database)
             )
 
         detection = self.database.add.call_args.args[0]
@@ -795,11 +957,12 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             "confidence": 0.99,
             "insect_group": mismatched_group,
             "rejection_reason": None,
+            "background_gate_passed": True,
         }
 
         with patch.object(main, "predict_pest", return_value=candidate_result):
             response = asyncio.run(
-                main.ai_predict(request, db=self.database)
+                _test_ai_predict(request, db=self.database)
             )
 
         self.assertEqual(response["status"], "UNKNOWN")
@@ -813,6 +976,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
                 candidate_result = {
                     "pest": pest,
                     "confidence": confidence,
+                    "background_gate_passed": True,
                 }
                 with self.subTest(pest=pest, confidence=confidence):
                     with patch.object(
@@ -821,7 +985,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
                         return_value=candidate_result,
                     ):
                         response = asyncio.run(
-                            main.ai_predict(request, db=self.database)
+                            _test_ai_predict(request, db=self.database)
                         )
 
                     self.assertEqual(response["status"], "UNKNOWN")
@@ -846,7 +1010,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             return_value={"pest": "not-a-model-class", "confidence": 0.4},
         ):
             response = asyncio.run(
-                main.ai_predict(request, db=self.database)
+                _test_ai_predict(request, db=self.database)
             )
 
         self.assertIsNone(response["pest"])
@@ -6309,6 +6473,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             "pest": "House Cricket",
             "confidence": 0.95,
             "insect_group": "Crickets",
+            "background_gate_passed": True,
         }
         with (
             patch.object(
@@ -6325,7 +6490,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             patch.object(main.manager, "broadcast", new_callable=AsyncMock),
         ):
             response = asyncio.run(
-                main.ai_predict(request, db=self.database)
+                _test_ai_predict(request, db=self.database)
             )
 
         self.assertEqual(response["status"], "UNKNOWN")
@@ -6989,7 +7154,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
     def test_untracked_history_guidance_is_not_served(self):
         catalog_item = real_active_catalog_item()
         pest_record = SimpleNamespace(**catalog_item)
-        database = Mock()
+        database = database_with_no_verified_solution_rows()
         item = SimpleNamespace(
             id=1,
             detection_id=1,
@@ -7051,7 +7216,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             created_at=None,
         )
 
-        database = Mock()
+        database = database_with_no_verified_solution_rows()
         with patch.object(
             main,
             "_find_verified_pest_record",
@@ -7093,7 +7258,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         with patch.object(
             main.manager, "broadcast", new_callable=AsyncMock
         ) as broadcast:
-            detection = asyncio.run(main.create_detection(payload, database))
+            detection = asyncio.run(_test_create_detection(payload, database))
 
         self.assertEqual(detection["status"], "HARMFUL_PEST")
         self.assertEqual(detection["identification_status"], "MODEL_PREDICTED")
@@ -7125,7 +7290,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         with patch.object(
             main.manager, "broadcast", new_callable=AsyncMock
         ) as broadcast:
-            detection = asyncio.run(main.create_detection(payload, database))
+            detection = asyncio.run(_test_create_detection(payload, database))
 
         self.assertEqual(detection["status"], "UNKNOWN")
         self.assertEqual(detection["pest"], ACTIVE_LABELS[0])
@@ -7149,7 +7314,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             patch.object(main.manager, "broadcast", new_callable=AsyncMock),
             patch.object(main, "urlopen") as fast2sms_request,
         ):
-            detection = asyncio.run(main.create_detection(payload, database))
+            detection = asyncio.run(_test_create_detection(payload, database))
 
         self.assertEqual(detection["status"], "UNKNOWN")
         self.assertEqual(detection["identification_status"], "UNCONFIRMED")
@@ -7217,7 +7382,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             ) as broadcast,
             patch.object(main, "send_fast2sms_alert"),
         ):
-            detection = asyncio.run(main.create_detection(payload, database))
+            detection = asyncio.run(_test_create_detection(payload, database))
 
         self.assertEqual(detection["status"], "HARMFUL_PEST")
         self.assertEqual(detection["risk"], "HIGH")
@@ -7247,7 +7412,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         with patch.object(
             main.manager, "broadcast", new_callable=AsyncMock
         ) as broadcast:
-            detection = asyncio.run(main.create_detection(payload, database))
+            detection = asyncio.run(_test_create_detection(payload, database))
 
         self.assertEqual(detection["status"], "UNKNOWN")
         self.assertIsNone(detection["pest"])
@@ -7268,7 +7433,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         )
 
         with patch.object(main.manager, "broadcast", new_callable=AsyncMock):
-            detection = asyncio.run(main.create_detection(payload, database))
+            detection = asyncio.run(_test_create_detection(payload, database))
 
         self.assertEqual(detection["status"], "NON_PEST")
         self.assertIsNone(detection["pest"])
@@ -7312,12 +7477,16 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
             "pest": pest_name,
             "confidence": 0.9,
             "insect_group": main._active_group_for_label(pest_name),
+            "background_gate_score": 0.9,
+            "background_gate_threshold": 0.25,
+            "background_gate_passed": True,
+            "background_gate_bypassed": False,
         }
         with (
             patch.object(main, "predict_pest", return_value=result),
             patch.object(main.manager, "broadcast", new_callable=AsyncMock),
         ):
-            return asyncio.run(main.ai_predict(request, db=self.db))
+            return asyncio.run(_test_ai_predict(request, db=self.db))
 
     def _seed_catalogue(self):
         main.seed_pest_data(self.db)
@@ -7376,7 +7545,7 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
             ) as broadcast,
             patch.object(main, "send_fast2sms_alert"),
         ):
-            saved = asyncio.run(main.create_detection(payload, self.db))
+            saved = asyncio.run(_test_create_detection(payload, self.db))
 
         history = main.get_detection_history(
             device_id=None,
@@ -7413,6 +7582,10 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
                 return_value={
                     "pest": ACTIVE_LABELS[0],
                     "confidence": 0.81,
+                    "background_gate_score": 0.81,
+                    "background_gate_threshold": 0.25,
+                    "background_gate_passed": True,
+                    "background_gate_bypassed": False,
                     "insect_group": main.MODEL_SPECIES_GROUPS[
                         main._normalize_pest_label(ACTIVE_LABELS[0])
                     ],
@@ -7432,7 +7605,7 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
                 new_callable=AsyncMock,
             ) as broadcast,
         ):
-            response = asyncio.run(main.ai_predict(request, db=self.db))
+            response = asyncio.run(_test_ai_predict(request, db=self.db))
 
         saved = self.db.query(main.Detection).first()
         latest = main.get_latest_detection(db=self.db)["detection"]
@@ -7670,7 +7843,7 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
                     patch.object(main, "send_fast2sms_alert"),
                 ):
                     response = asyncio.run(
-                        main.create_detection(payload, self.db)
+                        _test_create_detection(payload, self.db)
                     )
 
                 saved = self.db.query(main.Detection).filter_by(
@@ -7752,6 +7925,10 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
                             "pest": pest_name,
                             "confidence": 0.9,
                             "insect_group": "Crickets",
+                            "background_gate_score": 0.9,
+                            "background_gate_threshold": 0.25,
+                            "background_gate_passed": True,
+                            "background_gate_bypassed": False,
                         },
                     ),
                     patch.object(
@@ -7761,7 +7938,7 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
                     ) as broadcast,
                 ):
                     response = asyncio.run(
-                        main.ai_predict(request, db=self.db)
+                        _test_ai_predict(request, db=self.db)
                     )
 
                 saved = self.db.query(main.Detection).filter_by(
@@ -7806,7 +7983,7 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
             patch.object(main.manager, "broadcast", new_callable=AsyncMock),
             patch.object(main, "send_fast2sms_alert"),
         ):
-            response = asyncio.run(main.create_detection(payload, self.db))
+            response = asyncio.run(_test_create_detection(payload, self.db))
 
         history = (
             self.db.query(main.HighRiskSolutionHistory)

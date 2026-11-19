@@ -98,11 +98,14 @@ export function getCandidateRiskEstimate(
   detection,
   directory = {},
 ) {
-  const candidateName = typeof candidate === 'string'
-    ? candidate
-    : String(candidate?.pest || '').trim()
-  const pestId = String(detection?.pest_id || '')
+  const candidateName =
+    typeof candidate === 'string'
+      ? candidate.trim()
+      : String(candidate?.pest || '').trim()
 
+  const pestId = String(detection?.pest_id || '').trim()
+
+  // Never assign risk to unverified detections.
   if (
     !candidateName ||
     detection?.status !== 'HARMFUL_PEST' ||
@@ -112,32 +115,78 @@ export function getCandidateRiskEstimate(
     return unconfirmedRisk()
   }
 
-  const catalogRecord = directory[normalizePestName(pestId)]
-  const detectionRecord = directory[
-    normalizePestName(detection?.pest)
-  ]
-  const candidateRecord = directory[normalizePestName(candidateName)]
+  const candidateKey = normalizePestName(candidateName)
+  const pestKey = normalizePestName(detection?.pest)
+  const commonKey = normalizePestName(detection?.common_name)
+  const scientificKey = normalizePestName(
+    detection?.scientific_name,
+  )
 
+  const catalogRecord = directory[normalizePestName(pestId)]
+  const candidateRecord = directory[candidateKey]
+  const detectionRecord = directory[pestKey]
+
+  // Candidate must match the verified detection identity.
+  const identityMatches =
+    candidateKey === pestKey ||
+    candidateKey === commonKey ||
+    candidateKey === scientificKey ||
+    candidateRecord?.pestId === pestId
+
+  if (!identityMatches) {
+    return unconfirmedRisk()
+  }
+
+  // Reject conflicting local catalogue identities.
   if (
-    !catalogRecord ||
-    catalogRecord.pestId !== pestId ||
-    detectionRecord?.pestId !== pestId ||
-    candidateRecord?.pestId !== pestId
+    (catalogRecord && catalogRecord.pestId !== pestId) ||
+    (candidateRecord && candidateRecord.pestId !== pestId) ||
+    (detectionRecord && detectionRecord.pestId !== pestId)
   ) {
     return unconfirmedRisk()
   }
 
-  const catalogRisk = String(catalogRecord.risk || '').toUpperCase()
-  if (!VALID_RISKS.includes(catalogRisk)) {
-    return unconfirmedRisk()
+  const serverRisk = String(
+    detection?.risk || '',
+  ).trim().toUpperCase()
+
+  const serverRationale = String(
+    detection?.risk_rationale || '',
+  ).trim()
+
+  // Prefer the backend's catalogue-verified risk.
+  // Do not treat a precautionary LOW default as verified.
+  if (
+    VALID_RISKS.includes(serverRisk) &&
+    serverRationale ===
+      'Risk category recorded in the matching pest catalogue entry.'
+  ) {
+    return {
+      risk: serverRisk,
+      source: 'Pest Guard pest catalogue',
+      sourceUrl: detection?.metadata_source_url || null,
+      rationale: serverRationale,
+    }
   }
 
-  return {
-    risk: catalogRisk,
-    source: 'Pest Guard pest catalogue',
-    rationale:
-      'Risk category recorded in the matching pest catalogue entry.',
+  // Fallback to the validated local catalogue.
+  if (catalogRecord?.pestId === pestId) {
+    const catalogRisk = String(
+      catalogRecord.risk || '',
+    ).trim().toUpperCase()
+
+    if (VALID_RISKS.includes(catalogRisk)) {
+      return {
+        risk: catalogRisk,
+        source: 'Pest Guard pest catalogue',
+        sourceUrl: null,
+        rationale:
+          'Risk category recorded in the matching pest catalogue entry.',
+      }
+    }
   }
+
+  return unconfirmedRisk()
 }
 
 export function getCommonPestName(

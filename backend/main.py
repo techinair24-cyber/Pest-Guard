@@ -480,54 +480,58 @@ def _pest_light_gate_score(waveform):
 # --- End Pest Guard lightweight background gate ---
 
 def predict_pest(audio):
+    """Classify audio while preserving the background gate decision."""
     waveform = decode_audio_samples(audio)
 
-    # Diagnostic mode: temporarily bypass the background gate.
-    # Keep audio decoding and silence validation enabled.
-    gate_bypass_enabled = (
+    gate_bypassed = (
         os.getenv("PEST_BACKGROUND_GATE_BYPASS", "false")
         .strip()
         .lower() == "true"
     )
 
-    if gate_bypass_enabled:
-        logger.warning(
-            "DIAGNOSTIC MODE: Background sound filter bypassed."
-        )
-        gate_score = None
+    gate_score = None
+    gate_threshold = None
+    gate_passed = None
 
+    if gate_bypassed:
+        logger.warning(
+            "Pest Guard background gate bypassed: "
+            "result is diagnostic only."
+        )
     else:
         gate_score = _pest_light_gate_score(waveform)
-
-        if gate_score < _PEST_LIGHT_GATE_THRESHOLD:
-            logger.info(
-                "Background gate rejected audio "
-                "(score=%.4f, threshold=%.2f)",
-                gate_score,
-                _PEST_LIGHT_GATE_THRESHOLD,
-            )
-
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    "Audio rejected by background-sound filter. "
-                    f"Gate score={gate_score:.4f}, "
-                    f"threshold={_PEST_LIGHT_GATE_THRESHOLD:.2f}. "
-                    "No detection was saved."
-                ),
-            )
-
+        gate_threshold = float(_PEST_LIGHT_GATE_THRESHOLD)
+        gate_passed = gate_score >= gate_threshold
         logger.info(
-            "Background gate accepted audio "
-            "(score=%.4f, threshold=%.2f)",
+            "Background gate: score=%.4f "
+            "threshold=%.4f passed=%s",
             gate_score,
-            _PEST_LIGHT_GATE_THRESHOLD,
+            gate_threshold,
+            gate_passed,
         )
 
     result = _PEST_GUARD_HIERARCHY.predict(waveform)
 
+    if not isinstance(result, dict):
+        raise RuntimeError(
+            "Hierarchy must return a prediction dictionary."
+        )
+
+    if gate_passed is False:
+        previous_reason = str(
+            result.get("rejection_reason") or ""
+        ).strip()
+
+        result["rejection_reason"] = (
+            f"{previous_reason}; background_gate_rejected"
+            if previous_reason
+            else "background_gate_rejected"
+        )
+
     result["background_gate_score"] = gate_score
-    result["background_gate_bypassed"] = gate_bypass_enabled
+    result["background_gate_threshold"] = gate_threshold
+    result["background_gate_passed"] = gate_passed
+    result["background_gate_bypassed"] = gate_bypassed
 
     return result
 
@@ -749,6 +753,10 @@ def _serialize_detection(detection: Detection, db: Session | None) -> dict:
     stored_broad_group = None
     stored_broad_group_confidence = None
     stored_broad_group_top_predictions = []
+    stored_background_gate_score = None
+    stored_background_gate_threshold = None
+    stored_background_gate_passed = None
+    stored_background_gate_bypassed = None
     if detection.top_predictions:
         try:
             parsed_predictions = json.loads(detection.top_predictions)
@@ -758,6 +766,18 @@ def _serialize_detection(detection: Detection, db: Session | None) -> dict:
                 stored_broad_group_confidence = parsed_predictions.get("broad_group_confidence")
                 stored_broad_group_top_predictions = parsed_predictions.get(
                     "broad_group_top_predictions", []
+                )
+                stored_background_gate_score = parsed_predictions.get(
+                    "background_gate_score"
+                )
+                stored_background_gate_threshold = parsed_predictions.get(
+                    "background_gate_threshold"
+                )
+                stored_background_gate_passed = parsed_predictions.get(
+                    "background_gate_passed"
+                )
+                stored_background_gate_bypassed = parsed_predictions.get(
+                    "background_gate_bypassed"
                 )
             elif isinstance(parsed_predictions, list):
                 stored_predictions = parsed_predictions
@@ -777,6 +797,10 @@ def _serialize_detection(detection: Detection, db: Session | None) -> dict:
         "broad_group_prediction": stored_broad_group,
         "broad_group_confidence": stored_broad_group_confidence,
         "broad_group_top_predictions": stored_broad_group_top_predictions,
+        "background_gate_score": stored_background_gate_score,
+        "background_gate_threshold": stored_background_gate_threshold,
+        "background_gate_passed": stored_background_gate_passed,
+        "background_gate_bypassed": stored_background_gate_bypassed,
         "top_predictions": enrich_top_predictions(
             stored_predictions,
             MODEL_COMMON_NAMES,
@@ -1864,48 +1888,92 @@ async def ai_predict(
 
         result = await asyncio.to_thread(predict_pest, audio)
 
-        # Preserve a subtype candidate for display, but only accept it when
-        # the hierarchy, active catalog, and rejection state all agree.
+        # Keep the species candidate for diagnostics.
         model_confidence = float(result["confidence"])
         top_predictions = result.get("top_predictions", [])
         raw_predicted_pest = result.get("pest")
+
         predicted_pest = (
             raw_predicted_pest
             if _is_active_species_label(raw_predicted_pest)
             else None
         )
+
         expected_group = _active_group_for_label(predicted_pest)
-        insect_group = str(result.get("insect_group") or UNKNOWN_INSECT_GROUP)
+
+        insect_group = str(
+            result.get("insect_group") or UNKNOWN_INSECT_GROUP
+        )
         if insect_group not in _ACTIVE_HIERARCHICAL_GROUP_NAMES:
             insect_group = UNKNOWN_INSECT_GROUP
-        group_score = result.get("group_score") if insect_group != UNKNOWN_INSECT_GROUP else None
-        rejection_reason = result.get("rejection_reason")
-        species_metadata = _resolve_species_metadata(predicted_pest, db)
-        common_name = species_metadata["common_name"] if predicted_pest else None
-        resolved_risk = (
-            species_metadata["risk"] if predicted_pest else "LOW"
+
+        group_score = (
+            result.get("group_score")
+            if insect_group != UNKNOWN_INSECT_GROUP
+            else None
         )
-        # Bypassed background-filter results are diagnostic only.
-        # They must never be treated as verified pest detections.
-        diagnostic_mode = bool(result.get("background_gate_bypassed", False))
+
+        rejection_reason = result.get("rejection_reason")
+        species_metadata = _resolve_species_metadata(
+            predicted_pest, db
+        )
+
+        common_name = (
+            species_metadata["common_name"]
+            if predicted_pest
+            else None
+        )
+        resolved_risk = (
+            species_metadata["risk"]
+            if predicted_pest
+            else "LOW"
+        )
+
+        diagnostic_mode = (
+            result.get("background_gate_bypassed") is True
+        )
+        gate_decision = result.get("background_gate_passed")
+        gate_accepted = gate_decision is True
+
+        # Accept only a species that passed the gate,
+        # hierarchy checks, and catalogue verification.
         prediction_is_accepted = bool(
-            not diagnostic_mode
+            gate_accepted
+            and not diagnostic_mode
             and predicted_pest
             and expected_group in _ACTIVE_HIERARCHICAL_GROUP_NAMES
             and insect_group == expected_group
             and not rejection_reason
             and species_metadata["catalog_record_found"]
         )
+
         prediction_status = (
-            "HARMFUL_PEST" if prediction_is_accepted else "UNKNOWN"
+            "HARMFUL_PEST"
+            if prediction_is_accepted
+            else "UNKNOWN"
         )
+
         if diagnostic_mode:
-            prediction_message = "Unverified model prediction: diagnostic background-gate bypass"
+            prediction_message = (
+                "Unverified model prediction: "
+                "diagnostic background-gate bypass"
+            )
+        elif gate_decision is False:
+            prediction_message = (
+                "Unverified model prediction: "
+                "background gate rejected audio"
+            )
         elif prediction_is_accepted:
             prediction_message = "Model-predicted harmful pest"
         elif rejection_reason:
             prediction_message = (
-                f"Low-confidence model prediction rejected: {rejection_reason}"
+                "Low-confidence model prediction rejected: "
+                f"{rejection_reason}"
+            )
+        elif gate_decision is None:
+            prediction_message = (
+                "Unverified model prediction: "
+                "no background-gate decision"
             )
         else:
             prediction_message = "Unverified model prediction"
@@ -1925,9 +1993,23 @@ async def ai_predict(
             confidence=model_confidence,
             top_predictions=json.dumps({
                 "species": top_predictions,
-                "broad_group_prediction": result.get("broad_group_prediction"),
-                "broad_group_confidence": result.get("broad_group_confidence"),
-                "broad_group_top_predictions": result.get("broad_group_top_predictions", []),
+                "broad_group_prediction": result.get(
+                    "broad_group_prediction"
+                ),
+                "broad_group_confidence": result.get(
+                    "broad_group_confidence"
+                ),
+                "broad_group_top_predictions": result.get(
+                    "broad_group_top_predictions", []
+                ),
+                "background_gate_score": result.get(
+                    "background_gate_score"
+                ),
+                "background_gate_threshold": result.get(
+                    "background_gate_threshold"
+                ),
+                "background_gate_passed": gate_decision,
+                "background_gate_bypassed": diagnostic_mode,
             }),
             insect_group=insect_group,
             group_score=group_score,
@@ -2060,7 +2142,8 @@ def send_fast2sms_alert(detection):
     """Send customized HIGH or MEDIUM pest detection alerts."""
     if (
         detection.get("status") != "HARMFUL_PEST"
-        or detection.get("identification_status") != "MODEL_PREDICTED"
+        or detection.get("identification_status")
+        not in {"CONFIRMED", "MODEL_PREDICTED"}
         or detection.get("pest_verified") is not True
     ):
         return

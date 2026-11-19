@@ -156,9 +156,21 @@ export function useLiveDetection() {
         return
       }
 
+      const incoming = response || null
+
+      if (
+        incoming?.device_id &&
+        incoming.device_id !== DEVICE_ID
+      ) {
+        return
+      }
+
       setLiveStatus((current) => ({
         ...current,
-        detection: selectNewerDetection(current.detection, response),
+        detection: selectNewerDetection(
+          current.detection,
+          incoming,
+        ),
       }))
       setDetectionError(null)
     } catch (detectionError) {
