@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 from urllib.error import HTTPError, URLError
 from urllib.request import Request as URLRequest, urlopen
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -481,14 +481,54 @@ def _pest_light_gate_score(waveform):
 
 def predict_pest(audio):
     waveform = decode_audio_samples(audio)
-    gate_score = _pest_light_gate_score(waveform)
-    if gate_score < _PEST_LIGHT_GATE_THRESHOLD:
-        logger.info("Background gate rejected audio (score=%.4f, threshold=%.2f)", gate_score, _PEST_LIGHT_GATE_THRESHOLD)
-        raise HTTPException(status_code=422, detail=f"Audio rejected by background-sound filter. Gate score={gate_score:.4f}, threshold={_PEST_LIGHT_GATE_THRESHOLD:.2f}. No detection was saved.")
-    logger.info("Background gate accepted audio (score=%.4f, threshold=%.2f)", gate_score, _PEST_LIGHT_GATE_THRESHOLD)
+
+    # Diagnostic mode: temporarily bypass the background gate.
+    # Keep audio decoding and silence validation enabled.
+    gate_bypass_enabled = (
+        os.getenv("PEST_BACKGROUND_GATE_BYPASS", "false")
+        .strip()
+        .lower() == "true"
+    )
+
+    if gate_bypass_enabled:
+        logger.warning(
+            "DIAGNOSTIC MODE: Background sound filter bypassed."
+        )
+        gate_score = None
+
+    else:
+        gate_score = _pest_light_gate_score(waveform)
+
+        if gate_score < _PEST_LIGHT_GATE_THRESHOLD:
+            logger.info(
+                "Background gate rejected audio "
+                "(score=%.4f, threshold=%.2f)",
+                gate_score,
+                _PEST_LIGHT_GATE_THRESHOLD,
+            )
+
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Audio rejected by background-sound filter. "
+                    f"Gate score={gate_score:.4f}, "
+                    f"threshold={_PEST_LIGHT_GATE_THRESHOLD:.2f}. "
+                    "No detection was saved."
+                ),
+            )
+
+        logger.info(
+            "Background gate accepted audio "
+            "(score=%.4f, threshold=%.2f)",
+            gate_score,
+            _PEST_LIGHT_GATE_THRESHOLD,
+        )
 
     result = _PEST_GUARD_HIERARCHY.predict(waveform)
+
     result["background_gate_score"] = gate_score
+    result["background_gate_bypassed"] = gate_bypass_enabled
+
     return result
 
 
@@ -1750,6 +1790,7 @@ def set_detection_control(
 
 async def ai_predict(
     request: Request,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
 
@@ -1844,8 +1885,12 @@ async def ai_predict(
         resolved_risk = (
             species_metadata["risk"] if predicted_pest else "LOW"
         )
+        # Bypassed background-filter results are diagnostic only.
+        # They must never be treated as verified pest detections.
+        diagnostic_mode = bool(result.get("background_gate_bypassed", False))
         prediction_is_accepted = bool(
-            predicted_pest
+            not diagnostic_mode
+            and predicted_pest
             and expected_group in _ACTIVE_HIERARCHICAL_GROUP_NAMES
             and insect_group == expected_group
             and not rejection_reason
@@ -1854,7 +1899,9 @@ async def ai_predict(
         prediction_status = (
             "HARMFUL_PEST" if prediction_is_accepted else "UNKNOWN"
         )
-        if prediction_is_accepted:
+        if diagnostic_mode:
+            prediction_message = "Unverified model prediction: diagnostic background-gate bypass"
+        elif prediction_is_accepted:
             prediction_message = "Model-predicted harmful pest"
         elif rejection_reason:
             prediction_message = (
@@ -1923,8 +1970,15 @@ async def ai_predict(
             tzinfo=timezone.utc
         ).isoformat()
 
-        await asyncio.to_thread(send_fast2sms_alert, prediction_data)
+        # Broadcast the saved prediction to connected website clients.
         await manager.broadcast(prediction_data)
+
+        # Schedule SMS delivery after the HTTP response.
+        # SMS network delays must not block the ESP32-S3.
+        background_tasks.add_task(
+            send_fast2sms_alert,
+            prediction_data.copy(),
+        )
         return prediction_data
 
     except HTTPException:
@@ -2086,6 +2140,8 @@ def send_fast2sms_alert(detection):
 async def create_detection(
 
     payload: DetectionCreate,
+
+    background_tasks: BackgroundTasks,
 
     db: Session = Depends(get_db),
 
@@ -2262,13 +2318,16 @@ async def create_detection(
     if detection.detected_at:
         detection_data["detected_at"] = detection.detected_at.isoformat()
 
-    # Send SMS only for verified HIGH- or MEDIUM-risk detections.
-
-    await asyncio.to_thread(send_fast2sms_alert, detection_data)
-
     # Send the new detection immediately to connected website clients.
 
     await manager.broadcast(detection_data)
+
+    # Schedule SMS after the HTTP response.
+    # The SMS request must not delay the detection response.
+    background_tasks.add_task(
+        send_fast2sms_alert,
+        detection_data.copy(),
+    )
 
     return detection_data
 
