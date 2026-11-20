@@ -269,10 +269,10 @@ test('requested Detect and Stop labels remain visible while device confirmation 
     status: 'REQUESTED',
   })
 
-  assert.equal(detect.label, 'DETECTING')
+  assert.equal(detect.label, 'WAITING FOR DEVICE')
   assert.equal(detect.confirmed, false)
   assert.match(detect.message, /confirmation is pending/)
-  assert.equal(stop.label, 'DETECTION STOPPED')
+  assert.equal(stop.label, 'WAITING FOR DEVICE')
   assert.equal(stop.confirmed, false)
   assert.match(stop.message, /waiting for the field unit/)
 })
@@ -292,8 +292,49 @@ test('requested UI states show hardware confirmation only for matching acknowled
   assert.equal(confirmed.label, 'DETECTING')
   assert.equal(confirmed.confirmed, true)
   assert.match(confirmed.message, /field unit confirmed Detect/)
-  assert.equal(notConfirmed.label, 'DETECTING')
+  assert.equal(notConfirmed.label, 'WAITING FOR DEVICE')
   assert.equal(notConfirmed.confirmed, false)
+  assert.equal(notConfirmed.className, 'is-requested')
+})
+
+test('requested control status changes only after acknowledgement, offline, or timeout', () => {
+  const pendingStop = getRequestedDetectionControlPresentation(false, {
+    enabled: false,
+    command_id: 'stop-1',
+    device_enabled: true,
+    status: 'REQUESTED',
+  })
+  const stopped = getRequestedDetectionControlPresentation(false, {
+    enabled: false,
+    command_id: 'stop-1',
+    device_enabled: false,
+    status: 'STOPPED',
+  })
+  const offline = getRequestedDetectionControlPresentation(false, {
+    enabled: false,
+    command_id: 'stop-1',
+    device_online: false,
+    device_enabled: null,
+    status: 'DEVICE_OFFLINE',
+  })
+  const timedOut = getRequestedDetectionControlPresentation(false, {
+    enabled: false,
+    command_id: 'stop-1',
+    device_online: true,
+    device_enabled: null,
+    status: 'TIMEOUT',
+  })
+
+  assert.equal(pendingStop.status, 'REQUESTED')
+  assert.equal(pendingStop.label, 'WAITING FOR DEVICE')
+  assert.equal(pendingStop.confirmed, false)
+  assert.equal(stopped.status, 'STOPPED')
+  assert.equal(stopped.label, 'DETECTION STOPPED')
+  assert.equal(stopped.confirmed, true)
+  assert.equal(offline.label, 'DEVICE OFFLINE')
+  assert.equal(offline.confirmed, false)
+  assert.equal(timedOut.label, 'COMMAND TIMED OUT')
+  assert.equal(timedOut.confirmed, false)
 })
 
 test('a failed request keeps the selected label but clearly reports unconfirmed device state', () => {
@@ -301,7 +342,7 @@ test('a failed request keeps the selected label but clearly reports unconfirmed 
     requestError: 'backend unavailable',
   })
 
-  assert.equal(presentation.label, 'DETECTION STOPPED')
+  assert.equal(presentation.label, 'CONTROL UNCONFIRMED')
   assert.equal(presentation.confirmed, false)
   assert.match(presentation.message, /was not accepted/)
   assert.match(presentation.message, /state is unconfirmed/)

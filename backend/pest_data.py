@@ -1294,6 +1294,7 @@ PEST_DATA = [{'pest_id': 'european_mole_cricket',
   'name': 'Brown Bunyip Cicada',
   'scientific_name': 'Tamasa tristigma',
   'insect_group': 'Cicada',
+  'aliases': ['Brown Bunyip'],
   'risk': 'LOW',
   'description': "Classified as LOW risk in the user's supplied pest-risk list. The supplied "
                  'category describes woodland sap-feeders, decaying-wood consumers, or predatory '

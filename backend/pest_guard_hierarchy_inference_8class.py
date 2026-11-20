@@ -202,7 +202,7 @@ class PestGuardHierarchy8Class:
     def _top_predictions(
         labels: list[str], probabilities: np.ndarray, group_score: float
     ) -> list[dict[str, Any]]:
-        order = np.argsort(probabilities)[::-1][:3]
+        order = np.argsort(-probabilities, kind="stable")[:3]
         predictions = []
         for idx in order:
             subtype_probability = float(probabilities[int(idx)])
@@ -221,7 +221,7 @@ class PestGuardHierarchy8Class:
 
     @staticmethod
     def _top_group_predictions(labels: list[str], probabilities: np.ndarray) -> list[dict[str, Any]]:
-        order = np.argsort(probabilities)[::-1][:3]
+        order = np.argsort(-probabilities, kind="stable")[:3]
         return [
             {"group": labels[int(i)], "confidence": float(probabilities[int(i)])}
             for i in order
@@ -243,7 +243,8 @@ class PestGuardHierarchy8Class:
         if not 0.0 <= group_threshold <= 1.0:
             raise RuntimeError(f"Invalid group confidence threshold: {group_threshold}")
 
-        if group_score < group_threshold:
+        threshold_tolerance = float(np.finfo(np.float32).eps)
+        if group_score + threshold_tolerance < group_threshold:
             return {
                 "pest": group_name,
                 "confidence": group_score,
@@ -301,13 +302,16 @@ class PestGuardHierarchy8Class:
         threshold_info = expert_info.get("threshold") or {}
         subtype_threshold = float(threshold_info.get("minimum_confidence", 0.95))
         verified_labels = self.verified_subtype_labels.get(group_name, set())
-        top_predictions = [
-            prediction
-            for prediction in self._top_predictions(
-                subtype_labels, subtype_probabilities, group_score
-            )
-            if prediction["pest"] in verified_labels
+        verified_indices = [
+            index
+            for index, label in enumerate(subtype_labels)
+            if label in verified_labels
         ]
+        top_predictions = self._top_predictions(
+            [subtype_labels[index] for index in verified_indices],
+            subtype_probabilities[verified_indices],
+            group_score,
+        )
         joint_confidence = float(group_score * subtype_score)
 
         if subtype_labels[subtype_idx] not in verified_labels:
@@ -324,7 +328,7 @@ class PestGuardHierarchy8Class:
                 "rejection_reason": None,
             }
 
-        if subtype_score < subtype_threshold:
+        if subtype_score + threshold_tolerance < subtype_threshold:
             return {
                 "pest": group_name,
                 "confidence": group_score,

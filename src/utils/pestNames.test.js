@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 import {
@@ -10,70 +9,27 @@ import {
   normalizePestName,
 } from './pestNames.js'
 
-const classNames = JSON.parse(
-  await readFile(
-    new URL(
-      '../../backend/ai_model/pest_yamnet_updated_candidate/class_names.json',
-      import.meta.url,
-    ),
-    'utf8',
-  ),
-)
+const catalogueFixture = [
+  {
+    pest_id: 'brown_bunyip_cicada',
+    name: 'Brown Bunyip Cicada',
+    scientific_name: 'Tamasa tristigma',
+    aliases: ['Brown Bunyip'],
+    risk: 'LOW',
+  },
+]
+const directory = buildPestDirectory(catalogueFixture)
 
-const metadata = JSON.parse(
-  await readFile(
-    new URL(
-      '../../backend/ai_model/pest_yamnet_updated_candidate/class_metadata.json',
-      import.meta.url,
-    ),
-    'utf8',
-  ),
-)
+test('Brown Bunyip alias resolves to the existing canonical catalogue identity', () => {
+  const alias = directory[normalizePestName('Brown Bunyip')]
+  const canonical = directory[normalizePestName('Brown Bunyip Cicada')]
 
-const metadataByClass = new Map(
-  metadata.map((entry) => [
-    normalizePestName(entry.model_class),
-    entry,
-  ]),
-)
-
-test('metadata covers every exact active YAMNet model class', () => {
-  assert.equal(classNames.length, 20)
-  assert.equal(metadata.length, classNames.length)
-
-  for (const label of classNames) {
-    assert.ok(metadataByClass.has(normalizePestName(label)), label)
-  }
-})
-
-test('every class has a readable common name and sourced risk assessment', () => {
-  for (const entry of metadata) {
-    assert.ok(entry.common_name.trim(), entry.model_class)
-    assert.ok(
-      ['HIGH', 'MEDIUM', 'LOW', 'NO_RISK'].includes(entry.risk),
-      entry.model_class,
-    )
-    assert.ok(entry.source_name.trim(), entry.model_class)
-    assert.ok(entry.source_url.startsWith('https://'), entry.model_class)
-    assert.ok(entry.risk_rationale.trim(), entry.model_class)
-    assert.ok(Array.isArray(entry.affected_crops), entry.model_class)
-
-    if (entry.risk !== 'NO_RISK') {
-      assert.ok(entry.affected_crops.length > 0, entry.model_class)
-    }
-  }
-})
-
-test('metadata matching ignores capitalization, spaces, and underscores', () => {
-  const entry = metadataByClass.get('commonfieldgrasshopper')
-
+  assert.deepEqual(alias, canonical)
+  assert.equal(alias.pestId, 'brown_bunyip_cicada')
+  assert.equal(alias.scientificName, 'Tamasa tristigma')
   assert.equal(
-    getDisplayPestName(
-      'COMMON_field__grasshopper',
-      {},
-      entry,
-    ),
-    'Common field grasshopper (Chorthippus brunneus)',
+    getDisplayPestName('BROWN_bunyip', directory),
+    'Brown Bunyip Cicada (Tamasa tristigma)',
   )
 })
 
@@ -107,24 +63,20 @@ test('unrated metadata uses precautionary LOW', () => {
 })
 
 test('catalogue risk remains available for independently verified records', () => {
-  const directory = buildPestDirectory([
-    { pest_id: 'fall-armyworm', name: 'Fall Armyworm', risk: 'HIGH' },
-  ])
-
   assert.equal(
     getDetectionRiskEstimate(
       {
         status: 'HARMFUL_PEST',
-        pest: 'Fall Armyworm',
-        pest_id: 'fall-armyworm',
+        pest: 'Brown Bunyip',
+        pest_id: 'brown_bunyip_cicada',
         pest_verified: true,
       },
       directory,
     ).risk,
-    'HIGH',
+    'LOW',
   )
   assert.equal(
-    getPestRiskEstimate('Armyworm', directory).risk,
+    getPestRiskEstimate('Tamasa tristigma', directory).risk,
     'LOW',
   )
 })

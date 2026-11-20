@@ -17,6 +17,7 @@ import {
   getDetectionDisplayStatus,
   getDetectionHistoryKey,
   filterDetectionHistory,
+  isRecentDetection,
   isLatestDetectionCandidate,
   isAfterHistoryClear,
   mergeDetections,
@@ -183,19 +184,24 @@ function LiveMonitoring() {
           const control = getDetectionControlPresentation(result)
           const action = controlActionRef.current
           if (action && action.accepted) {
+            if (matchesDetectionControlAction(action, result)) {
+              setDetectionControlActionView(
+                getRequestedDetectionControlPresentation(action.enabled, result),
+              )
+            } else {
+              controlActionRef.current = null
+              setDetectionControlActionView(null)
+            }
             setDetectionControlKnown(true)
             setDetectionControlView(control)
             setDetectionControlError('')
             return
           }
           if (action) {
-            if (!matchesDetectionControlAction(action, result)) return
-            setDetectionControlActionView(
-              getRequestedDetectionControlPresentation(action.enabled, result),
-            )
-          } else {
-            setDetectionControlKnown(true)
+            controlActionRef.current = null
+            setDetectionControlActionView(null)
           }
+          setDetectionControlKnown(true)
           setDetectionControlView(control)
           setDetectionControlError('')
         })
@@ -512,7 +518,12 @@ function LiveMonitoring() {
   }, [deviceId, historyFilter, historyLimit, historyClearedAt, historyRetryCount])
 
   useEffect(() => {
-    if (!detection || detection.status !== 'HARMFUL_PEST') {
+    if (
+      !detection ||
+      detection.status !== 'HARMFUL_PEST' ||
+      detection.pest_verified !== true ||
+      !isRecentDetection(detection)
+    ) {
       return
     }
 

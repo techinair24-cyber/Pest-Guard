@@ -8,6 +8,7 @@ import {
   isLatestDetectionCandidate,
   isNewerDetection,
   isAfterHistoryClear,
+  isRecentDetection,
   mergeDetections,
   selectNewerDetection,
 } from './detectionHistory.js'
@@ -129,6 +130,32 @@ test('clear cutoff hides old and equal-time detections but keeps newer events', 
   )
 })
 
+test('old latest records remain historical and are not eligible for a live alert', () => {
+  const now = Date.parse('2026-11-20T12:00:00Z')
+
+  assert.equal(
+    isRecentDetection(
+      { detected_at: '2026-11-20T11:59:30Z' },
+      now,
+    ),
+    true,
+  )
+  assert.equal(
+    isRecentDetection(
+      { detected_at: '2026-11-20T11:58:59Z' },
+      now,
+    ),
+    false,
+  )
+  assert.equal(
+    isRecentDetection(
+      { detected_at: '2026-11-20T12:00:06Z' },
+      now,
+    ),
+    false,
+  )
+})
+
 test('history merges a saved event and its live WebSocket copy only once', () => {
   const liveEvent = {
     id: 7,
@@ -150,6 +177,31 @@ test('history merges a saved event and its live WebSocket copy only once', () =>
     merged.map((item) => item.id),
     [7, 6],
   )
+})
+
+test('two consecutive REST and WebSocket detections remain two ordered history events', () => {
+  const first = {
+    id: 21,
+    device_id: 'FIELD-UNIT-01',
+    status: 'UNKNOWN',
+    pest: 'First candidate',
+    detected_at: '2026-11-20T12:00:00Z',
+  }
+  const second = {
+    id: 22,
+    device_id: 'FIELD-UNIT-01',
+    status: 'UNKNOWN',
+    pest: 'Second candidate',
+    detected_at: '2026-11-20T12:00:15Z',
+  }
+
+  const merged = mergeDetections(
+    [second, first],
+    [{ ...first }, { ...second }],
+  )
+
+  assert.deepEqual(merged.map((item) => item.id), [22, 21])
+  assert.equal(selectNewerDetection(first, second).id, 22)
 })
 
 test('history deduplicates matching records when only one copy has a database ID', () => {

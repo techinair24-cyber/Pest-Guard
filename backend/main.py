@@ -249,7 +249,8 @@ logger.info(
 )
 
 SAMPLE_RATE = 16000
-_DIAGNOSTIC_CAPTURE_SAMPLE_COUNT = 80_000
+ESP32_PCM_SAMPLE_COUNT = 5 * SAMPLE_RATE
+ESP32_PCM_PAYLOAD_BYTES = ESP32_PCM_SAMPLE_COUNT * 2
 _DIAGNOSTIC_CAPTURE_MAX_FILES = 100
 # One signed-int16 LSB at the PCM amplitude scale; less than this is not resolvable.
 PCM16_RMS_FLOOR = 1.0 / 32768.0
@@ -265,7 +266,7 @@ def _save_diagnostic_capture(
     if not configured_dir:
         return False
 
-    expected_bytes = _DIAGNOSTIC_CAPTURE_SAMPLE_COUNT * 2
+    expected_bytes = ESP32_PCM_PAYLOAD_BYTES
     if not isinstance(raw_audio, (bytes, bytearray)) or len(raw_audio) != expected_bytes:
         logger.warning(
             "Skipping diagnostic audio capture: expected %d bytes of ESP32 PCM.",
@@ -362,7 +363,7 @@ def _save_diagnostic_capture(
             "sample_rate_hz": SAMPLE_RATE,
             "channels": 1,
             "sample_width_bytes": 2,
-            "sample_count": _DIAGNOSTIC_CAPTURE_SAMPLE_COUNT,
+            "sample_count": ESP32_PCM_SAMPLE_COUNT,
             "background_gate_score": gate_score,
             "background_gate_threshold": gate_threshold,
             "background_gate_passed": gate_passed,
@@ -454,6 +455,77 @@ def _active_group_for_label(label):
         return UNKNOWN_INSECT_GROUP
     normalized = _normalize_pest_label(label)
     return _ACTIVE_HIERARCHICAL_LABEL_GROUPS.get(normalized, UNKNOWN_INSECT_GROUP)
+
+
+def _hierarchy_confidence_evidence_valid(result, pest, group):
+    if group not in _PEST_GUARD_HIERARCHY.experts:
+        return False
+
+    normalized_pest = _normalize_pest_label(pest)
+    if not any(
+        _normalize_pest_label(label) == normalized_pest
+        for label in _PEST_GUARD_HIERARCHY.verified_subtype_labels.get(group, ())
+    ):
+        return False
+
+    group_threshold_info = (
+        _PEST_GUARD_HIERARCHY.manifest.get("group_model") or {}
+    ).get("threshold") or {}
+    subtype_threshold_info = (
+        _PEST_GUARD_HIERARCHY.subtype_manifest.get(group) or {}
+    ).get("threshold") or {}
+    try:
+        group_threshold = float(
+            group_threshold_info.get("minimum_confidence", 0.0)
+        )
+        subtype_threshold = float(
+            subtype_threshold_info.get("minimum_confidence", 0.95)
+        )
+        group_score = float(result.get("group_score"))
+        model_confidence = float(result.get("confidence"))
+    except (TypeError, ValueError):
+        return False
+
+    candidates = result.get("top_predictions")
+    if not isinstance(candidates, list) or not candidates:
+        return False
+    candidate = candidates[0]
+    if (
+        not isinstance(candidate, dict)
+        or _normalize_pest_label(candidate.get("pest")) != normalized_pest
+    ):
+        return False
+
+    try:
+        subtype_score = float(candidate.get("subtype_confidence"))
+        candidate_confidence = float(candidate.get("confidence"))
+        candidate_probability = float(candidate.get("probability"))
+    except (TypeError, ValueError):
+        return False
+
+    scores = (
+        group_threshold,
+        subtype_threshold,
+        group_score,
+        subtype_score,
+        model_confidence,
+        candidate_confidence,
+        candidate_probability,
+    )
+    if not all(np.isfinite(score) and 0.0 <= score <= 1.0 for score in scores):
+        return False
+    threshold_tolerance = float(np.finfo(np.float32).eps)
+    if (
+        group_score + threshold_tolerance < group_threshold
+        or subtype_score + threshold_tolerance < subtype_threshold
+    ):
+        return False
+
+    composite_score = group_score * subtype_score
+    return all(
+        np.isclose(score, composite_score, rtol=1e-5, atol=1e-6)
+        for score in (model_confidence, candidate_confidence, candidate_probability)
+    )
 
 
 def decode_audio_samples(audio):
@@ -1998,6 +2070,41 @@ def set_detection_control(
     return _detection_control_response(device_id, db)
 
 
+def _get_detection_control_command(db, device_id, lock=False):
+    query = (
+        db.query(DetectionControlCommand)
+        .populate_existing()
+        .filter(DetectionControlCommand.device_id == device_id)
+    )
+    if lock:
+        query = query.with_for_update()
+    return query.first()
+
+
+def _detection_command_is_current(db, device_id, command_id, lock=False):
+    if not isinstance(command_id, str) or not command_id or len(command_id) > 64:
+        return False
+
+    command = _get_detection_control_command(db, device_id, lock)
+    return bool(
+        command
+        and command.enabled is True
+        and command.command_id == command_id
+    )
+
+
+def _detection_command_state_is_current(db, device_id, command_id, lock=False):
+    command = _get_detection_control_command(db, device_id, lock)
+    if command_id is None:
+        return not isinstance(command, DetectionControlCommand)
+    return bool(
+        isinstance(command, DetectionControlCommand)
+        and command.enabled is True
+        and command.command_id == command_id
+    )
+
+
+
 @app.post("/api/ai/predict")
 
 async def ai_predict(
@@ -2010,6 +2117,9 @@ async def ai_predict(
 
         content_type = request.headers.get("content-type", "")
         raw_audio = None
+        control_command_id = None
+        control_command_bound = False
+        device_id = os.getenv("PEST_DEVICE_ID", "FIELD-UNIT-01")
 
         # Compact ESP32 transport: signed 16-bit little-endian PCM samples.
 
@@ -2037,6 +2147,29 @@ async def ai_predict(
 
                     detail="Invalid PCM audio length",
 
+                )
+
+            if len(raw_audio) != ESP32_PCM_PAYLOAD_BYTES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "ESP32 PCM audio must contain exactly "
+                        f"{ESP32_PCM_SAMPLE_COUNT} signed 16-bit samples."
+                    ),
+                )
+
+            control_command_id = (
+                request.headers.get("x-detection-control-command-id") or ""
+            ).strip()
+            control_command_bound = True
+            if not _detection_command_is_current(
+                db,
+                device_id,
+                control_command_id,
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="AI request has no active detection command.",
                 )
 
             audio = np.frombuffer(raw_audio, dtype="<i2")
@@ -2074,6 +2207,26 @@ async def ai_predict(
                 )
 
             audio = payload["audio"]
+            supplied_command_id = (
+                request.headers.get("x-detection-control-command-id") or ""
+            ).strip()
+            control_command_bound = True
+            if supplied_command_id:
+                control_command_id = supplied_command_id
+            else:
+                command = _get_detection_control_command(db, device_id)
+                if isinstance(command, DetectionControlCommand):
+                    control_command_id = command.command_id
+
+            if control_command_id is not None and not _detection_command_is_current(
+                db,
+                device_id,
+                control_command_id,
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="AI request has no active detection command.",
+                )
 
         try:
             result = await asyncio.to_thread(predict_pest, audio)
@@ -2088,11 +2241,32 @@ async def ai_predict(
                 )
             raise
 
+        if control_command_bound and not _detection_command_state_is_current(
+            db,
+            device_id,
+            control_command_id,
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="AI result belongs to a stopped or superseded detection command.",
+            )
+
         if raw_audio is not None:
             await asyncio.to_thread(
                 _save_diagnostic_capture,
                 raw_audio,
                 result,
+            )
+
+        if control_command_bound and not _detection_command_state_is_current(
+            db,
+            device_id,
+            control_command_id,
+            lock=True,
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="AI result belongs to a stopped or superseded detection command.",
             )
 
         # Keep the species candidate for diagnostics.
@@ -2118,6 +2292,16 @@ async def ai_predict(
             result.get("group_score")
             if insect_group != UNKNOWN_INSECT_GROUP
             else None
+        )
+        hierarchy_confidence_valid = bool(
+            predicted_pest
+            and expected_group in _ACTIVE_HIERARCHICAL_GROUP_NAMES
+            and insect_group == expected_group
+            and _hierarchy_confidence_evidence_valid(
+                result,
+                predicted_pest,
+                expected_group,
+            )
         )
 
         rejection_reason = result.get("rejection_reason")
@@ -2152,6 +2336,7 @@ async def ai_predict(
             and insect_group == expected_group
             and not rejection_reason
             and species_metadata["catalog_record_found"]
+            and hierarchy_confidence_valid
         )
 
         prediction_status = (
@@ -2177,6 +2362,11 @@ async def ai_predict(
                 "Low-confidence model prediction rejected: "
                 f"{rejection_reason}"
             )
+        elif predicted_pest and not hierarchy_confidence_valid:
+            prediction_message = (
+                "Unverified model prediction: hierarchy confidence "
+                "evidence is missing or inconsistent"
+            )
         elif gate_decision is None:
             prediction_message = (
                 "Unverified model prediction: "
@@ -2190,7 +2380,7 @@ async def ai_predict(
         detected_time = datetime.now(timezone.utc).replace(tzinfo=None)
 
         detection = Detection(
-            device_id=os.getenv("PEST_DEVICE_ID", "FIELD-UNIT-01"),
+            device_id=device_id,
             status=prediction_status,
             pest=predicted_pest,
             scientific_name=(

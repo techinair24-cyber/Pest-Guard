@@ -31,8 +31,9 @@ def load_capture_helper():
         "uuid": uuid,
         "wave": wave,
         "SAMPLE_RATE": 16000,
+        "ESP32_PCM_PAYLOAD_BYTES": 160_000,
+        "ESP32_PCM_SAMPLE_COUNT": 80_000,
         "_PEST_LIGHT_GATE_THRESHOLD": 0.10,
-        "_DIAGNOSTIC_CAPTURE_SAMPLE_COUNT": 80_000,
         "_DIAGNOSTIC_CAPTURE_MAX_FILES": 100,
     }
     isolated_module = ast.Module(body=[function], type_ignores=[])

@@ -132,6 +132,15 @@ export function parseServerTimestamp(value) {
   return Number.isFinite(timestamp) ? timestamp : NaN
 }
 
+export function isRecentDetection(item, now = Date.now()) {
+  const timestamp = parseServerTimestamp(getDetectionTime(item))
+  return (
+    Number.isFinite(timestamp) &&
+    timestamp >= now - 60 * 1000 &&
+    timestamp <= now + 5000
+  )
+}
+
 export function isAfterHistoryClear(item, clearedAt) {
   if (!clearedAt) {
     return true

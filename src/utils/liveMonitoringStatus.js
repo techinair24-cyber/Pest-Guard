@@ -178,14 +178,33 @@ export function getRequestedDetectionControlPresentation(
 ) {
   const confirmed = response?.device_enabled === enabled &&
     response?.status === (enabled ? 'RUNNING' : 'STOPPED')
-  const label = enabled ? 'DETECTING' : 'DETECTION STOPPED'
+  const status = confirmed
+    ? enabled ? 'RUNNING' : 'STOPPED'
+    : response?.status === 'DEVICE_OFFLINE'
+      ? 'DEVICE_OFFLINE'
+      : response?.status === 'TIMEOUT'
+        ? 'TIMEOUT'
+        : requestError
+          ? 'UNKNOWN'
+          : 'REQUESTED'
+  const label = status === 'RUNNING'
+    ? 'DETECTING'
+    : status === 'STOPPED'
+      ? 'DETECTION STOPPED'
+      : status === 'DEVICE_OFFLINE'
+        ? 'DEVICE OFFLINE'
+        : status === 'TIMEOUT'
+          ? 'COMMAND TIMED OUT'
+          : status === 'UNKNOWN'
+            ? 'CONTROL UNCONFIRMED'
+            : 'WAITING FOR DEVICE'
   const message = confirmed
     ? `The field unit confirmed ${enabled ? 'Detect' : 'Stop'}.`
     : requestError
       ? `${enabled ? 'Detect' : 'Stop'} was not accepted; the field-unit state is unconfirmed.`
-      : response?.status === 'DEVICE_OFFLINE' || response?.device_online === false
+      : status === 'DEVICE_OFFLINE' || response?.device_online === false
         ? 'The requested state is shown; the field unit is offline and has not confirmed it.'
-        : response?.status === 'TIMEOUT'
+        : status === 'TIMEOUT'
           ? 'The requested state is shown; no matching field-unit confirmation arrived before timeout.'
           : requestPending
             ? `Sending ${enabled ? 'Detect' : 'Stop'}; field-unit confirmation is pending.`
@@ -193,10 +212,16 @@ export function getRequestedDetectionControlPresentation(
 
   return {
     enabled,
-    status: confirmed ? (enabled ? 'RUNNING' : 'STOPPED') : 'REQUESTED',
+    status,
     label,
     message,
-    className: enabled ? 'is-running' : 'is-stopped',
+    className: status === 'RUNNING'
+      ? 'is-running'
+      : status === 'STOPPED'
+        ? 'is-stopped'
+        : status === 'REQUESTED'
+          ? 'is-requested'
+          : 'is-unknown',
     confirmed,
   }
 }
