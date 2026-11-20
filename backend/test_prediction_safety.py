@@ -708,6 +708,32 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         self.assertTrue(result["background_gate_passed"])
         self.assertEqual(result["pest"], expected["pest"])
 
+    def test_background_gate_rejection_skips_hierarchy_inference(self):
+        audio = np.tile(
+            np.array([-800, 800], dtype=np.int16),
+            40000,
+        )
+
+        with (
+            background_gate_enabled(score=0.1, threshold=0.25),
+            patch.object(
+                main._PEST_GUARD_HIERARCHY,
+                "predict",
+            ) as hierarchy_predict,
+        ):
+            result = main.predict_pest(audio)
+
+        hierarchy_predict.assert_not_called()
+        self.assertIsNone(result["pest"])
+        self.assertEqual(result["confidence"], 0.0)
+        self.assertEqual(result["top_predictions"], [])
+        self.assertEqual(result["insect_group"], main.UNKNOWN_INSECT_GROUP)
+        self.assertEqual(result["rejection_reason"], "background_gate_rejected")
+        self.assertEqual(result["background_gate_score"], 0.1)
+        self.assertEqual(result["background_gate_threshold"], 0.25)
+        self.assertIs(result["background_gate_passed"], False)
+        self.assertIs(result["background_gate_bypassed"], False)
+
     def test_low_level_background_noise_is_not_accepted_as_harmful_pest(self):
         audio = np.random.default_rng(1).integers(
             -4, 5, size=80000, dtype=np.int16

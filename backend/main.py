@@ -11,6 +11,7 @@ import uuid
 import difflib
 import csv
 import json
+import wave
 
 import numpy as np
 
@@ -248,8 +249,189 @@ logger.info(
 )
 
 SAMPLE_RATE = 16000
+_DIAGNOSTIC_CAPTURE_SAMPLE_COUNT = 80_000
+_DIAGNOSTIC_CAPTURE_MAX_FILES = 100
 # One signed-int16 LSB at the PCM amplitude scale; less than this is not resolvable.
 PCM16_RMS_FLOOR = 1.0 / 32768.0
+
+
+def _save_diagnostic_capture(
+    raw_audio,
+    result=None,
+    prediction_outcome="completed",
+    rejection_status_code=None,
+):
+    configured_dir = os.getenv("PEST_DIAGNOSTIC_CAPTURE_DIR")
+    if not configured_dir:
+        return False
+
+    expected_bytes = _DIAGNOSTIC_CAPTURE_SAMPLE_COUNT * 2
+    if not isinstance(raw_audio, (bytes, bytearray)) or len(raw_audio) != expected_bytes:
+        logger.warning(
+            "Skipping diagnostic audio capture: expected %d bytes of ESP32 PCM.",
+            expected_bytes,
+        )
+        return False
+
+    configured_path = Path(configured_dir).expanduser()
+    if not configured_path.is_absolute():
+        logger.warning(
+            "Skipping diagnostic audio capture: "
+            "PEST_DIAGNOSTIC_CAPTURE_DIR must be an absolute path.",
+        )
+        return False
+
+    try:
+        capture_dir = configured_path.resolve()
+        repository_root = Path(__file__).resolve().parents[1]
+        home_dir = Path.home().resolve()
+
+        try:
+            capture_dir.relative_to(repository_root)
+        except ValueError:
+            pass
+        else:
+            logger.warning(
+                "Skipping diagnostic audio capture: directory must be outside the repository.",
+            )
+            return False
+
+        try:
+            capture_dir.relative_to(home_dir)
+        except ValueError:
+            logger.warning(
+                "Skipping diagnostic audio capture: directory must be within the current user's home directory.",
+            )
+            return False
+
+        if capture_dir == home_dir or not capture_dir.parent.is_dir():
+            logger.warning(
+                "Skipping diagnostic audio capture: directory must be a child of an existing private parent directory.",
+            )
+            return False
+
+        capture_dir.mkdir(mode=0o700, exist_ok=True)
+        if os.name != "nt":
+            os.chmod(capture_dir, 0o700)
+
+        timestamp = datetime.now(timezone.utc)
+        stem = (
+            f"pest-guard-{timestamp.strftime('%Y%m%dT%H%M%S.%fZ')}-"
+            f"{uuid.uuid4().hex}"
+        )
+        wav_path = capture_dir / f"{stem}.wav"
+        metadata_path = capture_dir / f"{stem}.json"
+        created_paths = []
+
+        gate_score = (
+            result.get("background_gate_score")
+            if isinstance(result, dict)
+            else None
+        )
+        gate_threshold = (
+            result.get("background_gate_threshold")
+            if isinstance(result, dict)
+            else None
+        )
+        gate_passed = (
+            result.get("background_gate_passed")
+            if isinstance(result, dict)
+            else None
+        )
+        if gate_score is not None:
+            gate_score = float(gate_score)
+        if (
+            gate_threshold is None
+            and "_PEST_LIGHT_GATE_THRESHOLD" in globals()
+        ):
+            active_threshold = globals()["_PEST_LIGHT_GATE_THRESHOLD"]
+            if active_threshold is not None:
+                gate_threshold = float(active_threshold)
+        if gate_threshold is not None:
+            gate_threshold = float(gate_threshold)
+
+        gate_decision = (
+            "accepted"
+            if gate_passed is True
+            else "rejected"
+            if gate_passed is False
+            else "not_scored"
+        )
+        metadata = {
+            "timestamp_utc": timestamp.isoformat(),
+            "sample_rate_hz": SAMPLE_RATE,
+            "channels": 1,
+            "sample_width_bytes": 2,
+            "sample_count": _DIAGNOSTIC_CAPTURE_SAMPLE_COUNT,
+            "background_gate_score": gate_score,
+            "background_gate_threshold": gate_threshold,
+            "background_gate_passed": gate_passed,
+            "background_gate_decision": gate_decision,
+            "background_gate_bypassed": (
+                result.get("background_gate_bypassed") is True
+                if isinstance(result, dict)
+                else False
+            ),
+            "prediction_outcome": prediction_outcome,
+            "prediction_rejection_status_code": rejection_status_code,
+        }
+
+        try:
+            with wav_path.open("xb") as wav_stream:
+                created_paths.append(wav_path)
+                with wave.open(wav_stream, "wb") as wav_file:
+                    wav_file.setnchannels(1)
+                    wav_file.setsampwidth(2)
+                    wav_file.setframerate(SAMPLE_RATE)
+                    wav_file.writeframes(raw_audio)
+            if os.name != "nt":
+                os.chmod(wav_path, 0o600)
+
+            with metadata_path.open("x", encoding="utf-8") as metadata_stream:
+                created_paths.append(metadata_path)
+                json.dump(metadata, metadata_stream, indent=2, allow_nan=False)
+                metadata_stream.write("\n")
+            if os.name != "nt":
+                os.chmod(metadata_path, 0o600)
+        except (OSError, TypeError, ValueError, wave.Error) as error:
+            for created_path in created_paths:
+                try:
+                    created_path.unlink()
+                except FileNotFoundError:
+                    pass
+            logger.warning(
+                "Could not write diagnostic audio capture; prediction will continue: %s",
+                error,
+            )
+            return False
+
+        try:
+            capture_files = sorted(
+                capture_dir.glob("pest-guard-*.wav"),
+                key=lambda path: path.stat().st_mtime_ns,
+                reverse=True,
+            )
+            for stale_wav in capture_files[_DIAGNOSTIC_CAPTURE_MAX_FILES:]:
+                try:
+                    stale_wav.unlink()
+                except FileNotFoundError:
+                    pass
+                try:
+                    stale_wav.with_suffix(".json").unlink()
+                except FileNotFoundError:
+                    pass
+        except OSError as error:
+            logger.warning("Could not prune old diagnostic captures: %s", error)
+
+        logger.info("Saved private diagnostic audio capture: %s", wav_path.name)
+        return True
+    except (OSError, RuntimeError, ValueError) as error:
+        logger.warning(
+            "Could not save diagnostic audio capture; prediction will continue: %s",
+            error,
+        )
+        return False
+
 
 PEST_IDENTIFICATION_CONFIDENCE = 0.70
 
@@ -334,7 +516,7 @@ def decode_audio_samples(audio):
 # Compact NumPy + scikit-learn feature gate. No YAMNet/TensorFlow Hub is loaded.
 _PEST_LIGHT_GATE = None
 _PEST_LIGHT_GATE_LOCK = __import__("threading").Lock()
-_PEST_LIGHT_GATE_THRESHOLD_OVERRIDE = os.getenv("PEST_BACKGROUND_GATE_THRESHOLD")
+_PEST_LIGHT_GATE_THRESHOLD_OVERRIDE = os.getenv("PEST_BACKGROUND_GATE_THRESHOLD", "0.10")
 try:
     _PEST_LIGHT_GATE_THRESHOLD = (
         float(_PEST_LIGHT_GATE_THRESHOLD_OVERRIDE)
@@ -510,22 +692,28 @@ def predict_pest(audio):
             gate_passed,
         )
 
+    if gate_passed is False:
+        return {
+            "pest": None,
+            "confidence": 0.0,
+            "top_predictions": [],
+            "insect_group": UNKNOWN_INSECT_GROUP,
+            "group_score": None,
+            "broad_group_prediction": None,
+            "broad_group_confidence": None,
+            "broad_group_top_predictions": [],
+            "rejection_reason": "background_gate_rejected",
+            "background_gate_score": gate_score,
+            "background_gate_threshold": gate_threshold,
+            "background_gate_passed": False,
+            "background_gate_bypassed": False,
+        }
+
     result = _PEST_GUARD_HIERARCHY.predict(waveform)
 
     if not isinstance(result, dict):
         raise RuntimeError(
             "Hierarchy must return a prediction dictionary."
-        )
-
-    if gate_passed is False:
-        previous_reason = str(
-            result.get("rejection_reason") or ""
-        ).strip()
-
-        result["rejection_reason"] = (
-            f"{previous_reason}; background_gate_rejected"
-            if previous_reason
-            else "background_gate_rejected"
         )
 
     result["background_gate_score"] = gate_score
@@ -1821,6 +2009,7 @@ async def ai_predict(
     try:
 
         content_type = request.headers.get("content-type", "")
+        raw_audio = None
 
         # Compact ESP32 transport: signed 16-bit little-endian PCM samples.
 
@@ -1886,7 +2075,25 @@ async def ai_predict(
 
             audio = payload["audio"]
 
-        result = await asyncio.to_thread(predict_pest, audio)
+        try:
+            result = await asyncio.to_thread(predict_pest, audio)
+        except HTTPException as error:
+            if raw_audio is not None:
+                await asyncio.to_thread(
+                    _save_diagnostic_capture,
+                    raw_audio,
+                    None,
+                    "rejected",
+                    error.status_code,
+                )
+            raise
+
+        if raw_audio is not None:
+            await asyncio.to_thread(
+                _save_diagnostic_capture,
+                raw_audio,
+                result,
+            )
 
         # Keep the species candidate for diagnostics.
         model_confidence = float(result["confidence"])
