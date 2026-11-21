@@ -35,6 +35,17 @@ class DetectionCreate(BaseModel):
     status: str
     pest: Optional[str] = None
     confidence: Optional[float] = None
+    insect_group: Optional[str] = None
+    group_score: Optional[float] = None
+    top_predictions: list[dict[str, Any]] = Field(default_factory=list)
+    broad_group_prediction: Optional[str] = None
+    broad_group_confidence: Optional[float] = None
+    broad_group_top_predictions: list[dict[str, Any]] = Field(default_factory=list)
+    background_gate_score: Optional[float] = None
+    background_gate_threshold: Optional[float] = None
+    background_gate_passed: Optional[bool] = None
+    background_gate_bypassed: Optional[bool] = None
+    rejection_reason: Optional[str] = None
     risk: Optional[str] = None
     temperature: Optional[float] = None
     humidity: Optional[float] = None
