@@ -16,7 +16,6 @@ import {
   normalizePestName,
 } from '../utils/pestNames'
 import { formatModelScore } from '../utils/insectPredictions'
-import { isVerifiedPestDetection } from '../utils/detectionHistory'
 import { buildPotentialHostDisplay } from '../utils/potentialHostProfile'
 import solutionsField from '../assets/solutions-field.jpg'
 import './Solutions.css'
@@ -731,7 +730,7 @@ function Solutions() {
   const supportedRisk = ['HIGH', 'MEDIUM', 'LOW', 'NO_RISK'].includes(catalogRisk)
 
   const hasVerifiedCatalogMatch =
-    isVerifiedPestDetection(detection) &&
+    detection?.pest_verified === true &&
     Boolean(detection?.pest_id) &&
     detection.pest_id === detectionPest?.pestId &&
     supportedRisk
@@ -760,8 +759,6 @@ function Solutions() {
     ['HIGH', 'MEDIUM'].includes(catalogRisk)
 
   const isNonPest = status === 'NON_PEST'
-  const isInferenceError =
-    String(detection?.identification_status || '').toUpperCase() === 'ERROR'
 
   const hasLiveDetection =
     Boolean(detection) &&
@@ -1018,19 +1015,11 @@ function Solutions() {
             <article className="detection-summary detection-summary-unconfirmed">
               <div>
                 <p className="card-eyebrow">{isNonPest ? 'Non-pest result' : 'Identification unavailable'}</p>
-                <h3>
-                  {isInferenceError
-                    ? 'Inference error'
-                    : hasLiveDetection
-                      ? 'No pest detected'
-                      : 'No live detection available'}
-                </h3>
+                <h3>{isNonPest ? 'No pest-specific guidance' : hasLiveDetection ? 'Pest identity unavailable' : 'No live detection available'}</h3>
                 <p>
-                  {isInferenceError
-                    ? 'The latest audio could not be classified.'
-                    : isNonPest
-                      ? 'The latest result is classified as a non-pest sound.'
-                      : 'Pest-specific risk and guidance are shown when an identification is available.'}
+                  {isNonPest
+                    ? 'The latest result is classified as a non-pest sound.'
+                    : 'Pest-specific risk and guidance are shown when an identification is available.'}
                 </p>
                 {detection?.pest && (
                   <span className="unconfirmed-label">
@@ -1165,11 +1154,9 @@ function Solutions() {
                   Boolean(item.pest_id) &&
                   item.pest_id === historyPestRecord?.pestId
                 const savedRisk = String(item.risk || '').toUpperCase()
-                const historyRisk = verifiedHistoryPest
-                  ? ['HIGH', 'MEDIUM'].includes(savedRisk)
-                    ? savedRisk
-                    : getDetectionRiskEstimate(item, pestDirectory).risk
-                  : 'No pest detected'
+                const historyRisk = ['HIGH', 'MEDIUM'].includes(savedRisk)
+                  ? savedRisk
+                  : getDetectionRiskEstimate(item, pestDirectory).risk
                 const historyConfidence =
                   item.confidence === null || item.confidence === undefined || item.confidence === ''
                     ? Number.NaN

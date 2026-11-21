@@ -8,12 +8,8 @@ import {
   getPredictionUncertainty,
   getTopSpeciesPredictions,
 } from '../utils/insectPredictions'
-import {
-  getDetectionDisplayStatus,
-  isVerifiedPestDetection,
-} from '../utils/detectionHistory'
 import { getLeadingSpeciesPrediction } from '../utils/liveMonitoringStatus'
-import { getDetectionRiskEstimate } from '../utils/pestNames'
+import { getCandidateRiskEstimate } from '../utils/pestNames'
 
 function formatDateTime(timestamp) {
   if (!timestamp) {
@@ -27,6 +23,19 @@ function formatDateTime(timestamp) {
   }
 
   return date.toLocaleString()
+}
+
+function getStatusLabel(status) {
+  switch (status) {
+    case 'HARMFUL_PEST':
+      return 'HARMFUL PEST'
+    case 'NON_PEST':
+      return 'NON-PEST'
+    case 'UNKNOWN':
+      return 'UNKNOWN SOUND'
+    default:
+      return 'NO DETECTION'
+  }
 }
 
 function getStatusClass(status) {
@@ -147,27 +156,20 @@ function LiveStatusCard({
     device?.status ||
     'UNKNOWN'
 
-  const verifiedPest = isVerifiedPestDetection(detection)
-  const presentationStatus = verifiedPest
-    ? 'HARMFUL_PEST'
-    : status === 'NON_PEST'
-      ? 'NON_PEST'
-      : status === 'UNKNOWN' || status === 'HARMFUL_PEST'
-        ? 'UNKNOWN'
-        : 'NO_DETECTION'
-  const pestName = verifiedPest
-    ? detection?.pest || detection?.pest_name || null
-    : null
+  const pestName =
+    detection?.pest ||
+    detection?.pest_name ||
+    null
 
-  const insectGroup = verifiedPest ? getDetectionInsectGroup(detection) : ''
+  const insectGroup = getDetectionInsectGroup(detection)
   const topPredictions = getTopSpeciesPredictions(detection?.top_predictions)
-  const leadingPrediction = verifiedPest
-    ? getLeadingSpeciesPrediction(detection)
-    : null
+  const leadingPrediction = getLeadingSpeciesPrediction(detection)
 
-  const risk = verifiedPest
-    ? getDetectionRiskEstimate(detection, pestDirectory).risk
-    : getDetectionDisplayStatus(detection)
+  const risk = getCandidateRiskEstimate(
+    leadingPrediction,
+    detection,
+    pestDirectory,
+  ).risk
 
   const timestamp =
     detection?.detected_at ||
@@ -187,10 +189,8 @@ function LiveStatusCard({
   const humidity =
     device?.humidity ?? detection?.humidity
 
-  const statusLabel = detection
-    ? getDetectionDisplayStatus(detection)
-    : 'NO DETECTION'
-  const statusClass = getStatusClass(presentationStatus)
+  const statusLabel = getStatusLabel(status)
+  const statusClass = getStatusClass(status)
   const connectionClass = getConnectionClass(connection)
 
   return (
@@ -221,7 +221,7 @@ function LiveStatusCard({
             </div>
 
             <div>
-              <span>{verifiedPest ? 'Identified pest' : 'Detection result'}</span>
+              <span>Primary predicted pest</span>
 
               <strong>
                 {leadingPrediction
@@ -231,7 +231,7 @@ function LiveStatusCard({
               {leadingPrediction && (
                 <small>{formatModelScore(leadingPrediction.score)}</small>
               )}
-              <span>{pestName ? 'Main insect group' : 'Detection result'}</span>
+              <span>Main insect group</span>
               <strong>{pestName ? insectGroup : statusLabel}</strong>
             </div>
           </div>
@@ -248,11 +248,11 @@ function LiveStatusCard({
             </div>
 
             <div>
-              <span>{verifiedPest ? 'Catalogue risk' : 'Detection result'}</span>
+              <span>Candidate risk</span>
 
               <strong
                 className={
-                  verifiedPest
+                  status === 'HARMFUL_PEST'
                     ? 'risk-high'
                     : ''
                 }

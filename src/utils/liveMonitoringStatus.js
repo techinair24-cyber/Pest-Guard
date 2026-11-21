@@ -3,7 +3,6 @@ import {
   isInsectGroupLabel,
   getTopSpeciesPredictions,
 } from './insectPredictions.js'
-import { isVerifiedPestDetection } from './detectionHistory.js'
 import { getVerifiedDetectionDisplayName } from './pestNames.js'
 
 export function getLeadingSpeciesPrediction(detection) {
@@ -26,26 +25,32 @@ export function getLeadingSpeciesLabel(detection) {
 }
 
 export function getLatestDetectionSpeciesName(detection, directory = {}) {
-  if (!isVerifiedPestDetection(detection) || !detection?.pest_id) {
+  const verifiedName = getVerifiedDetectionDisplayName(detection, directory)
+  if (verifiedName !== 'Unknown pest') return verifiedName
+
+  const identificationStatus = String(
+    detection?.identification_status || '',
+  ).trim().toUpperCase()
+  if (
+    identificationStatus === 'UNCONFIRMED' ||
+    identificationStatus === 'NON_PEST' ||
+    identificationStatus === 'ERROR'
+  ) {
     return 'Unknown pest'
   }
 
-  return getVerifiedDetectionDisplayName(detection, directory)
+  const candidate = getLeadingSpeciesPrediction(detection)
+  return candidate ? getCandidateDisplayName(candidate) : 'Unknown pest'
 }
 
 export function getIdentificationLabel(detection) {
   const status = String(detection?.identification_status || '').trim().toUpperCase()
 
-  if (isVerifiedPestDetection(detection)) {
-    if (status === 'CONFIRMED') return 'CONFIRMED IDENTIFICATION'
-    return 'MODEL PREDICTED'
-  }
+  if (status === 'CONFIRMED') return 'CONFIRMED IDENTIFICATION'
+  if (status === 'MODEL_PREDICTED') return 'MODEL PREDICTED'
   if (status === 'UNCONFIRMED') return 'UNCONFIRMED PREDICTION'
   if (status === 'NON_PEST') return 'NO PEST DETECTED'
   if (status === 'ERROR') return 'INFERENCE ERROR'
-  if (status === 'CONFIRMED' || status === 'MODEL_PREDICTED') {
-    return 'UNCONFIRMED PREDICTION'
-  }
   return 'CLASSIFICATION UNAVAILABLE'
 }
 

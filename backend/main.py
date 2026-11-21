@@ -528,32 +528,6 @@ def _hierarchy_confidence_evidence_valid(result, pest, group):
     )
 
 
-def _verified_prediction_evidence_valid(
-    result,
-    pest,
-    insect_group,
-    species_metadata,
-):
-    expected_group = _active_group_for_label(pest)
-    message = str(result.get("message") or "").casefold()
-    return bool(
-        result.get("background_gate_passed") is True
-        and result.get("background_gate_bypassed") is False
-        and not result.get("rejection_reason")
-        and not message.startswith("inference_error:")
-        and _is_active_species_label(pest)
-        and expected_group in _ACTIVE_HIERARCHICAL_GROUP_NAMES
-        and insect_group == expected_group
-        and species_metadata["catalog_record_found"]
-        and species_metadata["catalog_risk_is_valid"]
-        and _hierarchy_confidence_evidence_valid(
-            result,
-            pest,
-            expected_group,
-        )
-    )
-
-
 def decode_audio_samples(audio):
     try:
         samples = np.asarray(audio)
@@ -968,6 +942,7 @@ def _resolve_species_metadata(
 
 def _serialize_detection(detection: Detection, db: Session | None) -> dict:
     resolved = _resolve_species_metadata(detection.pest, db)
+    stored_risk = str(detection.risk or "").strip().upper()
     stored_crops = []
     if detection.affected_crops:
         try:
@@ -975,62 +950,14 @@ def _serialize_detection(detection: Detection, db: Session | None) -> dict:
         except json.JSONDecodeError:
             stored_crops = []
 
-    stored_predictions = []
-    stored_prediction_metadata = {}
-    stored_broad_group = None
-    stored_broad_group_confidence = None
-    stored_broad_group_top_predictions = []
-    stored_background_gate_score = None
-    stored_background_gate_threshold = None
-    stored_background_gate_passed = None
-    stored_background_gate_bypassed = None
-    if detection.top_predictions:
-        try:
-            parsed_predictions = json.loads(detection.top_predictions)
-            if isinstance(parsed_predictions, dict):
-                stored_prediction_metadata = parsed_predictions
-                stored_predictions = parsed_predictions.get("species", [])
-                stored_broad_group = parsed_predictions.get("broad_group_prediction")
-                stored_broad_group_confidence = parsed_predictions.get("broad_group_confidence")
-                stored_broad_group_top_predictions = parsed_predictions.get(
-                    "broad_group_top_predictions", []
-                )
-                stored_background_gate_score = parsed_predictions.get(
-                    "background_gate_score"
-                )
-                stored_background_gate_threshold = parsed_predictions.get(
-                    "background_gate_threshold"
-                )
-                stored_background_gate_passed = parsed_predictions.get(
-                    "background_gate_passed"
-                )
-                stored_background_gate_bypassed = parsed_predictions.get(
-                    "background_gate_bypassed"
-                )
-            elif isinstance(parsed_predictions, list):
-                stored_predictions = parsed_predictions
-        except (json.JSONDecodeError, TypeError):
-            stored_predictions = []
-
     expected_group = _active_group_for_label(detection.pest)
     stored_group = str(getattr(detection, "insect_group", None) or "").strip()
-    verification_evidence = {
-        "confidence": detection.confidence,
-        "group_score": getattr(detection, "group_score", None),
-        "top_predictions": stored_predictions,
-        "background_gate_passed": stored_background_gate_passed,
-        "background_gate_bypassed": stored_background_gate_bypassed,
-        "rejection_reason": stored_prediction_metadata.get("rejection_reason"),
-        "message": detection.message,
-    }
     accepted_prediction = bool(
         detection.status == "HARMFUL_PEST"
-        and _verified_prediction_evidence_valid(
-            verification_evidence,
-            detection.pest,
-            stored_group,
-            resolved,
-        )
+        and _is_active_species_label(detection.pest)
+        and expected_group in _ACTIVE_HIERARCHICAL_GROUP_NAMES
+        and (not stored_group or stored_group == expected_group)
+        and resolved["catalog_record_found"]
     )
     status = (
         "HARMFUL_PEST"
@@ -1059,7 +986,11 @@ def _serialize_detection(detection: Detection, db: Session | None) -> dict:
         metadata_source_name = resolved["metadata_source_name"]
         metadata_source_url = resolved["metadata_source_url"]
     else:
-        risk = "UNCONFIRMED"
+        risk = (
+            stored_risk
+            if stored_risk in {"HIGH", "MEDIUM", "LOW", "NO_RISK"}
+            else resolved["risk"]
+        )
         serialized_pest = detection.pest
         scientific_name = (
             detection.scientific_name or resolved["scientific_name"]
@@ -1069,9 +1000,50 @@ def _serialize_detection(detection: Detection, db: Session | None) -> dict:
             if resolved["catalog_record_found"]
             else detection.common_name or resolved["common_name"]
         )
-        risk_rationale = "Risk is unavailable until pest identification is verified."
-        metadata_source_name = None
-        metadata_source_url = None
+        risk_rationale = (
+            detection.risk_rationale or resolved["risk_rationale"]
+        )
+        metadata_source_name = (
+            detection.metadata_source_name or resolved["metadata_source_name"]
+        )
+        metadata_source_url = (
+            detection.metadata_source_url or resolved["metadata_source_url"]
+        )
+    stored_predictions = []
+    stored_broad_group = None
+    stored_broad_group_confidence = None
+    stored_broad_group_top_predictions = []
+    stored_background_gate_score = None
+    stored_background_gate_threshold = None
+    stored_background_gate_passed = None
+    stored_background_gate_bypassed = None
+    if detection.top_predictions:
+        try:
+            parsed_predictions = json.loads(detection.top_predictions)
+            if isinstance(parsed_predictions, dict):
+                stored_predictions = parsed_predictions.get("species", [])
+                stored_broad_group = parsed_predictions.get("broad_group_prediction")
+                stored_broad_group_confidence = parsed_predictions.get("broad_group_confidence")
+                stored_broad_group_top_predictions = parsed_predictions.get(
+                    "broad_group_top_predictions", []
+                )
+                stored_background_gate_score = parsed_predictions.get(
+                    "background_gate_score"
+                )
+                stored_background_gate_threshold = parsed_predictions.get(
+                    "background_gate_threshold"
+                )
+                stored_background_gate_passed = parsed_predictions.get(
+                    "background_gate_passed"
+                )
+                stored_background_gate_bypassed = parsed_predictions.get(
+                    "background_gate_bypassed"
+                )
+            elif isinstance(parsed_predictions, list):
+                stored_predictions = parsed_predictions
+        except (json.JSONDecodeError, TypeError):
+            stored_predictions = []
+
     response = {
         "id": detection.id,
         "device_id": detection.device_id,
@@ -2342,6 +2314,12 @@ async def ai_predict(
             if predicted_pest
             else None
         )
+        resolved_risk = (
+            species_metadata["risk"]
+            if predicted_pest
+            else "LOW"
+        )
+
         diagnostic_mode = (
             result.get("background_gate_bypassed") is True
         )
@@ -2350,22 +2328,21 @@ async def ai_predict(
 
         # Accept only a species that passed the gate,
         # hierarchy checks, and catalogue verification.
-        prediction_is_accepted = _verified_prediction_evidence_valid(
-            result,
-            predicted_pest,
-            insect_group,
-            species_metadata,
+        prediction_is_accepted = bool(
+            gate_accepted
+            and not diagnostic_mode
+            and predicted_pest
+            and expected_group in _ACTIVE_HIERARCHICAL_GROUP_NAMES
+            and insect_group == expected_group
+            and not rejection_reason
+            and species_metadata["catalog_record_found"]
+            and hierarchy_confidence_valid
         )
 
         prediction_status = (
             "HARMFUL_PEST"
             if prediction_is_accepted
             else "UNKNOWN"
-        )
-        resolved_risk = (
-            species_metadata["risk"]
-            if prediction_is_accepted
-            else "UNCONFIRMED"
         )
 
         if diagnostic_mode:
@@ -2435,9 +2412,7 @@ async def ai_predict(
             group_score=group_score,
             risk=resolved_risk,
             risk_rationale=(
-                species_metadata["risk_rationale"]
-                if prediction_is_accepted
-                else "Risk is unavailable until pest identification is verified."
+                species_metadata["risk_rationale"] if predicted_pest else None
             ),
             affected_crops=json.dumps(
                 species_metadata["affected_crops"] if predicted_pest else []
@@ -2698,12 +2673,11 @@ async def create_detection(
     expected_group = _active_group_for_label(candidate_pest)
     accepted_prediction = bool(
         payload.status == "HARMFUL_PEST"
-        and _verified_prediction_evidence_valid(
-            payload.model_dump(),
-            candidate_pest,
-            payload.insect_group,
-            species_metadata,
-        )
+        and candidate_pest
+        and pest_record
+        and expected_group in _ACTIVE_HIERARCHICAL_GROUP_NAMES
+        and payload.confidence is not None
+        and payload.confidence >= PEST_IDENTIFICATION_CONFIDENCE
     )
     detection_status = (
         "HARMFUL_PEST"
@@ -2717,67 +2691,8 @@ async def create_detection(
         if detection_status in {"HARMFUL_PEST", "UNKNOWN"}
         else None
     )
-    prediction_metadata_values = {
-        "species": payload.top_predictions,
-        "broad_group_prediction": payload.broad_group_prediction,
-        "broad_group_confidence": payload.broad_group_confidence,
-        "broad_group_top_predictions": payload.broad_group_top_predictions,
-        "background_gate_score": payload.background_gate_score,
-        "background_gate_threshold": payload.background_gate_threshold,
-        "background_gate_passed": payload.background_gate_passed,
-        "background_gate_bypassed": payload.background_gate_bypassed,
-        "rejection_reason": payload.rejection_reason,
-    }
-    has_prediction_metadata = bool(
-        payload.top_predictions
-        or payload.broad_group_top_predictions
-        or any(
-            value is not None
-            for key, value in prediction_metadata_values.items()
-            if key not in {"species", "broad_group_top_predictions"}
-        )
-    )
-    stored_prediction_metadata = (
-        json.dumps(prediction_metadata_values)
-        if has_prediction_metadata
-        else None
-    )
-    detection_message = payload.message
-    if payload.status == "HARMFUL_PEST" and not accepted_prediction:
-        if str(payload.message or "").casefold().startswith("inference_error:"):
-            detection_message = payload.message
-        elif payload.background_gate_bypassed is True:
-            detection_message = (
-                "Unverified model prediction: diagnostic background-gate bypass"
-            )
-        elif payload.background_gate_passed is not True:
-            detection_message = (
-                "Unverified model prediction: no background-gate approval"
-            )
-        elif payload.rejection_reason:
-            detection_message = (
-                "Low-confidence model prediction rejected: "
-                f"{payload.rejection_reason}"
-            )
-        elif not species_metadata["catalog_record_found"]:
-            detection_message = (
-                "Unverified model prediction: no matching catalogue species"
-            )
-        elif not species_metadata["catalog_risk_is_valid"]:
-            detection_message = (
-                "Unverified model prediction: catalogue risk is missing or invalid"
-            )
-        else:
-            detection_message = (
-                "Unverified model prediction: hierarchy confidence evidence "
-                "is missing or inconsistent"
-            )
     detection_risk = (
-        species_metadata["risk"]
-        if accepted_prediction
-        else "LOW"
-        if detection_status == "NON_PEST"
-        else "UNCONFIRMED"
+        species_metadata["risk"] if detection_pest else "LOW"
     )
 
     detected_time = payload.detected_at or datetime.now(timezone.utc).replace(
@@ -2797,20 +2712,12 @@ async def create_detection(
         common_name=species_metadata["common_name"] if detection_pest else None,
 
         confidence=payload.confidence,
-        insect_group=(
-            payload.insect_group
-            or _active_group_for_label(detection_pest)
-        ),
-        group_score=payload.group_score,
-        top_predictions=stored_prediction_metadata,
+        insect_group=_active_group_for_label(detection_pest),
+        group_score=None,
 
         risk=detection_risk,
         risk_rationale=(
-            species_metadata["risk_rationale"]
-            if accepted_prediction
-            else "No pest was identified."
-            if detection_status == "NON_PEST"
-            else "Risk is unavailable until pest identification is verified."
+            species_metadata["risk_rationale"] if detection_pest else None
         ),
         affected_crops=json.dumps(
             species_metadata["affected_crops"] if detection_pest else []
@@ -2828,7 +2735,7 @@ async def create_detection(
 
         audio_file=payload.audio_file,
 
-        message=detection_message,
+        message=payload.message,
 
         detected_at=detected_time,
 

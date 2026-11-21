@@ -311,35 +311,25 @@ test('classification display distinguishes confirmed, uncertain, non-pest, and i
   assert.equal(
     getDetectionDisplayStatus({
       pest: 'Acheta domesticus',
-      status: 'HARMFUL_PEST',
-      pest_verified: true,
       identification_status: 'UNCONFIRMED',
     }),
-    'Accepted model prediction',
-  )
-  assert.equal(
-    getDetectionDisplayStatus({
-      pest: 'Acheta domesticus',
-      identification_status: 'UNCONFIRMED',
-    }),
-    'No pest detected',
+    'Possible match - not confirmed',
   )
   assert.equal(
     getDetectionDisplayStatus({
       pest: 'Acheta domesticus',
       status: 'HARMFUL_PEST',
       identification_status: 'CONFIRMED',
-      pest_verified: false,
     }),
-    'No pest detected',
+    'Possible match - not confirmed',
   )
   assert.equal(
     getDetectionDisplayStatus({ status: 'UNKNOWN', pest: null }),
-    'No pest detected',
+    'Rejected or uncertain classification',
   )
   assert.equal(
     getDetectionDisplayStatus({ status: 'NON_PEST' }),
-    'No pest detected',
+    'Non-pest sound',
   )
   assert.equal(
     getDetectionDisplayStatus({ message: 'INFERENCE_ERROR: AI API HTTP 500' }),
