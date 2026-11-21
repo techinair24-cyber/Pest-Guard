@@ -2326,18 +2326,36 @@ async def ai_predict(
         gate_decision = result.get("background_gate_passed")
         gate_accepted = gate_decision is True
 
-        # Accept only a species that passed the gate,
-        # hierarchy checks, and catalogue verification.
-        prediction_is_accepted = bool(
-            gate_accepted
-            and not diagnostic_mode
-            and predicted_pest
-            and expected_group in _ACTIVE_HIERARCHICAL_GROUP_NAMES
-            and insect_group == expected_group
-            and not rejection_reason
-            and species_metadata["catalog_record_found"]
-            and hierarchy_confidence_valid
-        )
+        # Check each requirement independently.
+        acceptance_checks = {
+            "background_gate": gate_accepted,
+            "not_diagnostic_mode": not diagnostic_mode,
+            "valid_species": bool(predicted_pest),
+            "valid_group": expected_group in _ACTIVE_HIERARCHICAL_GROUP_NAMES,
+            "group_matches_species": insect_group == expected_group,
+            "no_rejection_reason": not bool(rejection_reason),
+            "species_in_catalogue": bool(
+                species_metadata["catalog_record_found"]
+            ),
+            "hierarchy_confidence": hierarchy_confidence_valid,
+        }
+
+        failed_checks = [
+            name
+            for name, passed in acceptance_checks.items()
+            if not passed
+        ]
+
+        prediction_is_accepted = not failed_checks
+
+        if failed_checks:
+            logger.warning(
+                "Pest prediction not accepted: "
+                "device=%s, pest=%s, failed_checks=%s",
+                device_id,
+                predicted_pest,
+                ", ".join(failed_checks),
+            )
 
         prediction_status = (
             "HARMFUL_PEST"
