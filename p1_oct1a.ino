@@ -16,6 +16,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/semphr.h>
+#include <esp_task_wdt.h>
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
@@ -147,8 +148,9 @@ static_assert(
 
 constexpr uint32_t CONTROL_POLL_INTERVAL_MS  = 2500;
 constexpr uint32_t HEARTBEAT_INTERVAL_MS     = 20000;
-constexpr uint32_t CONTROL_HTTP_TIMEOUT_MS   = 8000;
-constexpr uint32_t AI_CONNECT_TIMEOUT_SEC    = 12;
+constexpr uint32_t CONTROL_HTTP_TIMEOUT_MS   = 3000;
+constexpr uint32_t CONTROL_TASK_MUTEX_WAIT_MS = 500;
+constexpr uint32_t AI_CONNECT_TIMEOUT_SEC    = 3;
 constexpr uint32_t AI_WRITE_STALL_TIMEOUT_MS = 15000;
 constexpr uint32_t AI_RESPONSE_TIMEOUT_MS    = 90000;
 constexpr uint32_t AI_MUTEX_WAIT_MS          = 12000;
@@ -322,6 +324,7 @@ static bool hasEnoughHeapForTls(bool concurrentWithAi) {
 static void stopAwareDelayMs(uint32_t totalMs) {
   const uint32_t startMs = millis();
   while ((uint32_t)(millis() - startMs) < totalMs) {
+    esp_task_wdt_reset();
     if (!getDetectionState()) {
       alertsOff();
       return;
@@ -442,6 +445,7 @@ static bool delayCheckingAlertAllowed(
 ) {
   const uint32_t startMs = millis();
   while ((uint32_t)(millis() - startMs) < durationMs) {
+    esp_task_wdt_reset();
     if (!isAlertAllowed(expectedCommandId)) {
       alertsOff();
       return false;
@@ -626,6 +630,7 @@ bool connectWiFi() {
 
   while (WiFi.status() != WL_CONNECTED &&
          (uint32_t)(millis() - startMs) < timeoutMs) {
+    esp_task_wdt_reset();
     delay(250);
   }
 
@@ -699,6 +704,8 @@ static bool sendDeviceHeartbeatInternal(
   {
     WiFiClientSecure client;
     client.setInsecure();
+    client.setHandshakeTimeout((int32_t)CONTROL_HTTP_TIMEOUT_MS);
+    client.setTimeout((int32_t)CONTROL_HTTP_TIMEOUT_MS);
 
     HTTPClient http;
     http.setTimeout((uint16_t)CONTROL_HTTP_TIMEOUT_MS);
@@ -781,6 +788,8 @@ bool pollDetectionControl(
   {
     WiFiClientSecure client;
     client.setInsecure();
+    client.setHandshakeTimeout((int32_t)CONTROL_HTTP_TIMEOUT_MS);
+    client.setTimeout((int32_t)CONTROL_HTTP_TIMEOUT_MS);
 
     HTTPClient http;
     http.setTimeout((uint16_t)CONTROL_HTTP_TIMEOUT_MS);
@@ -903,10 +912,16 @@ bool pollDetectionControl(
 void deviceControlTask(void* parameter) {
   (void)parameter;
 
+  // Register this network task with the existing ESP32 task watchdog.
+  // The watchdog remains enabled; only the task is explicitly scheduled and fed.
+  esp_task_wdt_add(nullptr);
+
   uint32_t lastControlPoll = 0;
   uint32_t lastHeartbeat = 0;
 
   for (;;) {
+    esp_task_wdt_reset();
+
     if (WiFi.status() == WL_CONNECTED) {
       uint32_t now = millis();
 
@@ -914,7 +929,8 @@ void deviceControlTask(void* parameter) {
       if (lastControlPoll == 0 ||
           (uint32_t)(now - lastControlPoll) >= CONTROL_POLL_INTERVAL_MS) {
         lastControlPoll = now;
-        pollDetectionControl(0, nullptr);
+        pollDetectionControl(CONTROL_TASK_MUTEX_WAIT_MS, nullptr);
+        esp_task_wdt_reset();
       }
 
       // 2. Retry any pending command-ID ack, or send periodic heartbeat.
@@ -935,7 +951,7 @@ void deviceControlTask(void* parameter) {
       // Pause non-urgent periodic heartbeats during internal-SRAM capture
       // to keep DMA timing jitter low; always send urgent command acks.
       if (needAck || (periodicDue && !(capturing && usingInternal))) {
-        if (sendDeviceHeartbeat(0)) {
+        if (sendDeviceHeartbeat(CONTROL_TASK_MUTEX_WAIT_MS)) {
           lastHeartbeat = millis();
           if (needAck) {
             portENTER_CRITICAL(&detectionControlMux);
@@ -943,10 +959,11 @@ void deviceControlTask(void* parameter) {
             portEXIT_CRITICAL(&detectionControlMux);
           }
         }
+        esp_task_wdt_reset();
       }
     }
 
-    vTaskDelay(pdMS_TO_TICKS(100));
+    vTaskDelay(pdMS_TO_TICKS(50));
   }
 }
 
@@ -1267,6 +1284,7 @@ private:
     const uint32_t warmupStartMs = millis();
 
     while (discarded < MIC_WARMUP_SAMPLES) {
+      esp_task_wdt_reset();
       if (activeCommandId != nullptr) {
         if (!controlCommandStillActive(activeCommandId)) {
           abortedByStop = true;
@@ -1455,6 +1473,7 @@ public:
     lastChunkEndMs = captureStartMs;
 
     while (capturedSamples < TOTAL_SAMPLES) {
+      esp_task_wdt_reset();
       if (activeCommandId != nullptr) {
         if (!controlCommandStillActive(activeCommandId)) {
           Serial.println("Audio capture stopped by website command.");
@@ -1831,6 +1850,7 @@ static bool acquireControlMutexStopAware(
   const uint32_t startMs = millis();
 
   while ((uint32_t)(millis() - startMs) < maxWaitMs) {
+    esp_task_wdt_reset();
     if (!controlCommandStillActive(activeCommandId)) {
       return false;
     }
@@ -1853,6 +1873,7 @@ static bool writeAllStopAware(
   uint32_t lastProgressMs = millis();
 
   while (totalWritten < len) {
+    esp_task_wdt_reset();
     if (!controlCommandStillActive(activeCommandId)) {
       outStopped = true;
       return false;
@@ -1890,6 +1911,7 @@ static bool readHttpLineNonBlocking(
   outLine.reserve(128);
 
   while (true) {
+    esp_task_wdt_reset();
     if (!controlCommandStillActive(activeCommandId)) {
       outStopped = true;
       return false;
@@ -1945,6 +1967,7 @@ static bool readHttpExactBytesNonBlocking(
   size_t remaining = bytesToRead;
 
   while (remaining > 0) {
+    esp_task_wdt_reset();
     if (!controlCommandStillActive(activeCommandId)) {
       outStopped = true;
       return false;
@@ -2029,8 +2052,8 @@ static bool uploadAudioToAI(
   {
     WiFiClientSecure client;
     client.setInsecure();
-    client.setHandshakeTimeout(AI_CONNECT_TIMEOUT_SEC);
-    client.setTimeout(AI_CONNECT_TIMEOUT_SEC);
+    client.setHandshakeTimeout(AI_CONNECT_TIMEOUT_SEC * 1000UL);
+    client.setTimeout(AI_CONNECT_TIMEOUT_SEC * 1000UL);
 
     setAiSocketActive(true);
 
@@ -2082,6 +2105,7 @@ static bool uploadAudioToAI(
     // Stream 160,000 bytes in 4,000-byte chunks (freeing each internal SRAM chunk).
     static uint8_t txBuf[INTERNAL_CHUNK_BYTES];
     while (audioStream.available() > 0) {
+      esp_task_wdt_reset();
       if (!controlCommandStillActive(detectionCommandId)) {
         outStopped = true;
         break;
@@ -2280,6 +2304,7 @@ static bool uploadAudioToAI(
       // Connection: close EOF-delimited body.
       uint8_t buf[256];
       while (true) {
+        esp_task_wdt_reset();
         if (!controlCommandStillActive(detectionCommandId)) {
           outStopped = true;
           break;
@@ -2738,6 +2763,7 @@ void loop() {
   static uint32_t lastMemoryPrintMs = 0;
   static uint32_t lastIdlePrintMs   = 0;
 
+  esp_task_wdt_reset();
   const uint32_t now = millis();
 
   if (!microphoneReady || !controlTaskRunning) {

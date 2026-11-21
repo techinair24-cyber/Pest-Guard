@@ -28,14 +28,30 @@ export function getLatestDetectionSpeciesName(detection, directory = {}) {
   const verifiedName = getVerifiedDetectionDisplayName(detection, directory)
   if (verifiedName !== 'Unknown pest') return verifiedName
 
+  const identificationStatus = String(
+    detection?.identification_status || '',
+  ).trim().toUpperCase()
+  if (
+    identificationStatus === 'UNCONFIRMED' ||
+    identificationStatus === 'NON_PEST' ||
+    identificationStatus === 'ERROR'
+  ) {
+    return 'Unknown pest'
+  }
+
   const candidate = getLeadingSpeciesPrediction(detection)
   return candidate ? getCandidateDisplayName(candidate) : 'Unknown pest'
 }
 
 export function getIdentificationLabel(detection) {
-  return detection?.identification_status === 'CONFIRMED'
-    ? 'CONFIRMED IDENTIFICATION'
-    : 'SPECIES PREDICTION'
+  const status = String(detection?.identification_status || '').trim().toUpperCase()
+
+  if (status === 'CONFIRMED') return 'CONFIRMED IDENTIFICATION'
+  if (status === 'MODEL_PREDICTED') return 'MODEL PREDICTED'
+  if (status === 'UNCONFIRMED') return 'UNCONFIRMED PREDICTION'
+  if (status === 'NON_PEST') return 'NO PEST DETECTED'
+  if (status === 'ERROR') return 'INFERENCE ERROR'
+  return 'CLASSIFICATION UNAVAILABLE'
 }
 
 export function formatDeviceTemperature(value, isOnline) {

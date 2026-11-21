@@ -282,7 +282,15 @@ function LiveMonitoring() {
   const deviceTimestamp = liveDevice?.last_seen || liveDevice?.lastSeen
   const healthTone = connectionState === 'Online' ? 'online' : 'offline'
   const leadingSpeciesPrediction = getLeadingSpeciesPrediction(displayDetection)
-  const predictedPestName = leadingSpeciesPrediction?.pest || ''
+  const identificationStatus = String(
+    displayDetection?.identification_status || '',
+  ).trim().toUpperCase()
+  const predictedPestName =
+    (identificationStatus === 'MODEL_PREDICTED' ||
+      identificationStatus === 'CONFIRMED') &&
+    displayDetection?.pest_verified === true
+      ? leadingSpeciesPrediction?.pest || ''
+      : ''
   const latestDetectionSpeciesName = getLatestDetectionSpeciesName(
     displayDetection,
     pestDirectory,
@@ -917,6 +925,15 @@ function LiveMonitoring() {
               {filteredHistory.map((item) => {
                 const scientificName = String(item.pest || '').trim()
                 const leadingHistoryPrediction = getLeadingSpeciesPrediction(item)
+                const historyIdentificationStatus = String(
+                  item.identification_status || '',
+                ).trim().toUpperCase()
+                const verifiedHistoryPrediction =
+                  item.pest_verified === true &&
+                  (historyIdentificationStatus === 'MODEL_PREDICTED' ||
+                    historyIdentificationStatus === 'CONFIRMED')
+                    ? leadingHistoryPrediction
+                    : null
                 const topCandidates = getTopSpeciesPredictions(item.top_predictions)
 
                 return (
@@ -924,10 +941,12 @@ function LiveMonitoring() {
                     <div className="history-main">
                       <span className="history-time">{formatDate(getDetectionTime(item))}</span>
                       <strong>
-                        {leadingHistoryPrediction
-                          ? getCandidateDisplayName(leadingHistoryPrediction)
+                        {verifiedHistoryPrediction
+                          ? getCandidateDisplayName(verifiedHistoryPrediction)
                           : scientificName
-                            ? getDetectionInsectGroup(item)
+                            ? historyIdentificationStatus === 'UNCONFIRMED'
+                              ? 'Unidentified sound'
+                              : getDetectionInsectGroup(item)
                             : getDetectionDisplayStatus(item) === 'Inference error'
                               ? 'Inference error'
                               : getDetectionDisplayStatus(item) === 'Non-pest sound'
