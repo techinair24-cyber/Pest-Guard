@@ -874,6 +874,10 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         self.assertEqual(detection.status, "HARMFUL_PEST")
         self.assertEqual(detection.pest, ACTIVE_LABELS[0])
         self.assertEqual(detection.risk, main._resolve_species_metadata(ACTIVE_LABELS[0])["risk"])
+        self.assertIs(
+            json.loads(detection.top_predictions)["server_verified"],
+            True,
+        )
         self.assertEqual(response["common_name"], detection.common_name)
         self.assertEqual(response["risk"], detection.risk)
         self.assertEqual(detection.message, "Model-predicted harmful pest")
@@ -1108,7 +1112,63 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         self.assertEqual(response["status"], "UNKNOWN")
         self.assertEqual(response["pest"], ACTIVE_LABELS[0])
         self.assertEqual(response["confidence"], 0.99)
-        self.assertEqual(response["risk"], main._resolve_species_metadata(ACTIVE_LABELS[0])["risk"])
+        self.assertIs(
+            json.loads(
+                self.database.add.call_args.args[0].top_predictions
+            )["server_verified"],
+            False,
+        )
+        self.assertIsNone(response["risk"])
+        self.assertEqual(
+            response["risk_rationale"],
+            "Risk is not assigned to an unconfirmed pest.",
+        )
+        self.assertEqual(response["affected_crops"], [])
+        self.assertIsNone(response["metadata_source_name"])
+        self.assertIsNone(response["metadata_source_url"])
+        detection = self.database.add.call_args.args[0]
+        self.assertIsNone(detection.risk)
+        self.assertEqual(
+            json.loads(detection.affected_crops),
+            [],
+        )
+
+    def test_unverified_saved_detection_does_not_expose_catalog_risk(self):
+        pest = ACTIVE_LABELS[0]
+        detection = main.Detection(
+            device_id="FIELD-UNIT-01",
+            status="HARMFUL_PEST",
+            pest=pest,
+            scientific_name=None,
+            common_name=None,
+            confidence=0.99,
+            top_predictions=None,
+            insect_group=main._active_group_for_label(pest),
+            group_score=0.99,
+            risk="HIGH",
+            risk_rationale="Catalogue risk rationale.",
+            affected_crops=json.dumps(["Test crop"]),
+            metadata_source_name="Catalogue",
+            metadata_source_url="https://example.test/catalogue",
+            message="Unverified model prediction",
+            detected_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        )
+
+        response = main._serialize_detection(detection, self.database)
+
+        self.assertEqual(response["status"], "UNKNOWN")
+        self.assertFalse(response["pest_verified"])
+        self.assertEqual(response["pest"], pest)
+        self.assertIsNone(response["scientific_name"])
+        self.assertEqual(response["common_name"], "Unidentified sound")
+        self.assertIsNone(response["risk"])
+        self.assertEqual(
+            response["risk_rationale"],
+            "Risk is not assigned to an unconfirmed pest.",
+        )
+        self.assertEqual(response["affected_crops"], [])
+        self.assertIsNone(response["metadata_source_name"])
+        self.assertIsNone(response["metadata_source_url"])
 
     def test_accepted_hierarchy_prediction_status_is_persisted_and_returned(self):
         pest = ACTIVE_LABELS[0]
@@ -1552,7 +1612,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
                         "Unverified model prediction: hierarchy confidence evidence is missing or inconsistent",
                     )
                     self.assertEqual(response["confidence"], confidence)
-                    self.assertEqual(response["risk"], "LOW")
+                    self.assertIsNone(response["risk"])
 
     def test_unrecognized_model_label_does_not_crash_prediction_endpoint(self):
         request = FakeRequest(
@@ -1569,7 +1629,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             )
 
         self.assertIsNone(response["pest"])
-        self.assertEqual(response["risk"], "LOW")
+        self.assertIsNone(response["risk"])
 
     def test_serialized_low_confidence_record_is_explicitly_unconfirmed(self):
         detection = Mock(
@@ -1663,6 +1723,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             common_name="European Field Cricket",
             confidence=0.677,
             top_predictions=json.dumps({
+                "server_verified": True,
                 "species": [{
                     "pest": "European Field Cricket",
                     "score": 0.677,
@@ -7794,7 +7855,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         self.assertEqual(response["source_references"], [])
         self.assertEqual(response["solution_records"], [])
 
-    def test_harmful_device_detection_status_is_preserved(self):
+    def test_client_submitted_harmful_detection_is_unverified(self):
         database = Mock()
         database.query.return_value.all.return_value = catalog_records()
         database.refresh.side_effect = lambda detection: setattr(
@@ -7815,20 +7876,28 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         ) as broadcast:
             detection = asyncio.run(_test_create_detection(payload, database))
 
-        self.assertEqual(detection["status"], "HARMFUL_PEST")
-        self.assertEqual(detection["identification_status"], "MODEL_PREDICTED")
+        self.assertEqual(detection["status"], "UNKNOWN")
+        self.assertEqual(detection["identification_status"], "UNCONFIRMED")
         self.assertEqual(detection["pest"], ACTIVE_LABELS[0])
-        self.assertEqual(detection["risk"], "LOW")
+        self.assertFalse(detection["pest_verified"])
+        self.assertIsNone(detection["risk"])
+        self.assertEqual(
+            detection["risk_rationale"],
+            "Risk is not assigned to an unconfirmed pest.",
+        )
+        self.assertEqual(detection["affected_crops"], [])
+        self.assertIsNone(detection["metadata_source_name"])
+        self.assertIsNone(detection["metadata_source_url"])
         event = broadcast.await_args.args[0]
-        self.assertEqual(event["status"], "HARMFUL_PEST")
+        self.assertEqual(event["status"], "UNKNOWN")
         self.assertEqual(event["pest"], ACTIVE_LABELS[0])
-        self.assertEqual(event["risk"], "LOW")
+        self.assertIsNone(event["risk"])
         self.assertEqual(event["temperature"], 26.2)
         self.assertEqual(event["humidity"], 65.0)
         api_response = main.DetectionResponse.model_validate(detection)
-        self.assertEqual(api_response.status, "HARMFUL_PEST")
-        self.assertEqual(api_response.identification_status, "MODEL_PREDICTED")
-        self.assertTrue(api_response.pest_verified)
+        self.assertEqual(api_response.status, "UNKNOWN")
+        self.assertEqual(api_response.identification_status, "UNCONFIRMED")
+        self.assertFalse(api_response.pest_verified)
 
     def test_device_harmful_status_without_catalog_match_is_unconfirmed(self):
         database = Mock()
@@ -7850,7 +7919,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         self.assertEqual(detection["status"], "UNKNOWN")
         self.assertEqual(detection["pest"], ACTIVE_LABELS[0])
         self.assertFalse(detection["pest_verified"])
-        self.assertEqual(detection["risk"], "LOW")
+        self.assertIsNone(detection["risk"])
         broadcast.assert_awaited_once_with(detection)
 
     def test_device_low_confidence_harmful_status_is_unconfirmed(self):
@@ -7873,7 +7942,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
 
         self.assertEqual(detection["status"], "UNKNOWN")
         self.assertEqual(detection["identification_status"], "UNCONFIRMED")
-        self.assertEqual(detection["risk"], "HIGH")
+        self.assertIsNone(detection["risk"])
         self.assertFalse(detection["pest_verified"])
         fast2sms_request.assert_not_called()
 
@@ -7919,7 +7988,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
                         "1111111111,2222222222",
                     )
 
-    def test_device_high_risk_uses_catalog_risk_not_submitted_risk(self):
+    def test_client_submitted_high_risk_does_not_create_verified_history(self):
         database = Mock()
         database.query.return_value.all.return_value = catalog_records("HIGH")
         database.query.return_value.filter.return_value.first.return_value = None
@@ -7939,18 +8008,16 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         ):
             detection = asyncio.run(_test_create_detection(payload, database))
 
-        self.assertEqual(detection["status"], "HARMFUL_PEST")
-        self.assertEqual(detection["risk"], "HIGH")
-        self.assertEqual(detection["identification_status"], "MODEL_PREDICTED")
-        history_record = next(
-            record
-            for record in (
-                call.args[0] for call in database.add.call_args_list
+        self.assertEqual(detection["status"], "UNKNOWN")
+        self.assertIsNone(detection["risk"])
+        self.assertEqual(detection["identification_status"], "UNCONFIRMED")
+        self.assertFalse(detection["pest_verified"])
+        self.assertFalse(
+            any(
+                isinstance(call.args[0], main.HighRiskSolutionHistory)
+                for call in database.add.call_args_list
             )
-            if isinstance(record, main.HighRiskSolutionHistory)
         )
-        self.assertEqual(history_record.pest, ACTIVE_LABELS[0])
-        self.assertEqual(history_record.risk, "HIGH")
         broadcast.assert_awaited_once_with(detection)
 
     def test_untrained_device_label_is_not_forwarded(self):
@@ -7971,7 +8038,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
 
         self.assertEqual(detection["status"], "UNKNOWN")
         self.assertIsNone(detection["pest"])
-        self.assertEqual(detection["risk"], "LOW")
+        self.assertIsNone(detection["risk"])
         event = broadcast.await_args.args[0]
         self.assertIsNone(event["pest"])
         self.assertEqual(event["status"], "UNKNOWN")
@@ -8171,7 +8238,7 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
         self.assertEqual(history["detections"][0]["id"], saved["id"])
         self.assertEqual(history["detections"][0]["pest"], ACTIVE_LABELS[0])
         self.assertEqual(history["detections"][0]["common_name"], ACTIVE_COMMON_NAMES[0])
-        self.assertEqual(history["detections"][0]["risk"], main._resolve_species_metadata(ACTIVE_LABELS[0])["risk"])
+        self.assertIsNone(history["detections"][0]["risk"])
         self.assertEqual(broadcast.await_count, 1)
 
     def test_ai_metadata_matches_saved_row_latest_history_and_websocket(self):
@@ -8435,7 +8502,7 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
             0,
         )
 
-    def test_catalogue_risk_survives_detection_history_and_websocket_for_all_levels(self):
+    def test_client_submitted_harmful_status_never_assigns_catalog_risk(self):
         pest_name = ACTIVE_LABELS[0]
         pest_record = (
             self.db.query(main.Pest)
@@ -8481,25 +8548,19 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
                 )
                 websocket_event = broadcast.await_args.args[0]
 
-                self.assertEqual(response["risk"], risk)
-                self.assertEqual(saved.risk, risk)
-                self.assertEqual(history_response["risk"], risk)
-                self.assertEqual(websocket_event["risk"], risk)
-                self.assertEqual(response["identification_status"], "MODEL_PREDICTED")
-                if risk == "HIGH":
-                    solution_history = (
-                        self.db.query(main.HighRiskSolutionHistory)
-                        .filter_by(detection_id=response["id"])
-                        .first()
-                    )
-                    self.assertEqual(solution_history.risk, risk)
-                    self.assertIsNone(solution_history.solution_title)
-                    for field in (
-                        "solution_description",
-                        "recommended_action",
-                        "prevention",
-                    ):
-                        self.assertIsNone(getattr(solution_history, field), field)
+                self.assertEqual(response["status"], "UNKNOWN")
+                self.assertEqual(response["identification_status"], "UNCONFIRMED")
+                self.assertFalse(response["pest_verified"])
+                self.assertIsNone(response["risk"])
+                self.assertIsNone(saved.risk)
+                self.assertIsNone(history_response["risk"])
+                self.assertIsNone(websocket_event["risk"])
+                self.assertEqual(
+                    self.db.query(main.HighRiskSolutionHistory)
+                    .filter_by(detection_id=response["id"])
+                    .count(),
+                    0,
+                )
 
     def test_prediction_prefers_canonical_catalogue_id_over_stale_name_match(self):
         pest_name = "Field Cricket"
@@ -8581,7 +8642,7 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
                 self.assertEqual(broadcast.await_args.args[0]["risk"], risk)
                 self.assertTrue(response["pest_verified"])
 
-    def test_high_risk_solution_history_does_not_store_fallback_guidance(self):
+    def test_unverified_device_submission_does_not_create_high_risk_history(self):
         catalog_item = real_high_risk_catalog_item()
         pest_name = catalog_item["name"]
         pest_record = (
@@ -8611,14 +8672,9 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
             .filter_by(detection_id=response["id"])
             .first()
         )
-        self.assertEqual(history.risk, "HIGH")
-        self.assertIsNone(history.solution_source)
-        for field in (
-            "solution_description",
-            "recommended_action",
-            "prevention",
-        ):
-            self.assertIsNone(getattr(history, field), field)
+        self.assertEqual(response["status"], "UNKNOWN")
+        self.assertIsNone(response["risk"])
+        self.assertIsNone(history)
 
 
 class DeviceHeartbeatAndControlTests(unittest.TestCase):

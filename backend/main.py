@@ -942,7 +942,6 @@ def _resolve_species_metadata(
 
 def _serialize_detection(detection: Detection, db: Session | None) -> dict:
     resolved = _resolve_species_metadata(detection.pest, db)
-    stored_risk = str(detection.risk or "").strip().upper()
     stored_crops = []
     if detection.affected_crops:
         try:
@@ -952,8 +951,20 @@ def _serialize_detection(detection: Detection, db: Session | None) -> dict:
 
     expected_group = _active_group_for_label(detection.pest)
     stored_group = str(getattr(detection, "insect_group", None) or "").strip()
+    server_verified = False
+    if detection.top_predictions:
+        try:
+            verification_data = json.loads(detection.top_predictions)
+            if isinstance(verification_data, dict):
+                server_verified = (
+                    verification_data.get("server_verified") is True
+                )
+        except (json.JSONDecodeError, TypeError):
+            server_verified = False
+
     accepted_prediction = bool(
         detection.status == "HARMFUL_PEST"
+        and server_verified
         and _is_active_species_label(detection.pest)
         and expected_group in _ACTIVE_HIERARCHICAL_GROUP_NAMES
         and (not stored_group or stored_group == expected_group)
@@ -986,29 +997,13 @@ def _serialize_detection(detection: Detection, db: Session | None) -> dict:
         metadata_source_name = resolved["metadata_source_name"]
         metadata_source_url = resolved["metadata_source_url"]
     else:
-        risk = (
-            stored_risk
-            if stored_risk in {"HIGH", "MEDIUM", "LOW", "NO_RISK"}
-            else resolved["risk"]
-        )
+        risk = None
         serialized_pest = detection.pest
-        scientific_name = (
-            detection.scientific_name or resolved["scientific_name"]
-        )
-        common_name = (
-            resolved["common_name"]
-            if resolved["catalog_record_found"]
-            else detection.common_name or resolved["common_name"]
-        )
-        risk_rationale = (
-            detection.risk_rationale or resolved["risk_rationale"]
-        )
-        metadata_source_name = (
-            detection.metadata_source_name or resolved["metadata_source_name"]
-        )
-        metadata_source_url = (
-            detection.metadata_source_url or resolved["metadata_source_url"]
-        )
+        scientific_name = detection.scientific_name
+        common_name = detection.common_name or "Unidentified sound"
+        risk_rationale = "Risk is not assigned to an unconfirmed pest."
+        metadata_source_name = None
+        metadata_source_url = None
     stored_predictions = []
     stored_broad_group = None
     stored_broad_group_confidence = None
@@ -1067,7 +1062,11 @@ def _serialize_detection(detection: Detection, db: Session | None) -> dict:
         ),
         "risk": risk,
         "risk_rationale": risk_rationale,
-        "affected_crops": stored_crops or resolved["affected_crops"],
+        "affected_crops": (
+            (stored_crops or resolved["affected_crops"])
+            if accepted_prediction
+            else []
+        ),
         "metadata_source_name": metadata_source_name,
         "metadata_source_url": metadata_source_url,
         "pest_id": resolved["pest_id"] if accepted_prediction else None,
@@ -2425,21 +2424,34 @@ async def ai_predict(
                 ),
                 "background_gate_passed": gate_decision,
                 "background_gate_bypassed": diagnostic_mode,
+                "server_verified": prediction_is_accepted,
             }),
             insect_group=insect_group,
             group_score=group_score,
-            risk=resolved_risk,
+            risk=(
+                resolved_risk
+                if prediction_is_accepted
+                else None
+            ),
             risk_rationale=(
-                species_metadata["risk_rationale"] if predicted_pest else None
+                species_metadata["risk_rationale"]
+                if prediction_is_accepted
+                else "Risk is not assigned to an unconfirmed pest."
             ),
             affected_crops=json.dumps(
-                species_metadata["affected_crops"] if predicted_pest else []
+                species_metadata["affected_crops"]
+                if prediction_is_accepted
+                else []
             ),
             metadata_source_name=(
-                species_metadata["metadata_source_name"] if predicted_pest else None
+                species_metadata["metadata_source_name"]
+                if prediction_is_accepted
+                else None
             ),
             metadata_source_url=(
-                species_metadata["metadata_source_url"] if predicted_pest else None
+                species_metadata["metadata_source_url"]
+                if prediction_is_accepted
+                else None
             ),
             message=prediction_message,
             detected_at=detected_time,
@@ -2688,15 +2700,10 @@ async def create_detection(
         else None
     )
     species_metadata = _resolve_species_metadata(candidate_pest, db)
-    expected_group = _active_group_for_label(candidate_pest)
-    accepted_prediction = bool(
-        payload.status == "HARMFUL_PEST"
-        and candidate_pest
-        and pest_record
-        and expected_group in _ACTIVE_HIERARCHICAL_GROUP_NAMES
-        and payload.confidence is not None
-        and payload.confidence >= PEST_IDENTIFICATION_CONFIDENCE
-    )
+    # This endpoint receives client-submitted detection data.
+    # A submitted status and confidence score cannot prove
+    # that the server-side AI verification checks passed.
+    accepted_prediction = False
     detection_status = (
         "HARMFUL_PEST"
         if accepted_prediction
@@ -2710,7 +2717,7 @@ async def create_detection(
         else None
     )
     detection_risk = (
-        species_metadata["risk"] if detection_pest else "LOW"
+        "LOW" if detection_status == "NON_PEST" else None
     )
 
     detected_time = payload.detected_at or datetime.now(timezone.utc).replace(
@@ -2735,17 +2742,13 @@ async def create_detection(
 
         risk=detection_risk,
         risk_rationale=(
-            species_metadata["risk_rationale"] if detection_pest else None
+            "No pest was identified."
+            if detection_status == "NON_PEST"
+            else "Risk is not assigned to an unconfirmed pest."
         ),
-        affected_crops=json.dumps(
-            species_metadata["affected_crops"] if detection_pest else []
-        ),
-        metadata_source_name=(
-            species_metadata["metadata_source_name"] if detection_pest else None
-        ),
-        metadata_source_url=(
-            species_metadata["metadata_source_url"] if detection_pest else None
-        ),
+        affected_crops=json.dumps([]),
+        metadata_source_name=None,
+        metadata_source_url=None,
 
         temperature=payload.temperature,
 
