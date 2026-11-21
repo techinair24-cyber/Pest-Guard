@@ -942,7 +942,6 @@ def _resolve_species_metadata(
 
 def _serialize_detection(detection: Detection, db: Session | None) -> dict:
     resolved = _resolve_species_metadata(detection.pest, db)
-    stored_risk = str(detection.risk or "").strip().upper()
     stored_crops = []
     if detection.affected_crops:
         try:
@@ -986,11 +985,7 @@ def _serialize_detection(detection: Detection, db: Session | None) -> dict:
         metadata_source_name = resolved["metadata_source_name"]
         metadata_source_url = resolved["metadata_source_url"]
     else:
-        risk = (
-            stored_risk
-            if stored_risk in {"HIGH", "MEDIUM", "LOW", "NO_RISK"}
-            else resolved["risk"]
-        )
+        risk = "UNCONFIRMED"
         serialized_pest = detection.pest
         scientific_name = (
             detection.scientific_name or resolved["scientific_name"]
@@ -1000,15 +995,9 @@ def _serialize_detection(detection: Detection, db: Session | None) -> dict:
             if resolved["catalog_record_found"]
             else detection.common_name or resolved["common_name"]
         )
-        risk_rationale = (
-            detection.risk_rationale or resolved["risk_rationale"]
-        )
-        metadata_source_name = (
-            detection.metadata_source_name or resolved["metadata_source_name"]
-        )
-        metadata_source_url = (
-            detection.metadata_source_url or resolved["metadata_source_url"]
-        )
+        risk_rationale = "Risk is unavailable until pest identification is verified."
+        metadata_source_name = None
+        metadata_source_url = None
     stored_predictions = []
     stored_broad_group = None
     stored_broad_group_confidence = None
@@ -2314,12 +2303,6 @@ async def ai_predict(
             if predicted_pest
             else None
         )
-        resolved_risk = (
-            species_metadata["risk"]
-            if predicted_pest
-            else "LOW"
-        )
-
         diagnostic_mode = (
             result.get("background_gate_bypassed") is True
         )
@@ -2343,6 +2326,11 @@ async def ai_predict(
             "HARMFUL_PEST"
             if prediction_is_accepted
             else "UNKNOWN"
+        )
+        resolved_risk = (
+            species_metadata["risk"]
+            if prediction_is_accepted
+            else "UNCONFIRMED"
         )
 
         if diagnostic_mode:
@@ -2412,7 +2400,9 @@ async def ai_predict(
             group_score=group_score,
             risk=resolved_risk,
             risk_rationale=(
-                species_metadata["risk_rationale"] if predicted_pest else None
+                species_metadata["risk_rationale"]
+                if prediction_is_accepted
+                else "Risk is unavailable until pest identification is verified."
             ),
             affected_crops=json.dumps(
                 species_metadata["affected_crops"] if predicted_pest else []
@@ -2692,7 +2682,11 @@ async def create_detection(
         else None
     )
     detection_risk = (
-        species_metadata["risk"] if detection_pest else "LOW"
+        species_metadata["risk"]
+        if accepted_prediction
+        else "LOW"
+        if detection_status == "NON_PEST"
+        else "UNCONFIRMED"
     )
 
     detected_time = payload.detected_at or datetime.now(timezone.utc).replace(
@@ -2717,7 +2711,11 @@ async def create_detection(
 
         risk=detection_risk,
         risk_rationale=(
-            species_metadata["risk_rationale"] if detection_pest else None
+            species_metadata["risk_rationale"]
+            if accepted_prediction
+            else "No pest was identified."
+            if detection_status == "NON_PEST"
+            else "Risk is unavailable until pest identification is verified."
         ),
         affected_crops=json.dumps(
             species_metadata["affected_crops"] if detection_pest else []

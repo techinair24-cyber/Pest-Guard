@@ -1108,7 +1108,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         self.assertEqual(response["status"], "UNKNOWN")
         self.assertEqual(response["pest"], ACTIVE_LABELS[0])
         self.assertEqual(response["confidence"], 0.99)
-        self.assertEqual(response["risk"], main._resolve_species_metadata(ACTIVE_LABELS[0])["risk"])
+        self.assertEqual(response["risk"], "UNCONFIRMED")
 
     def test_accepted_hierarchy_prediction_status_is_persisted_and_returned(self):
         pest = ACTIVE_LABELS[0]
@@ -1552,7 +1552,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
                         "Unverified model prediction: hierarchy confidence evidence is missing or inconsistent",
                     )
                     self.assertEqual(response["confidence"], confidence)
-                    self.assertEqual(response["risk"], "LOW")
+                    self.assertEqual(response["risk"], "UNCONFIRMED")
 
     def test_unrecognized_model_label_does_not_crash_prediction_endpoint(self):
         request = FakeRequest(
@@ -1569,7 +1569,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             )
 
         self.assertIsNone(response["pest"])
-        self.assertEqual(response["risk"], "LOW")
+        self.assertEqual(response["risk"], "UNCONFIRMED")
 
     def test_serialized_low_confidence_record_is_explicitly_unconfirmed(self):
         detection = Mock(
@@ -1581,7 +1581,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
             common_name=None,
             confidence=0.632,
             top_predictions=None,
-            risk="LOW",
+            risk="HIGH",
             risk_rationale=None,
             affected_crops="[]",
             metadata_source_name=None,
@@ -1597,6 +1597,9 @@ class AudioPredictionSafetyTests(unittest.TestCase):
 
         self.assertEqual(serialized["identification_status"], "UNCONFIRMED")
         self.assertEqual(serialized["identification_label"], "Unidentified sound")
+        self.assertEqual(serialized["risk"], "UNCONFIRMED")
+        self.assertIsNone(serialized["metadata_source_name"])
+        self.assertIn("unavailable until", serialized["risk_rationale"])
         self.assertEqual(serialized["source"], "AI_MODEL_PREDICTION")
 
     def test_serialized_device_inference_error_is_not_a_detection(self):
@@ -7850,7 +7853,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
         self.assertEqual(detection["status"], "UNKNOWN")
         self.assertEqual(detection["pest"], ACTIVE_LABELS[0])
         self.assertFalse(detection["pest_verified"])
-        self.assertEqual(detection["risk"], "LOW")
+        self.assertEqual(detection["risk"], "UNCONFIRMED")
         broadcast.assert_awaited_once_with(detection)
 
     def test_device_low_confidence_harmful_status_is_unconfirmed(self):
@@ -7873,7 +7876,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
 
         self.assertEqual(detection["status"], "UNKNOWN")
         self.assertEqual(detection["identification_status"], "UNCONFIRMED")
-        self.assertEqual(detection["risk"], "HIGH")
+        self.assertEqual(detection["risk"], "UNCONFIRMED")
         self.assertFalse(detection["pest_verified"])
         fast2sms_request.assert_not_called()
 
@@ -7971,7 +7974,7 @@ class AudioPredictionSafetyTests(unittest.TestCase):
 
         self.assertEqual(detection["status"], "UNKNOWN")
         self.assertIsNone(detection["pest"])
-        self.assertEqual(detection["risk"], "LOW")
+        self.assertEqual(detection["risk"], "UNCONFIRMED")
         event = broadcast.await_args.args[0]
         self.assertIsNone(event["pest"])
         self.assertEqual(event["status"], "UNKNOWN")
@@ -8171,7 +8174,7 @@ class DetectionHistoryPersistenceTests(unittest.TestCase):
         self.assertEqual(history["detections"][0]["id"], saved["id"])
         self.assertEqual(history["detections"][0]["pest"], ACTIVE_LABELS[0])
         self.assertEqual(history["detections"][0]["common_name"], ACTIVE_COMMON_NAMES[0])
-        self.assertEqual(history["detections"][0]["risk"], main._resolve_species_metadata(ACTIVE_LABELS[0])["risk"])
+        self.assertEqual(history["detections"][0]["risk"], "UNCONFIRMED")
         self.assertEqual(broadcast.await_count, 1)
 
     def test_ai_metadata_matches_saved_row_latest_history_and_websocket(self):

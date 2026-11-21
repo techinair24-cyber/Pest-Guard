@@ -81,10 +81,13 @@ export function getDetectionDisplayStatus(item) {
     typeof item.pest === 'string' &&
     item.pest.trim() !== ''
 
-  const acceptedPest =
-    status === 'HARMFUL_PEST' &&
-    item.pest_verified === true &&
-    hasPest
+  const acceptedPest = isVerifiedPestDetection(item) && hasPest
+
+  if (acceptedPest) {
+    return identificationStatus === 'CONFIRMED'
+      ? 'Confirmed pest identification'
+      : 'Accepted model prediction'
+  }
 
   if (
     identificationStatus === 'ERROR' ||
@@ -92,26 +95,23 @@ export function getDetectionDisplayStatus(item) {
   ) {
     return 'Inference error'
   }
-  if (status === 'NON_PEST') {
-    return 'Non-pest sound'
-  }
-
   if (
-    acceptedPest &&
-    identificationStatus === 'CONFIRMED'
+    status === 'NON_PEST' ||
+    status === 'UNKNOWN' ||
+    identificationStatus === 'UNCONFIRMED'
   ) {
-    return 'Confirmed pest identification'
+    return 'No pest detected'
   }
 
-  if (acceptedPest) {
-    return 'Accepted model prediction'
+  if (status === 'HARMFUL_PEST') {
+    return 'No pest detected'
   }
 
   if (hasPest) {
     return 'Possible match - not confirmed'
   }
 
-  return 'Rejected or uncertain classification'
+  return 'No pest detected'
 }
 
 export function parseServerTimestamp(value) {
@@ -166,6 +166,10 @@ function getFallbackDetectionIdentity(detection) {
     detection?.confidence ?? '',
     String(detection?.message || ''),
   ])
+}
+
+export function isVerifiedPestDetection(item) {
+  return item?.status === 'HARMFUL_PEST' && item?.pest_verified === true
 }
 
 export function getDetectionHistoryKey(detection) {

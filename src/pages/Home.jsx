@@ -3,6 +3,7 @@ import { useLiveDetection } from '../hooks/useLiveDetection'
 import FeatureSection from '../components/FeatureSection'
 import Hero from '../components/Hero'
 import HarmfulPestAlert from '../components/HarmfulPestAlert'
+import { isVerifiedPestDetection } from '../utils/detectionHistory'
 
 function Home() {
   const { detection } = useLiveDetection()
@@ -14,7 +15,7 @@ function Home() {
       return
     }
 
-    if (detection.status !== 'HARMFUL_PEST') {
+    if (!isVerifiedPestDetection(detection)) {
       return
     }
 

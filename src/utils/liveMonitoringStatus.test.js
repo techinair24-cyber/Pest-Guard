@@ -58,20 +58,50 @@ test('primary species follows the highest-confidence candidate and group-only re
   )
 })
 
-test('confirmation is shown only for the explicit backend CONFIRMED status', () => {
+test('identification labels require the verified-pest invariant', () => {
   assert.equal(
     getIdentificationLabel({ identification_status: 'CONFIRMED' }),
+    'UNCONFIRMED PREDICTION',
+  )
+  assert.equal(
+    getIdentificationLabel({
+      status: 'HARMFUL_PEST',
+      pest_verified: true,
+      identification_status: 'CONFIRMED',
+    }),
     'CONFIRMED IDENTIFICATION',
   )
-  for (const status of ['UNCONFIRMED', 'confirmed', 'ERROR', undefined]) {
-    assert.equal(
-      getIdentificationLabel({
-        identification_status: status,
-        group_score: 0.999,
-      }),
-      'SPECIES PREDICTION',
-    )
-  }
+  assert.equal(
+    getIdentificationLabel({ identification_status: 'MODEL_PREDICTED' }),
+    'UNCONFIRMED PREDICTION',
+  )
+  assert.equal(
+    getIdentificationLabel({
+      status: 'HARMFUL_PEST',
+      pest_verified: true,
+      identification_status: 'UNCONFIRMED',
+    }),
+    'MODEL PREDICTED',
+  )
+  assert.equal(
+    getIdentificationLabel({
+      status: 'HARMFUL_PEST',
+      pest_verified: true,
+    }),
+    'MODEL PREDICTED',
+  )
+  assert.equal(
+    getIdentificationLabel({ identification_status: 'UNCONFIRMED' }),
+    'UNCONFIRMED PREDICTION',
+  )
+  assert.equal(
+    getIdentificationLabel({ identification_status: 'ERROR' }),
+    'INFERENCE ERROR',
+  )
+  assert.equal(
+    getIdentificationLabel({ identification_status: undefined }),
+    'CLASSIFICATION UNAVAILABLE',
+  )
 })
 
 test('missing, invalid, or offline device sensor values are unavailable, not zero', () => {

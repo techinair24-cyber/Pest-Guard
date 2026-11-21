@@ -100,3 +100,28 @@ test('unknown or unverified species retains the safe fallback', () => {
     'Unknown pest',
   )
 })
+
+test('unconfirmed backend predictions do not become the main species name', () => {
+  assert.equal(
+    getLatestDetectionSpeciesName({
+      status: 'UNKNOWN',
+      pest_verified: false,
+      identification_status: 'UNCONFIRMED',
+      pest: 'Possible cricket',
+      common_name: 'Possible cricket',
+      top_predictions: [
+        { pest: 'Possible cricket', score: 0.72 },
+      ],
+    }),
+    'Unknown pest',
+  )
+  assert.equal(
+    getLatestDetectionSpeciesName({
+      status: 'HARMFUL_PEST',
+      pest_verified: false,
+      pest: 'Possible cricket',
+      top_predictions: [{ pest: 'Possible cricket', score: 0.72 }],
+    }),
+    'Unknown pest',
+  )
+})

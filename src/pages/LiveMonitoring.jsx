@@ -8,7 +8,6 @@ import { ArrowIcon, SparkIcon } from '../components/Icons'
 import { getDetectionHistory, getPests } from '../services/api'
 import {
   buildPestDirectory,
-  getCandidateRiskEstimate,
   getDisplayPestName,
   getDetectionRiskEstimate,
 } from '../utils/pestNames'
@@ -20,6 +19,7 @@ import {
   isRecentDetection,
   isLatestDetectionCandidate,
   isAfterHistoryClear,
+  isVerifiedPestDetection,
   mergeDetections,
   parseServerTimestamp,
 } from '../utils/detectionHistory'
@@ -282,13 +282,8 @@ function LiveMonitoring() {
   const deviceTimestamp = liveDevice?.last_seen || liveDevice?.lastSeen
   const healthTone = connectionState === 'Online' ? 'online' : 'offline'
   const leadingSpeciesPrediction = getLeadingSpeciesPrediction(displayDetection)
-  const identificationStatus = String(
-    displayDetection?.identification_status || '',
-  ).trim().toUpperCase()
   const predictedPestName =
-    (identificationStatus === 'MODEL_PREDICTED' ||
-      identificationStatus === 'CONFIRMED') &&
-    displayDetection?.pest_verified === true
+    isVerifiedPestDetection(displayDetection)
       ? leadingSpeciesPrediction?.pest || ''
       : ''
   const latestDetectionSpeciesName = getLatestDetectionSpeciesName(
@@ -299,12 +294,13 @@ function LiveMonitoring() {
   const topSpeciesPredictions = getTopSpeciesPredictions(
     displayDetection?.top_predictions,
   )
-  const riskDetails = getCandidateRiskEstimate(
-    leadingSpeciesPrediction,
-    displayDetection,
-    pestDirectory,
-  )
+  const riskDetails = getDetectionRiskEstimate(displayDetection, pestDirectory)
   const riskEstimate = riskDetails.risk
+  const displayedRisk = displayDetection
+    ? isVerifiedPestDetection(displayDetection)
+      ? riskEstimate
+      : displayDetectionLabel
+    : '—'
   const reportingDeviceId =
     displayDetection?.device_id || device?.device_id || 'N/A'
 
@@ -723,9 +719,7 @@ function LiveMonitoring() {
                   : displayDetection
                     ? displayDetectionLabel === 'Inference error'
                       ? displayDetectionLabel
-                      : displayDetectionLabel === 'Non-pest sound'
-                        ? displayDetectionLabel
-                        : 'Unidentified sound'
+                      : displayDetectionLabel
                     : loading
                       ? 'Connecting to field unit…'
                       : connectionState !== 'Online'
@@ -781,15 +775,25 @@ function LiveMonitoring() {
              <span>Group-level model score</span>
               <strong>{formatModelScore(displayDetection?.group_score)}</strong>
             </div>
-            <div className={`latest-risk latest-risk-${riskEstimate.toLowerCase()}`}>
+            <div
+              className={`latest-risk latest-risk-${
+                isVerifiedPestDetection(displayDetection)
+                  ? riskEstimate.toLowerCase()
+                  : 'unconfirmed'
+              }`}
+            >
               <div className="latest-risk-heading">
-                <span>Candidate risk</span>
-                <strong>{displayDetection ? riskEstimate : '—'}</strong>
+                <span>
+                  {isVerifiedPestDetection(displayDetection)
+                    ? 'Catalogue risk'
+                    : 'Detection result'}
+                </span>
+                <strong>{displayedRisk}</strong>
               </div>
               <div
                 className="latest-risk-track"
                 role="img"
-                aria-label={`Risk level: ${displayDetection ? riskEstimate : 'unavailable'}`}
+                aria-label={`Detection result: ${displayedRisk}`}
               >
                 <span className="latest-risk-fill" />
               </div>
@@ -925,13 +929,8 @@ function LiveMonitoring() {
               {filteredHistory.map((item) => {
                 const scientificName = String(item.pest || '').trim()
                 const leadingHistoryPrediction = getLeadingSpeciesPrediction(item)
-                const historyIdentificationStatus = String(
-                  item.identification_status || '',
-                ).trim().toUpperCase()
                 const verifiedHistoryPrediction =
-                  item.pest_verified === true &&
-                  (historyIdentificationStatus === 'MODEL_PREDICTED' ||
-                    historyIdentificationStatus === 'CONFIRMED')
+                  isVerifiedPestDetection(item)
                     ? leadingHistoryPrediction
                     : null
                 const topCandidates = getTopSpeciesPredictions(item.top_predictions)
@@ -943,15 +942,7 @@ function LiveMonitoring() {
                       <strong>
                         {verifiedHistoryPrediction
                           ? getCandidateDisplayName(verifiedHistoryPrediction)
-                          : scientificName
-                            ? historyIdentificationStatus === 'UNCONFIRMED'
-                              ? 'Unidentified sound'
-                              : getDetectionInsectGroup(item)
-                            : getDetectionDisplayStatus(item) === 'Inference error'
-                              ? 'Inference error'
-                              : getDetectionDisplayStatus(item) === 'Non-pest sound'
-                                ? 'Non-pest sound'
-                                : 'Unidentified sound'}
+                          : getDetectionDisplayStatus(item)}
                       </strong>
                       {leadingHistoryPrediction && (
                         <small>
@@ -992,7 +983,11 @@ function LiveMonitoring() {
                       <small>Species score</small>
                       <strong>{formatModelScore(item.group_score)}</strong>
                       <small>Group score</small>
-                      <strong>{getDetectionRiskEstimate(item, pestDirectory).risk}</strong>
+                      <strong>
+                        {isVerifiedPestDetection(item)
+                          ? getDetectionRiskEstimate(item, pestDirectory).risk
+                          : getDetectionDisplayStatus(item)}
+                      </strong>
                       <strong>{item.device_id || deviceId}</strong>
                     </div>
                   </div>
